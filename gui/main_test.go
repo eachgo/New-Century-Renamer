@@ -332,3 +332,55 @@ func fileExistsFor(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+// The user's example: step 4 选取文件名 bars 4–8; step 9 排除文件 adds a
+// second bar; step 12 清除筛选 ends the filter bar, 恢复整体 ends the scope.
+func TestStepRangeBars(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	// steps 1..3: plain processing
+	for _, id := range []string{"case.lower", "pinyin", "truncate"} {
+		a.steps = append(a.steps, step(id))
+	}
+	// 4: 选取文件名
+	n := step("scope.name")
+	a.steps = append(a.steps, n)
+	// 5..8 processing
+	for _, id := range []string{"case.lower", "case.title", "pinyin", "truncate"} {
+		a.steps = append(a.steps, step(id))
+	}
+	// 9: 排除文件
+	f := step("filter.out")
+	f.pattern = "*.tmp"
+	a.steps = append(a.steps, f)
+	// 10..11 processing
+	a.steps = append(a.steps, step("case.lower"), step("pinyin"))
+	// 12: 清除筛选 13: 恢复整体
+	a.steps = append(a.steps, step("unfilter"), step("scope.all"))
+
+	dt := themeFor(ui.Hex("#2F7A52"))
+	bars := a.stepRangeBars(dt)
+
+	// before 4: no bars
+	if len(bars[2]) != 0 || len(bars[3]) != 1 { // 3=0 bars, 4=scope bar
+		t.Fatalf("steps 3/4: %d %d", len(bars[2]), len(bars[3]))
+	}
+	// 5..8: one scope bar
+	for i := 4; i <= 7; i++ {
+		if len(bars[i]) != 1 || bars[i][0] != dt.rangeScope {
+			t.Fatalf("step %d: %v", i+1, bars[i])
+		}
+	}
+	// 9..11: two bars (scope + filter)
+	for i := 8; i <= 10; i++ {
+		if len(bars[i]) != 2 {
+			t.Fatalf("step %d should have 2 bars: %v", i+1, bars[i])
+		}
+	}
+	// 12 清除筛选: scope bar remains; 13 恢复整体: none
+	if len(bars[11]) != 1 || bars[11][0] != dt.rangeScope {
+		t.Fatalf("step 12: %v", bars[11])
+	}
+	if len(bars[12]) != 0 {
+		t.Fatalf("step 13: %v", bars[12])
+	}
+}

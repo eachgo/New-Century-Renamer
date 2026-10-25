@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
@@ -17,7 +18,15 @@ type derivedTheme struct {
 	selBg       ui.Color // catalog/steps selection: deep seed tone
 	selFg       ui.Color
 	cardBg      ui.Color // settings card ground: near-neutral seed tint
+	// range bars in the step list: filter scope uses the seed's
+	// complement, filename/extension scope a neighboring hue
+	rangeFilter ui.Color
+	rangeScope  ui.Color
+	groupColors map[string]ui.Color // fixed color per catalog group
 }
+
+// stepGroups is the fixed group order; each gets its own hue offset.
+var stepGroups = []string{"筛选/范围", "转换", "大小写", "替换", "结构", "扩展名", "编号", "元数据", "日期", "智能", "高级"}
 
 var (
 	themeMu    sync.Mutex
@@ -88,13 +97,30 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt.Radius = 10
 	dt.Spacing = 5
 
+	groupColors := make(map[string]ui.Color, len(stepGroups))
+	for i, g := range stepGroups {
+		hue := math.Mod(H+float64(i)*360/float64(len(stepGroups)), 360)
+		groupColors[g] = ui.Oklch(0.64, 0.125, float32(hue))
+	}
 	return &derivedTheme{
 		light:  lt,
 		dark:   dt,
 		selBg:  ui.Oklch(float32(clamp(L, 0.30, 0.42)), float32(cc*0.9), float32(H)),
 		selFg:  ui.RGB(255, 255, 255),
 		cardBg: ui.Oklch(0.962, float32(cc*0.12), float32(H)),
+		// 补色给筛选范围,相近色给选取范围
+		rangeFilter: ui.Oklch(0.62, 0.13, float32(math.Mod(H+180, 360))),
+		rangeScope:  ui.Oklch(0.62, 0.13, float32(math.Mod(H+30, 360))),
+		groupColors: groupColors,
 	}
+}
+
+// groupColor is the fixed color of a catalog group (falls back to the seed).
+func (d *derivedTheme) groupColor(group string) ui.Color {
+	if c, ok := d.groupColors[group]; ok {
+		return c
+	}
+	return d.selBg
 }
 
 // cardBgFor is the settings-card ground for the current appearance: a

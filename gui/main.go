@@ -137,7 +137,7 @@ func (a *app) catalogView(c *ui.Context) {
 							a.settingsOpen = true
 						default:
 							r := d.make()
-							r.opID, r.opLabel, r.opDesc, r.opFlow = d.id, d.label, d.desc, d.flow
+							r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
 							a.steps = append(a.steps, r)
 							a.stepSel = len(a.steps) - 1
 							a.palSel = d.id
@@ -157,6 +157,42 @@ func (a *app) catalogView(c *ui.Context) {
 	})
 }
 
+// stepRangeBars returns, per step, the colors of the range bars to draw on
+// its right edge: an open 筛选 (filter) range bars every step until 清除筛选,
+// an open 选取 (scope) range until 恢复整体 — nested ranges stack, as the
+// user's example: step 4 (选取文件名) bars 4–8, step 9 (排除文件) adds a
+// second bar from 9 on, until a clear step ends them.
+func (a *app) stepRangeBars(dt *derivedTheme) [][]ui.Color {
+	out := make([][]ui.Color, len(a.steps))
+	filterOn := false
+	scopeOn := false
+	for i := range a.steps {
+		s := &a.steps[i]
+		key, _ := kindByLabel[s.kind]
+		switch key {
+		case "filter":
+			filterOn = true
+		case "unfilter":
+			filterOn = false
+		case "scope":
+			if s.scopeSel == "整体" {
+				scopeOn = false
+			} else {
+				scopeOn = true
+			}
+		}
+		var bars []ui.Color
+		if filterOn {
+			bars = append(bars, dt.rangeFilter)
+		}
+		if scopeOn {
+			bars = append(bars, dt.rangeScope)
+		}
+		out[i] = bars
+	}
+	return out
+}
+
 // ---- middle pane: ordered task steps + selected step's detail ----
 
 func (a *app) stepsView(c *ui.Context) {
@@ -170,19 +206,32 @@ func (a *app) stepsView(c *ui.Context) {
 		if len(a.steps) == 0 {
 			ui.Text(c, "从左侧选择功能加入步骤").TextColor(t.TextMuted)
 		} else {
+			dt := a.currentTheme()
+			bars := a.stepRangeBars(dt)
 			ui.List(c, &a.stepList, len(a.steps), func(i int) {
 				s := a.steps[i]
-				mark := " "
-				if i == a.stepSel {
-					mark = "▸"
-				}
-				// 对齐即含义(与目录一致):流程控制步骤居中,处理步骤左对齐
-				align := ui.Start
-				if s.opFlow {
-					align = ui.Center
-				}
-				ui.Text(c, fmt.Sprintf("%s%d. %s\n    %s", mark, i+1, s.opLabel, s.summary())).
-					FontSize(12).Fill().TextAlign(align)
+				cat := dt.groupColor(s.opGroup)
+				// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
+				// 扫颜色即可读流程,不用逐个读编号
+				ui.Row(c).Gap(6).Children(func() {
+					if s.opFlow {
+						ui.Spacer(c) // 流程控制居中,处理步骤左对齐
+					}
+					ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, s.opLabel).FontSize(12).Bold()
+					if v := s.summary(); v != "" && v != s.opLabel {
+						ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).
+							Background(cat.Alpha(0.16)).TextColor(t.Text)
+					}
+					ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
+						Background(cat).TextColor(ui.RGB(255, 255, 255))
+					if s.opFlow {
+						ui.Spacer(c)
+					}
+					for _, bar := range bars[i] {
+						ui.Box(c).Size(4, 26).Background(bar)
+					}
+				})
 			}).Grow(1)
 		}
 		// detail of the selected step
