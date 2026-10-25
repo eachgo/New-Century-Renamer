@@ -139,7 +139,7 @@ func TestE2ENarrowWindow(t *testing.T) {
 	tt.Frame()
 	tt.SetSize(760, 560)
 	tt.Frame()
-	if !tt.HasText("① 文件") {
+	if !tt.HasText("③ 文件") {
 		t.Error("files pane missing in narrow window")
 	}
 	// add a step through the visible catalog area (scroll is needed; use state)
