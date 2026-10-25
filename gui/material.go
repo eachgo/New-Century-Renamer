@@ -56,7 +56,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// clamp chroma: keep derived colors calm whatever the seed
 	cc := clamp(C, 0.02, 0.115)
 	tone := func(l, cMul float64) ui.Color {
-		return ui.Oklch(float32(l), float32(cc*cMul), float32(H))
+		return oklchColor(l, cc*cMul, H)
 	}
 
 	// the accent itself sits at a mid tone with enough contrast for white
@@ -74,7 +74,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	accAt(lt, accL, cc, H)
 	lt.AccentText = ui.RGB(255, 255, 255)
 	lt.Selection = tone(0.925, 0.35)
-	lt.Focus = ui.Oklch(float32(accL), float32(cc), float32(H))
+	lt.Focus = oklchColor(accL, cc, H)
 	lt.Inverse = tone(0.28, 0.85)
 	lt.InverseText = ui.RGB(255, 255, 255)
 	lt.Scrollbar = tone(0.870, 0.20)
@@ -92,7 +92,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	accAt(dt, clamp(L, 0.72, 0.82), cc, H)
 	dt.AccentText = tone(0.16, 0.5)
 	dt.Selection = tone(0.300, 0.55)
-	dt.Focus = ui.Oklch(float32(clamp(L, 0.72, 0.82)), float32(cc), float32(H))
+	dt.Focus = oklchColor(clamp(L, 0.72, 0.82), cc, H)
 	dt.Inverse = tone(0.93, 0.10)
 	dt.InverseText = tone(0.24, 0.30)
 	dt.Scrollbar = tone(0.400, 0.20)
@@ -102,18 +102,18 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	groupColors := make(map[string]ui.Color, len(stepGroups))
 	for i, g := range stepGroups {
 		hue := math.Mod(H+float64(i)*360/float64(len(stepGroups)), 360)
-		groupColors[g] = ui.Oklch(0.64, 0.125, float32(hue))
+		groupColors[g] = oklchColor(0.64, 0.125, hue)
 	}
 	return &derivedTheme{
 		light:  lt,
 		dark:   dt,
-		selBg:  ui.Oklch(float32(clamp(L, 0.30, 0.42)), float32(cc*0.9), float32(H)),
+		selBg:  oklchColor(clamp(L, 0.30, 0.42), cc*0.9, H),
 		selFg:  ui.RGB(255, 255, 255),
-		cardBg: ui.Oklch(0.962, float32(cc*0.12), float32(H)),
+		cardBg: oklchColor(0.962, cc*0.12, H),
 		// 补色给筛选范围,相近色给选取范围(文件名/扩展名两个相邻色相)
-		rangeFilter:    ui.Oklch(0.62, 0.13, float32(math.Mod(H+180, 360))),
-		rangeScopeName: ui.Oklch(0.62, 0.13, float32(math.Mod(H+30, 360))),
-		rangeScopeExt:  ui.Oklch(0.62, 0.13, float32(math.Mod(H+60, 360))),
+		rangeFilter:    oklchColor(0.62, 0.13, math.Mod(H+180, 360)),
+		rangeScopeName: oklchColor(0.62, 0.13, math.Mod(H+30, 360)),
+		rangeScopeExt:  oklchColor(0.62, 0.13, math.Mod(H+60, 360)),
 		groupColors:    groupColors,
 	}
 }
@@ -131,15 +131,15 @@ func (d *derivedTheme) groupColor(group string) ui.Color {
 func (d *derivedTheme) cardBgFor(dark bool) ui.Color {
 	if dark {
 		_, _, H := colorToOklch(d.selBg)
-		return ui.Oklch(0.245, 0.012, float32(H))
+		return oklchColor(0.245, 0.012, H)
 	}
 	return d.cardBg
 }
 
 func accAt(t *ui.Theme, l, c, h float64) {
-	t.Accent = ui.Oklch(float32(l), float32(c), float32(h))
-	t.AccentHover = ui.Oklch(float32(l-0.05), float32(c), float32(h))
-	t.AccentPressed = ui.Oklch(float32(l-0.10), float32(c), float32(h))
+	t.Accent = oklchColor(l, c, h)
+	t.AccentHover = oklchColor(l-0.05, c, h)
+	t.AccentPressed = oklchColor(l-0.10, c, h)
 }
 
 func clamp(v, lo, hi float64) float64 {

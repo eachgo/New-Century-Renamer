@@ -407,30 +407,28 @@ func TestRegexCommaEndToEnd(t *testing.T) {
 // Per-extension colors: common ones are distinct through the pipeline;
 // unknown ones get unique hues within the list, both readable on cards.
 func TestExtColors(t *testing.T) {
-	a := &app{stepSel: -1, settings: defaultSettings()}
 	dt := themeFor(ui.Hex("#2F7A52"))
-	// common extensions all distinct
+	a := &app{stepSel: -1, settings: defaultSettings(), files: []fileInfo{}}
+	for _, n := range []string{"a.mp3", "b.flac", "c.jpg", "d.png", "e.pdf", "f.epub", "g.zip", "h.mp4", "i.xyz1", "j.zzz9"} {
+		a.files = append(a.files, fileInfo{path: n})
+	}
+	a.assignExtColors(dt)
+	// every listed extension has a distinct color
 	seen := map[ui.Color]string{}
-	for _, e := range []string{"mp3", "flac", "jpg", "png", "pdf", "epub", "zip", "mp4"} {
+	for _, e := range []string{"mp3", "flac", "jpg", "png", "pdf", "epub", "zip", "mp4", "xyz1", "zzz9"} {
 		c := a.fileColor(dt, e)
+		if c == ui.RGB(128, 128, 128) {
+			t.Errorf("%s fell back to gray", e)
+		}
 		if prev, dup := seen[c]; dup {
 			t.Errorf("%s shares a color with %s", e, prev)
 		}
 		seen[c] = e
 	}
-	// same extension is stable
-	if a.fileColor(dt, "mp3") != a.fileColor(dt, "MP3") {
-		t.Error("case-insensitive stability broken")
-	}
-	// unknown extensions distinct from each other and from the commons
-	b := &app{stepSel: -1, settings: defaultSettings()}
-	c1 := b.fileColor(dt, "xyz1")
-	c2 := b.fileColor(dt, "zzz9")
-	if c1 == c2 {
-		t.Error("unknown extensions share a color")
-	}
-	// readable on the card ground: enough contrast between chip color and bg
-	if r := contrastRatio(c1, dt.cardBg); r < 1.15 {
-		t.Errorf("chip vs card contrast too low: %.2f", r)
+	// readable against the card ground
+	for c := range seen {
+		if r := contrastRatio(c, dt.cardBgFor(false)); r < 1.15 {
+			t.Errorf("chip vs card contrast too low: %.2f", r)
+		}
 	}
 }

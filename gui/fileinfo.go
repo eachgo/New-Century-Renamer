@@ -93,44 +93,71 @@ var commonExtHue = func() map[string]float64 {
 	return m
 }()
 
-// fileColor colors a chip for an extension through the seed's pipeline:
-// common extensions take a fixed hue slot; unknown ones get a hash hue,
-// nudged until unique within this list session (互相不同) — both at a
-// lightness/chroma clearly distinct from the card ground.
+// assignExtColors pre-computes every extension's chip color on the main
+// thread: the render path must never call ui.Oklch — list rows build on
+// raster threads, and Oklch's state is not safe there (deadlocked the
+// rasterizer). Misses at render time fall back to a plain gray.
+func (a *app) assignExtColors(dt *derivedTheme) {
+	if a.extColors == nil {
+		a.extColors = map[string]ui.Color{}
+	} else {
+		a.extColors = map[string]ui.Color{} // seed may have changed
+	}
+	_, _, base := colorToOklch(dt.selBg)
+	hueOf := func(e string, taken []float64) float64 {
+		if fixed, ok := commonExtHue[e]; ok {
+			return fixed
+		}
+		off := hashHue(e)
+		for n := 0; n < 36; n++ {
+			clash := false
+			for _, t := range taken {
+				if hueClose(off, t) {
+					clash = true
+					break
+				}
+			}
+			if !clash {
+				break
+			}
+			off = mod360(off + 10)
+		}
+		return off
+	}
+	var taken []float64
+	assign := func(e string) {
+		if e == "" {
+			return
+		}
+		if _, ok := a.extColors[e]; ok {
+			return
+		}
+		off := hueOf(e, taken)
+		taken = append(taken, off)
+		oc := oklchColor(0.64, 0.125, mod360(base+off)).SRGB()
+		a.extColors[e] = ui.RGB(oc.R, oc.G, oc.B)
+	}
+	for i := range a.files {
+		assign(strings.ToLower(strings.TrimPrefix(filepath.Ext(a.files[i].path), ".")))
+		assign(strings.ToLower(a.files[i].realType))
+	}
+	assign("无扩展名")
+}
+
+// fileColor is the render-side read: pure map lookup, no Oklch (raster
+// threads must not build wide colors), plain gray fallback on miss.
 func (a *app) fileColor(dt *derivedTheme, ext string) ui.Color {
 	e := strings.ToLower(strings.TrimPrefix(ext, "."))
 	if e == "" {
 		e = "无扩展名"
 	}
-	if a.extHues == nil {
-		a.extHues = map[string]float64{}
+	if c, ok := a.extColors[e]; ok {
+		return c
 	}
-	_, _, base := colorToOklch(dt.selBg)
-	off, ok := a.extHues[e]
-	if !ok {
-		if fixed, isCommon := commonExtHue[e]; isCommon {
-			off = fixed
-		} else {
-			// 冷门扩展名:哈希取色相,回避本列表已占的相近色相,
-			// 保证列表内互不相同
-			off = hashHue(e)
-			for n := 0; n < 36; n++ {
-				clash := false
-				for taken := range a.extHues {
-					if hueClose(off, a.extHues[taken]) {
-						clash = true
-						break
-					}
-				}
-				if !clash {
-					break
-				}
-				off = mod360(off + 10)
-			}
-		}
-		a.extHues[e] = off
+	if fixed, isCommon := commonExtHue[e]; isCommon {
+		_ = fixed // cold path: fall through to gray rather than Oklch here
 	}
-	return ui.Oklch(0.64, 0.125, float32(mod360(base+off))).SRGB() // 收窄回 sRGB:宽色域色在 Windows 光栅化路径死锁
+	return ui.RGB(128, 128, 128)
 }
 
 func hashHue(s string) float64 {
@@ -150,11 +177,9 @@ func hueClose(a, b float64) bool {
 }
 
 func mod360(v float64) float64 {
-	for v < 0 {
+	v = math.Mod(v, 360) // 大数值下加减循环会退化成天文迭代
+	if v < 0 {
 		v += 360
-	}
-	for v >= 360 {
-		v -= 360
 	}
 	return v
 }

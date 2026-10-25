@@ -55,3 +55,32 @@ func contrastRatio(a, b ui.Color) float64 {
 	}
 	return (la + 0.05) / (lb + 0.05)
 }
+
+// oklchColor builds an sRGB ui.Color from OKLCH directly, bypassing
+// ui.Oklch: its gamut mapping dead-loops on certain hues (found the hard
+// way — the per-extension hue ring walks the whole circle).
+func oklchColor(l, c, hDeg float64) ui.Color {
+	h := hDeg * math.Pi / 180
+	a := c * math.Cos(h)
+	b := c * math.Sin(h)
+	l_ := math.Pow(l+0.3963377774*a+0.2158037573*b, 3)
+	m_ := math.Pow(l-0.1055613458*a-0.0638541728*b, 3)
+	s_ := math.Pow(l-0.0894841775*a-1.2914855480*b, 3)
+	lin := func(v float64) uint8 {
+		if v <= 0 {
+			return 0
+		}
+		if v >= 1 {
+			return 255
+		}
+		srgb := 1.055*math.Pow(v, 1/2.4) - 0.055
+		if srgb < 0 {
+			srgb = 0
+		}
+		return uint8(math.Round(srgb * 255))
+	}
+	r := 4.0767416621*l_ - 3.3077115913*m_ + 0.2309699292*s_
+	g := -1.2684380046*l_ + 2.6097574011*m_ - 0.3413193965*s_
+	bl := -0.0041960863*l_ - 0.7034186147*m_ + 1.7076147010*s_
+	return ui.Color{R: lin(r), G: lin(g), B: lin(bl), A: 255}
+}

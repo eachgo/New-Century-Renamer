@@ -37,11 +37,11 @@ type app struct {
 
 	settings     Settings
 	settingsOpen bool
-	extHues      map[string]float64 // per-extension hue slots (session)
-	seedFollow   bool               // theme seed follows the desktop accent
-	seedPick     ui.Color           // theme seed when not following
-	confirmClear bool               // 清空列表 needs a second click
-	saveErr      string             // settings dialog save error, shown in-dialog
+	extColors    map[string]ui.Color // per-extension chip colors (main-thread)
+	seedFollow   bool                // theme seed follows the desktop accent
+	seedPick     ui.Color            // theme seed when not following
+	confirmClear bool                // 清空列表 needs a second click
+	saveErr      string              // settings dialog save error, shown in-dialog
 
 	steps    []guiRule // ordered task steps
 	stepSel  int       // selected step, -1 = none
