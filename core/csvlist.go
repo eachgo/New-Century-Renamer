@@ -83,10 +83,14 @@ func ImportCSV(path string) (plan []RenameOp, errs []error) {
 	if len(rows) == 0 || strings.EqualFold(rows[0][0], "sha256") {
 		rows = rows[1:] // header
 	}
+	claimed := map[string]bool{} // 内容相同的文件:一次只认领一个
 	for i, row := range rows {
 		sum, dir, name, newName := row[0], row[1], row[2], row[3]
 		op := RenameOp{Dir: dir, NewName: newName}
-		found, err := locateByFingerprint(sum, dir, name)
+		found, err := locateByFingerprint(sum, dir, name, claimed)
+		if err == nil {
+			claimed[filepath.Join(dir, found)] = true
+		}
 		if err != nil {
 			op.Err = fmt.Errorf("第 %d 行: %w", i+2, err)
 			op.ErrText = op.Err.Error()
@@ -106,19 +110,23 @@ func ImportCSV(path string) (plan []RenameOp, errs []error) {
 	return plan, errs
 }
 
+// trimBOM strips every leading UTF-8 BOM: 编辑器重新保存常会再加一层,
+// 两层 BOM 会让表头识别失败、把 header 当数据行
 func trimBOM(b []byte) []byte {
-	if len(b) >= 3 && b[0] == 0xef && b[1] == 0xbb && b[2] == 0xbf {
-		return b[3:]
+	for len(b) >= 3 && b[0] == 0xef && b[1] == 0xbb && b[2] == 0xbf {
+		b = b[3:]
 	}
 	return b
 }
 
 // locateByFingerprint finds the file with the given sha256 in dir: the
 // recorded name if it still matches, else any file in the directory.
-func locateByFingerprint(sum, dir, name string) (string, error) {
+func locateByFingerprint(sum, dir, name string, claimed map[string]bool) (string, error) {
 	p := filepath.Join(dir, name)
-	if s, err := FileSHA256(p); err == nil && s == sum {
-		return name, nil
+	if !claimed[p] {
+		if s, err := FileSHA256(p); err == nil && s == sum {
+			return name, nil
+		}
 	}
 	ents, err := os.ReadDir(dir)
 	if err != nil {
@@ -128,7 +136,11 @@ func locateByFingerprint(sum, dir, name string) (string, error) {
 		if e.IsDir() {
 			continue
 		}
-		if s, err := FileSHA256(filepath.Join(dir, e.Name())); err == nil && s == sum {
+		full := filepath.Join(dir, e.Name())
+		if claimed[full] {
+			continue
+		}
+		if s, err := FileSHA256(full); err == nil && s == sum {
 			return e.Name(), nil
 		}
 	}

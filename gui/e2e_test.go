@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"os"
 	"path/filepath"
 	"strings"
@@ -202,4 +203,125 @@ func snapshot(t *testing.T, dir string) map[string]bool {
 		}
 	}
 	return m
+}
+
+// TestE2ECsvBackupAndRestore: 用 CSV 备份原始文件名 → 按 CSV 更名 →
+// 再用备份 CSV 原生还原。CSV 是独立于 journal 的第二条退路。
+func TestE2ECsvBackupAndRestore(t *testing.T) {
+	dir, paths := resetCopy(t)
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(dir, ".journal.json")
+	a.addPaths(paths)
+
+	// 1) 备份:导出即原始文件名快照(new_name 与 name 相同)
+	backup := filepath.Join(dir, "backup.csv")
+	if err := a.exportTo(backup); err != nil {
+		t.Fatal(err)
+	}
+	origRows := readCSV(t, backup)
+	if len(origRows) != len(paths) {
+		t.Fatalf("backup rows %d != files %d", len(origRows), len(paths))
+	}
+
+	// 2) 模拟用户在编辑器里写新名字
+	edited := filepath.Join(dir, "edited.csv")
+	writeCSV(t, backup, edited, func(row []string) []string {
+		stem := strings.TrimSuffix(row[2], filepath.Ext(row[2]))
+		row[3] = "改后_" + stem + filepath.Ext(row[2])
+		return row
+	})
+
+	// 3) 导入并按 CSV 更名,校验磁盘
+	plan, errs := a.importFrom(edited)
+	for _, e := range errs {
+		t.Errorf("import: %v", e)
+	}
+	if len(plan) != len(paths) {
+		t.Fatalf("imported %d rows", len(plan))
+	}
+	a.apply()
+	ok := 0
+	for _, op := range a.ops {
+		if op.Applied {
+			ok++
+		}
+		if _, err := os.Stat(filepath.Join(op.Dir, op.NewName)); err != nil {
+			t.Errorf("missing after apply: %s", op.NewName)
+		}
+	}
+	if ok != len(paths) {
+		t.Fatalf("applied %d of %d", ok, len(paths))
+	}
+	t.Logf("CSV rename applied to %d files", ok)
+
+	// 4) 用备份 CSV 还原(文件名已变,靠 sha256 指纹定位)
+	plan2, errs2 := a.importFrom(backup)
+	for _, e := range errs2 {
+		t.Errorf("restore import: %v", e)
+	}
+	a.apply()
+	restored := snapshot(t, dir)
+	missing := 0
+	for _, row := range origRows {
+		if !restored[row[2]] {
+			missing++
+			if missing < 4 {
+				t.Logf("not restored: %s", row[2])
+			}
+		}
+	}
+	if missing != 0 {
+		t.Fatalf("%d files not restored from backup CSV", missing)
+	}
+	t.Logf("restored all %d names from backup CSV (sha256 指纹定位改后文件)", len(origRows))
+	_ = plan2
+}
+
+func readCSV(t *testing.T, path string) [][]string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) > 0 {
+		rows = rows[1:] // header
+	}
+	return rows
+}
+
+// writeCSV rewrites src through edit using a real CSV codec, as an editor does.
+func writeCSV(t *testing.T, src, dst string, edit func([]string) []string) {
+	t.Helper()
+	f, err := os.Open(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	r := csv.NewReader(f)
+	r.FieldsPerRecord = -1
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(rows); i++ {
+		rows[i] = edit(rows[i])
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	out.WriteString("\ufeff")
+	w := csv.NewWriter(out)
+	if err := w.WriteAll(rows); err != nil {
+		t.Fatal(err)
+	}
+	w.Flush()
 }

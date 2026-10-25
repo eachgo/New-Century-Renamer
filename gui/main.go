@@ -694,11 +694,16 @@ func (a *app) exportCSV() {
 		a.update()
 		return
 	}
-	f, err := os.Create(out)
+	a.exportTo(out)
+}
+
+// exportTo writes the list CSV to path (the dialog's part stays above).
+func (a *app) exportTo(path string) error {
+	f, err := os.Create(path)
 	if err != nil {
 		a.status = "导出失败: " + err.Error()
 		a.update()
-		return
+		return err
 	}
 	defer f.Close()
 	paths := make([]string, len(a.files))
@@ -707,10 +712,12 @@ func (a *app) exportCSV() {
 	}
 	if err := core.ExportCSV(f, paths); err != nil {
 		a.status = "导出失败: " + err.Error()
-	} else {
-		a.status = fmt.Sprintf("已导出 %d 行到 %s;编辑 new_name 列后点“导入CSV”", len(a.files), out)
+		a.update()
+		return err
 	}
+	a.status = fmt.Sprintf("已导出 %d 行到 %s;编辑 new_name 列后点“导入CSV”", len(a.files), path)
 	a.update()
+	return nil
 }
 
 // importCSV reads an edited list back: files are located by sha256, and
@@ -728,7 +735,12 @@ func (a *app) importCSV() {
 		a.update()
 		return
 	}
-	plan, errs := core.ImportCSV(paths[0])
+	a.importFrom(paths[0])
+}
+
+// importFrom loads a list CSV as the current batch (dialog's part above).
+func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
+	plan, errs = core.ImportCSV(path)
 	a.assignExtColors(a.currentTheme())
 	a.ops = plan
 	a.files = a.files[:0]
@@ -741,6 +753,7 @@ func (a *app) importCSV() {
 		a.status += fmt.Sprintf(",%d 个有问题", len(errs))
 	}
 	a.update()
+	return plan, errs
 }
 
 func statFile(p string) fileInfo {
