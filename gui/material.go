@@ -24,7 +24,7 @@ type derivedTheme struct {
 	rangeFilter    ui.Color
 	rangeScopeName ui.Color
 	rangeScopeExt  ui.Color
-	groupColors map[string]ui.Color // fixed color per catalog group
+	groupColors    map[string]ui.Color // fixed color per catalog group
 }
 
 // stepGroups is the fixed group order; each gets its own hue offset.
@@ -114,7 +114,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		rangeFilter:    ui.Oklch(0.62, 0.13, float32(math.Mod(H+180, 360))),
 		rangeScopeName: ui.Oklch(0.62, 0.13, float32(math.Mod(H+30, 360))),
 		rangeScopeExt:  ui.Oklch(0.62, 0.13, float32(math.Mod(H+60, 360))),
-		groupColors: groupColors,
+		groupColors:    groupColors,
 	}
 }
 

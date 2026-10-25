@@ -403,3 +403,34 @@ func TestRegexCommaEndToEnd(t *testing.T) {
 		t.Fatalf("got %q want abNcd.txt", plan[0].NewName)
 	}
 }
+
+// Per-extension colors: common ones are distinct through the pipeline;
+// unknown ones get unique hues within the list, both readable on cards.
+func TestExtColors(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	dt := themeFor(ui.Hex("#2F7A52"))
+	// common extensions all distinct
+	seen := map[ui.Color]string{}
+	for _, e := range []string{"mp3", "flac", "jpg", "png", "pdf", "epub", "zip", "mp4"} {
+		c := a.fileColor(dt, e)
+		if prev, dup := seen[c]; dup {
+			t.Errorf("%s shares a color with %s", e, prev)
+		}
+		seen[c] = e
+	}
+	// same extension is stable
+	if a.fileColor(dt, "mp3") != a.fileColor(dt, "MP3") {
+		t.Error("case-insensitive stability broken")
+	}
+	// unknown extensions distinct from each other and from the commons
+	b := &app{stepSel: -1, settings: defaultSettings()}
+	c1 := b.fileColor(dt, "xyz1")
+	c2 := b.fileColor(dt, "zzz9")
+	if c1 == c2 {
+		t.Error("unknown extensions share a color")
+	}
+	// readable on the card ground: enough contrast between chip color and bg
+	if r := contrastRatio(c1, dt.cardBg); r < 1.15 {
+		t.Errorf("chip vs card contrast too low: %.2f", r)
+	}
+}

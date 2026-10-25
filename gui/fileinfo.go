@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,14 +74,79 @@ func extCategory(ext string) string {
 	return ""
 }
 
-// fileCatColor colors a file-category chip from the seed's hue.
-func fileCatColor(dt *derivedTheme, cat string) ui.Color {
-	hues := map[string]float64{"音频": 130, "视频": 280, "图片": 210,
-		"文本": 60, "文档": 20, "电子书": 160, "压缩包": 30, "": 90}
-	base, _, _ := colorToOklch(dt.selBg)
-	_, _, h := colorToOklch(dt.selBg)
-	_ = base
-	return ui.Oklch(0.64, 0.125, float32(mod360(h+hues[cat])))
+// commonExts 按序占用色相环:同一扩展名在色彩管线下永远同色,
+// 常见的都互不相同
+var commonExts = []string{
+	"mp3", "flac", "wav", "ogg", "m4a", "wma",
+	"mp4", "mkv", "mov", "avi", "webm",
+	"jpg", "jpeg", "png", "gif", "webp", "bmp", "svg",
+	"txt", "md", "pdf", "epub", "docx", "xlsx", "pptx",
+	"zip", "rar", "7z", "tar", "gz",
+	"html", "json", "xml", "csv", "srt", "log",
+}
+
+var commonExtHue = func() map[string]float64 {
+	m := make(map[string]float64, len(commonExts))
+	for i, e := range commonExts {
+		m[e] = float64(i) * 360 / float64(len(commonExts))
+	}
+	return m
+}()
+
+// fileColor colors a chip for an extension through the seed's pipeline:
+// common extensions take a fixed hue slot; unknown ones get a hash hue,
+// nudged until unique within this list session (互相不同) — both at a
+// lightness/chroma clearly distinct from the card ground.
+func (a *app) fileColor(dt *derivedTheme, ext string) ui.Color {
+	e := strings.ToLower(strings.TrimPrefix(ext, "."))
+	if e == "" {
+		e = "无扩展名"
+	}
+	if a.extHues == nil {
+		a.extHues = map[string]float64{}
+	}
+	_, _, base := colorToOklch(dt.selBg)
+	off, ok := a.extHues[e]
+	if !ok {
+		if fixed, isCommon := commonExtHue[e]; isCommon {
+			off = fixed
+		} else {
+			// 冷门扩展名:哈希取色相,回避本列表已占的相近色相,
+			// 保证列表内互不相同
+			off = hashHue(e)
+			for n := 0; n < 36; n++ {
+				clash := false
+				for taken := range a.extHues {
+					if hueClose(off, a.extHues[taken]) {
+						clash = true
+						break
+					}
+				}
+				if !clash {
+					break
+				}
+				off = mod360(off + 10)
+			}
+		}
+		a.extHues[e] = off
+	}
+	return ui.Oklch(0.64, 0.125, float32(mod360(base+off))).SRGB() // 收窄回 sRGB:宽色域色在 Windows 光栅化路径死锁
+}
+
+func hashHue(s string) float64 {
+	h := float64(0)
+	for i := 0; i < len(s); i++ {
+		h = h*31 + float64(s[i])
+	}
+	return mod360(h * 7.3)
+}
+
+func hueClose(a, b float64) bool {
+	d := math.Abs(a - b)
+	if d > 180 {
+		d = 360 - d
+	}
+	return d < 8
 }
 
 func mod360(v float64) float64 {

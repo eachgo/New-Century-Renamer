@@ -37,10 +37,11 @@ type app struct {
 
 	settings     Settings
 	settingsOpen bool
-	seedFollow   bool     // theme seed follows the desktop accent
-	seedPick     ui.Color // theme seed when not following
-	confirmClear bool     // 清空列表 needs a second click
-	saveErr      string   // settings dialog save error, shown in-dialog
+	extHues      map[string]float64 // per-extension hue slots (session)
+	seedFollow   bool               // theme seed follows the desktop accent
+	seedPick     ui.Color           // theme seed when not following
+	confirmClear bool               // 清空列表 needs a second click
+	saveErr      string             // settings dialog save error, shown in-dialog
 
 	steps    []guiRule // ordered task steps
 	stepSel  int       // selected step, -1 = none
@@ -370,8 +371,8 @@ func (a *app) filesView(c *ui.Context) {
 						nStem, nExt := filepathSplitName(newName)
 						// 类型色系:原名组按原扩展名,预览组按新扩展名——
 						// 改扩展名时颜色随类别变化,本身就是信息
-						oCol := fileCatColor(dt, extCategory(strings.ToLower(oExt)))
-						nCol := fileCatColor(dt, extCategory(strings.ToLower(nExt)))
+						oCol := a.fileColor(dt, oExt)
+						nCol := a.fileColor(dt, nExt)
 						// 名字组 = [胶囊文件名] . [胶囊扩展名],点是两胶囊之间
 						// 的独立文本;原名中性胶囊组,预览类型色胶囊组
 						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
@@ -405,7 +406,7 @@ func (a *app) filesView(c *ui.Context) {
 									ui.Text(c, "实际 "+f.realType).FontSize(11).Padding(1, 6).Radius(6).
 										Background(t.Danger.Alpha(0.15)).TextColor(t.Danger)
 								} else {
-									rc := fileCatColor(dt, extCategory(extNoDot))
+									rc := a.fileColor(dt, f.realType)
 									ui.Text(c, f.realType).FontSize(11).Padding(1, 6).Radius(6).
 										Background(rc.Alpha(0.18)).TextColor(t.Text)
 								}
