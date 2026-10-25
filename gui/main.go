@@ -368,7 +368,10 @@ func (a *app) filesView(c *ui.Context) {
 						changed := newName != oldName
 						oStem, oExt := filepathSplitName(oldName)
 						nStem, nExt := filepathSplitName(newName)
-						col := fileCatColor(dt, extCategory(strings.ToLower(nExt)))
+						// 类型色系:原名组按原扩展名,预览组按新扩展名——
+						// 改扩展名时颜色随类别变化,本身就是信息
+						oCol := fileCatColor(dt, extCategory(strings.ToLower(oExt)))
+						nCol := fileCatColor(dt, extCategory(strings.ToLower(nExt)))
 						// 名字组 = [胶囊文件名] . [胶囊扩展名],点是两胶囊之间
 						// 的独立文本;原名中性胶囊组,预览类型色胶囊组
 						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
@@ -381,12 +384,12 @@ func (a *app) filesView(c *ui.Context) {
 							}
 						}
 						ui.Row(c).Gap(4).Children(func() {
-							// 原文件名:胶囊文件名 . 胶囊扩展名(中性)
-							nameChips(oStem, oExt, t.SurfaceHover, t.SurfaceHover, t.Text)
+							// 原文件名:胶囊文件名 . 胶囊扩展名(原类型色,淡)
+							nameChips(oStem, oExt, oCol.Alpha(0.10), oCol.Alpha(0.30), t.Text)
 							if changed {
 								ui.Text(c, "→").TextColor(t.TextMuted)
-								// 预览:胶囊文件名 . 胶囊扩展名(类型色)
-								nameChips(nStem, nExt, col.Alpha(0.18), col, ui.RGB(255, 255, 255))
+								// 预览:胶囊文件名 . 胶囊扩展名(新类型色,实)
+								nameChips(nStem, nExt, nCol.Alpha(0.18), nCol, ui.RGB(255, 255, 255))
 							}
 							ui.Spacer(c)
 						})
@@ -402,8 +405,9 @@ func (a *app) filesView(c *ui.Context) {
 									ui.Text(c, "实际 "+f.realType).FontSize(11).Padding(1, 6).Radius(6).
 										Background(t.Danger.Alpha(0.15)).TextColor(t.Danger)
 								} else {
+									rc := fileCatColor(dt, extCategory(extNoDot))
 									ui.Text(c, f.realType).FontSize(11).Padding(1, 6).Radius(6).
-										Background(t.SurfaceHover).TextColor(t.TextMuted)
+										Background(rc.Alpha(0.18)).TextColor(t.Text)
 								}
 							} else if f.typ != "" && f.typ != "无扩展名" {
 								ui.Text(c, f.typ).FontSize(11).Padding(1, 6).Radius(6).
