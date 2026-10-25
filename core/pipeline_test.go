@@ -616,3 +616,53 @@ func TestCSVDuplicateContent(t *testing.T) {
 		seen[op.OldName] = true
 	}
 }
+
+// 仅改变大小写的改名不能因"目标已存在"而全部失败(同一文件的另一种写法)
+func TestCaseOnlyRenameNotConflict(t *testing.T) {
+	dir := t.TempDir()
+	var files []string
+	for _, n := range []string{"01. THE UNION.mp3", "02. RASEN in OKINAWA.mp3"} {
+		p := filepath.Join(dir, n)
+		os.WriteFile(p, []byte("x"), 0o644)
+		files = append(files, p)
+	}
+	plan := runRules(t, []string{"case=lower"}, files)
+	for _, op := range plan {
+		if op.Err != nil {
+			t.Fatalf("%s -> %s: %v", op.OldName, op.NewName, op.Err)
+		}
+	}
+	if plan[0].NewName != "01. the union.mp3" {
+		t.Fatalf("got %q", plan[0].NewName)
+	}
+	// 真的撞到别的文件时仍要报错
+	os.WriteFile(filepath.Join(dir, "taken.mp3"), []byte("y"), 0o644)
+	plan = runRules(t, []string{"template=taken.mp3"}, []string{files[0]})
+	if plan[0].Err == nil {
+		t.Fatal("目标确实存在时应报错")
+	}
+}
+
+// 仅大小写不同时要真的改成功(两步改名),且能回滚
+func TestCaseOnlyRenameApplies(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "THE UNION.mp3")
+	os.WriteFile(p, []byte("x"), 0o644)
+	plan := runRules(t, []string{"case=lower"}, []string{p})
+	journal := filepath.Join(dir, "j.json")
+	if err := ApplyPlan(plan, journal); err != nil {
+		t.Fatal(err)
+	}
+	if plan[0].Err != nil || !plan[0].Applied {
+		t.Fatalf("apply: err=%v applied=%v", plan[0].Err, plan[0].Applied)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "the union.mp3")); err != nil {
+		t.Fatalf("改名后文件不在: %v", err)
+	}
+	if err := UndoJournal(journal); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "THE UNION.mp3")); err != nil {
+		t.Fatalf("回滚后原名不在: %v", err)
+	}
+}

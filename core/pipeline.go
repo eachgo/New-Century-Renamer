@@ -144,6 +144,11 @@ func preflight(plan []RenameOp) {
 			op.ErrText = op.Err.Error()
 			continue
 		}
+		// "大小写/全角半角"这类改名在 Windows、macOS 上目标是同一个文件:
+		// 只要目标路径指向源文件本身就不算冲突
+		if samePathAsSource(op.Dir, op.OldName, op.NewName) {
+			continue
+		}
 		if _, err := os.Lstat(filepath.Join(op.Dir, op.NewName)); err == nil {
 			op.Err = fmt.Errorf("目标已存在同名文件")
 			op.ErrText = op.Err.Error()
@@ -242,12 +247,15 @@ func ApplyPlan(plan []RenameOp, journal string) error {
 		}
 		old := filepath.Join(op.Dir, op.OldName)
 		new := filepath.Join(op.Dir, op.NewName)
-		if _, err := os.Lstat(new); err == nil {
-			op.Err = fmt.Errorf("目标已存在: %s", new)
-			op.ErrText = op.Err.Error()
-			continue
+		self := samePathAsSource(op.Dir, op.OldName, op.NewName)
+		if !self {
+			if _, err := os.Lstat(new); err == nil {
+				op.Err = fmt.Errorf("目标已存在: %s", new)
+				op.ErrText = op.Err.Error()
+				continue
+			}
 		}
-		if err := os.Rename(old, new); err != nil {
+		if err := rename(old, new, self); err != nil {
 			op.Err = err
 			op.ErrText = err.Error()
 			continue
@@ -257,4 +265,37 @@ func ApplyPlan(plan []RenameOp, journal string) error {
 		fmt.Printf("* %s => %s\n", old, op.NewName)
 	}
 	return WriteJournal(journal, ops)
+}
+
+// samePathAsSource reports whether dir/newName is the very file at
+// dir/oldName, which happens when a rename only changes letter case or
+// other characters a case-insensitive volume folds together.
+func samePathAsSource(dir, oldName, newName string) bool {
+	if oldName == newName {
+		return true
+	}
+	a, err1 := os.Stat(filepath.Join(dir, oldName))
+	b, err2 := os.Stat(filepath.Join(dir, newName))
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return os.SameFile(a, b)
+}
+
+// rename moves old to new; when they are the same file spelled differently
+// (case-only rename on a case-insensitive volume) it goes through a
+// temporary name, as the two names collide for the OS otherwise.
+func rename(old, new string, self bool) error {
+	if !self {
+		return os.Rename(old, new)
+	}
+	tmp := new + ".reamer-tmp"
+	if err := os.Rename(old, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, new); err != nil {
+		os.Rename(tmp, old) // 尽量还原
+		return err
+	}
+	return nil
 }
