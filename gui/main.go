@@ -573,12 +573,17 @@ func (a *app) filesView(c *ui.Context) {
 					})
 					// 右缘结果:成功/失败/将更名/不变
 					if i < len(a.ops) {
+						// 结果是"状态",不是"类别":用状态点 + 纯文字,
+						// 不用胶囊形状,免得和类别胶囊混成一种语言
 						res, col := a.resultChip(a.ops[i])
-						chip := ui.Text(c, res).FontSize(12).Padding(2, 10).Radius(8).
-							Background(col.Alpha(0.16)).TextColor(col).Width(56)
-						if a.ops[i].Err != nil {
-							chip.Tooltip(a.ops[i].Err.Error())
-						}
+						ui.Row(c).Width(64).Gap(5).AlignItems(ui.Center).Children(func() {
+							ui.Spacer(c)
+							ui.Box(c).Size(7, 7).Radius(4).Background(col)
+							txt := ui.Text(c, res).FontSize(12).TextColor(col)
+							if a.ops[i].Err != nil {
+								txt.Tooltip(a.ops[i].Err.Error())
+							}
+						})
 					}
 				})
 			}).Gap(6).Grow(1)
