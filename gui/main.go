@@ -169,7 +169,7 @@ func (a *app) catalogView(c *ui.Context) {
 			if a.palHint != "" {
 				ui.Text(c, a.palHint).FontSize(12).TextColor(t.TextMuted)
 			} else {
-				ui.Text(c, "悬停查看功能说明\n左对齐 = 改名步骤 · 居中 = 流程控制/工具").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "把鼠标停在功能上,这里会说明它做什么").FontSize(12).TextColor(t.TextMuted)
 			}
 		})
 	})
