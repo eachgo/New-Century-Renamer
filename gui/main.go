@@ -244,7 +244,7 @@ func (a *app) stepsView(c *ui.Context) {
 				// 扫颜色即可读流程,不用逐个读编号
 				// 当前步骤与多选集合都高亮
 				hot := i == a.stepSel || a.chosen.Has(s.opUID)
-				row := ui.Column(c).Fill().Padding(5, 6).Radius(6)
+				row := ui.Column(c).Fill().Padding(6, 6).MinHeight(38).Radius(6)
 				if hot {
 					row.Background(t.Selection)
 				}
@@ -275,7 +275,7 @@ func (a *app) stepsView(c *ui.Context) {
 							ui.Text(c, s.opLabel+" — "+s.summary()).FontSize(12).Fill().TextAlign(ui.Center).TextColor(labCol)
 						} else {
 							ui.Row(c).Fill().Gap(6).Children(func() {
-								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol)
+								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
 								if v := s.summary(); v != "" && v != s.opLabel {
 									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).Ellipsis("…").
 										Background(cat.Alpha(0.16)).TextColor(t.Text)
@@ -283,7 +283,7 @@ func (a *app) stepsView(c *ui.Context) {
 							})
 						}
 						// 胶囊区:固定宽度单独管理,行内不再被挤
-						ui.Row(c).Width(104).Gap(6).Children(func() {
+						ui.Row(c).Width(84).Gap(4).Children(func() {
 							ui.Spacer(c)
 							// 连续同类别:胶囊退化为同色圆点,换组才显示文字
 							if i > 0 && a.steps[i-1].opGroup == s.opGroup {
@@ -293,8 +293,32 @@ func (a *app) stepsView(c *ui.Context) {
 									Background(cat).TextColor(ui.RGB(255, 255, 255))
 							}
 						})
+						// 多选圆点:触摸/纯鼠标环境没有 Ctrl,点它即加入/移出多选
+						{
+							picked := a.chosen.Has(s.opUID)
+							dotColor := t.Border
+							if picked {
+								dotColor = t.Accent
+							}
+							pick := ui.ButtonBase(c).Size(16, 16).Radius(8).Border(1, dotColor)
+							if picked {
+								pick.Background(t.Accent)
+							}
+							pick.Children(func() {
+								if picked {
+									ui.Text(c, "✓").FontSize(10).TextColor(t.AccentText)
+								}
+							})
+							if pick.Clicked() {
+								if picked {
+									a.chosen.Remove(s.opUID)
+								} else {
+									a.chosen.Add(s.opUID)
+								}
+							}
+						}
 						// 色条保留区:两条竖线永远画在这里,不压胶囊
-						ui.Box(c).Width(16)
+						ui.Box(c).Width(12)
 					})
 				})
 			}).Gap(0).Grow(1) // 行相接,范围竖线连续;行距由行内 Padding 提供
