@@ -36,12 +36,9 @@ func TestPreviewFlowTextReplace(t *testing.T) {
 	r := step("replace")
 	r.oldStr, r.newStr = "旧", "新"
 	a := &app{files: []fileInfo{statFile(p)}, steps: []guiRule{r}}
-	tt := ui.NewTester(a.view, 1280, 720)
-	if err := tt.Click("预览"); err != nil {
-		t.Fatal(err)
-	}
-	if !tt.HasText("新名字.txt") {
-		t.Errorf("预览表格未出现新名字, texts %q", tt.Texts())
+	ui.NewTester(a.view, 1280, 720) // live preview runs on the first pass
+	if len(a.ops) != 1 || a.ops[0].NewName != "新名字.txt" {
+		t.Fatalf("live preview: %+v", a.ops)
 	}
 	if n := countChanges(a.ops); n != 1 {
 		t.Errorf("countChanges = %d, want 1", n)
