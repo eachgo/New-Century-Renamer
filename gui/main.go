@@ -282,14 +282,16 @@ func (a *app) stepsView(c *ui.Context) {
 					}
 					ui.Row(c).Gap(6).Children(func() {
 						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22)
-						// 文字区:处理步骤左对齐,流程控制居中——胶囊区
-						// 固定宽度,居中位置稳定不被挤掉
+						// 全部步骤统一左对齐(设计书:不要在同一列表里混用对齐);
+						// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
 						if s.opFlow {
-							label := s.opLabel
-							if v := s.summary(); v != "" {
-								label += " — " + v
-							}
-							ui.Text(c, label).FontSize(12).Fill().TextAlign(ui.Center).TextColor(labCol)
+							ui.Row(c).Fill().Gap(6).Children(func() {
+								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
+								if v := s.summary(); v != "" {
+									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).Ellipsis("…").
+										Background(cat.Alpha(0.16)).TextColor(t.Text)
+								}
+							})
 						} else {
 							ui.Row(c).Fill().Gap(6).Children(func() {
 								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
