@@ -229,35 +229,49 @@ func (a *app) stepsView(c *ui.Context) {
 				cat := dt.groupColor(s.opGroup)
 				// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
 				// 扫颜色即可读流程,不用逐个读编号
-				row := ui.Column(c).Fill().Padding(2, 6).Radius(6)
+				row := ui.Column(c).Fill().Padding(5, 6).Radius(6)
 				if i == a.stepSel {
 					row.Background(t.Selection)
 				}
+				// 范围色条自绘:跨越行间距,竖线连续不断;最右 = 最早开启
+				row.DrawOver(func(p *ui.Painter, r ui.Rect) {
+					n := len(bars[i])
+					for k := 0; k < n; k++ {
+						col := bars[i][n-1-k] // 最早开启在最右槽
+						x := r.X + r.W - 4 - float32(k)*6
+						p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
+					}
+				})
 				row.Children(func() {
 					ui.Row(c).Gap(6).Children(func() {
+						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(t.TextMuted).Width(22)
+						// 文字区:处理步骤左对齐,流程控制居中——胶囊区
+						// 固定宽度,居中位置稳定不被挤掉
 						if s.opFlow {
-							ui.Spacer(c) // 流程控制居中,处理步骤左对齐
-						}
-						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(t.TextMuted)
-						ui.Text(c, s.opLabel).FontSize(12).Bold()
-						ui.Spacer(c) // 胶囊与色条右对齐
-						if v := s.summary(); v != "" && v != s.opLabel {
-							ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).
-								Background(cat.Alpha(0.16)).TextColor(t.Text)
-						}
-						// 连续同类别:胶囊退化为同色圆点,换组才显示文字
-						if i > 0 && a.steps[i-1].opGroup == s.opGroup {
-							ui.Box(c).Size(9, 9).Background(cat)
+							ui.Text(c, s.opLabel+" — "+s.summary()).FontSize(12).Fill().TextAlign(ui.Center)
 						} else {
-							ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
-								Background(cat).TextColor(ui.RGB(255, 255, 255))
+							ui.Row(c).Fill().Gap(6).Children(func() {
+								ui.Text(c, s.opLabel).FontSize(12).Bold()
+								if v := s.summary(); v != "" && v != s.opLabel {
+									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).Ellipsis("…").
+										Background(cat.Alpha(0.16)).TextColor(t.Text)
+								}
+							})
 						}
-						for _, bar := range bars[i] {
-							ui.Box(c).Size(4, 26).Background(bar)
-						}
+						// 胶囊区:固定宽度单独管理,行内不再被挤
+						ui.Row(c).Width(104).Gap(6).Children(func() {
+							ui.Spacer(c)
+							// 连续同类别:胶囊退化为同色圆点,换组才显示文字
+							if i > 0 && a.steps[i-1].opGroup == s.opGroup {
+								ui.Box(c).Size(9, 9).Background(cat)
+							} else {
+								ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
+									Background(cat).TextColor(ui.RGB(255, 255, 255))
+							}
+						})
 					})
 				})
-			}).Grow(1)
+			}).Gap(0).Grow(1) // 行相接,范围竖线连续;行距由行内 Padding 提供
 		}
 		// detail of the selected step
 		if a.stepSel >= 0 && a.stepSel < len(a.steps) {
