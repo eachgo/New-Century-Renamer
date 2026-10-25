@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -540,5 +541,46 @@ func TestCatalogHintIsActionable(t *testing.T) {
 	}
 	if !tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
 		t.Error("缺少行动指引")
+	}
+}
+
+// 摘要不得与操作名重复(避免 "清除筛选 — 清除筛选")
+func TestSummaryHasNoDuplicate(t *testing.T) {
+	cases := map[string]string{
+		"pinyin": "", "sanitize": "", "unfilter": "", "romaji": "",
+	}
+	for id, want := range cases {
+		r := step(id)
+		if got := r.summary(); got != want {
+			t.Errorf("%s summary = %q, want empty", id, got)
+		}
+	}
+	// 有增量信息时保留
+	sc := step("scope.ext")
+	if got := sc.summary(); got != "作用于扩展名" {
+		t.Errorf("scope summary = %q", got)
+	}
+	f := step("filter")
+	f.pattern = "*.mp3"
+	if got := f.summary(); got != "仅 *.mp3" {
+		t.Errorf("filter summary = %q", got)
+	}
+}
+
+// 摘要为空时不能留下孤立的破折号
+func TestNoDanglingDash(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	for _, id := range []string{"unfilter", "pinyin"} {
+		r := step(id)
+		a.stepUID++
+		r.opUID = a.stepUID
+		a.steps = append(a.steps, r)
+	}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	for _, s := range tt.Texts() {
+		if strings.HasSuffix(strings.TrimSpace(s), "—") {
+			t.Fatalf("出现悬空破折号: %q", s)
+		}
 	}
 }

@@ -330,18 +330,23 @@ func (r *guiRule) fullSpec() string { return r.spec() }
 // summary is the one-line description of the step in the task list.
 func (r *guiRule) summary() string {
 	key, _ := kindByLabel[r.kind]
+	// 摘要只放操作名里没有的增量信息:名称已经说清的一律返回空,
+	// 不再出现 "清除筛选 — 清除筛选" 这种同义重复
 	switch key {
 	case "pinyin", "sanitize", "unfilter", "romaji":
-		return r.opLabel
+		return ""
 	case "cc":
 		return r.ccSel
 	case "filter":
-		if r.invert {
-			return "排除匹配 " + r.pattern
+		if r.pattern == "" {
+			return ""
 		}
-		return "只保留匹配 " + r.pattern
+		if r.invert {
+			return "排除 " + r.pattern
+		}
+		return "仅 " + r.pattern
 	case "scope":
-		return "后续步骤作用于:" + r.scopeSel
+		return "作用于" + r.scopeSel
 	case "replace":
 		if r.regex {
 			return fmt.Sprintf("正则 %q → %q", r.oldStr, r.newStr)
