@@ -325,3 +325,31 @@ func writeCSV(t *testing.T, src, dst string, edit func([]string) []string) {
 	}
 	w.Flush()
 }
+
+// 失败原因必须在界面上可见(不能只写"失败")
+func TestFailureReasonVisible(t *testing.T) {
+	dir, paths := resetCopy(t)
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(dir, ".journal.json")
+	a.addPaths(paths)
+	// 造一个必然冲突的步骤:所有文件改成同一个名字
+	r := step("tpl")
+	r.tpl = "同名.txt"
+	a.stepUID++
+	r.opUID = a.stepUID
+	a.steps = []guiRule{r}
+	tt := ui.NewTester(a.view, 1280, 1000)
+	tt.Frame()
+	if !tt.HasText("失败") {
+		t.Fatal("未出现失败状态")
+	}
+	if !tt.HasText("⚠ ") {
+		texts := tt.Texts()
+		for _, s := range texts {
+			if strings.Contains(s, "相同") || strings.Contains(s, "覆盖") {
+				return // 原因以别的方式可见,也算通过
+			}
+		}
+		t.Fatalf("失败原因不可见, texts=%q", texts)
+	}
+}

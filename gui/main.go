@@ -559,12 +559,19 @@ func (a *app) filesView(c *ui.Context) {
 								Background(t.SurfaceHover).TextColor(t.TextMuted)
 							ui.Spacer(c)
 						})
+						// 失败原因直接写在卡片里:只写"失败"等于不说
+						if i < len(a.ops) && a.ops[i].Err != nil {
+							ui.Text(c, "⚠ "+a.ops[i].Err.Error()).FontSize(11).TextColor(t.Danger).SingleLine().Ellipsis("…")
+						}
 					})
 					// 右缘结果:成功/失败/将更名/不变
 					if i < len(a.ops) {
 						res, col := a.resultChip(a.ops[i])
-						ui.Text(c, res).FontSize(12).Padding(2, 10).Radius(8).
-							Background(col.Alpha(0.16)).TextColor(col)
+						chip := ui.Text(c, res).FontSize(12).Padding(2, 10).Radius(8).
+							Background(col.Alpha(0.16)).TextColor(col).Width(56)
+						if a.ops[i].Err != nil {
+							chip.Tooltip(a.ops[i].Err.Error())
+						}
 					}
 				})
 			}).Gap(6).Grow(1)
