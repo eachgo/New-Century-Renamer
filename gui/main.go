@@ -369,23 +369,24 @@ func (a *app) filesView(c *ui.Context) {
 						oStem, oExt := filepathSplitName(oldName)
 						nStem, nExt := filepathSplitName(newName)
 						col := fileCatColor(dt, extCategory(strings.ToLower(nExt)))
-						ui.Row(c).Gap(4).Children(func() {
-							// 原名
-							ui.Text(c, oStem).FontSize(13).Padding(2, 10).Radius(8).
-								Background(t.SurfaceHover).MaxWidth(180).Ellipsis("…")
-							if oExt != "" {
-								ui.Text(c, oExt).FontSize(13).Padding(2, 10).Radius(8).
-									Background(t.SurfaceHover).TextColor(t.TextMuted)
+						// 名字组 = [胶囊文件名] . [胶囊扩展名],点是两胶囊之间
+						// 的独立文本;原名中性胶囊组,预览类型色胶囊组
+						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
+							ui.Text(c, stem).FontSize(13).Padding(2, 10).Radius(8).
+								Background(stemBg).MaxWidth(170).Ellipsis("…")
+							if ext != "" {
+								ui.Text(c, ".").FontSize(13).TextColor(t.TextMuted)
+								ui.Text(c, strings.TrimPrefix(ext, ".")).FontSize(13).Padding(2, 10).Radius(8).
+									Background(extBg).TextColor(extFg)
 							}
+						}
+						ui.Row(c).Gap(4).Children(func() {
+							// 原文件名:胶囊文件名 . 胶囊扩展名(中性)
+							nameChips(oStem, oExt, t.SurfaceHover, t.SurfaceHover, t.Text)
 							if changed {
 								ui.Text(c, "→").TextColor(t.TextMuted)
-								// 新名(预览),类型色强调
-								ui.Text(c, nStem).FontSize(13).Bold().Padding(2, 10).Radius(8).
-									Background(col.Alpha(0.18)).MaxWidth(180).Ellipsis("…")
-								if nExt != "" {
-									ui.Text(c, nExt).FontSize(13).Padding(2, 10).Radius(8).
-										Background(col).TextColor(ui.RGB(255, 255, 255))
-								}
+								// 预览:胶囊文件名 . 胶囊扩展名(类型色)
+								nameChips(nStem, nExt, col.Alpha(0.18), col, ui.RGB(255, 255, 255))
 							}
 							ui.Spacer(c)
 						})
