@@ -98,7 +98,7 @@ func (a *app) catalogView(c *ui.Context) {
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
 	ui.Column(c).Fill().Children(func() {
-		ui.Text(c, "① 功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
+		ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
 		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
 			for _, g := range groups {
 				ui.Text(c, g).FontSize(12).TextColor(t.TextMuted).Padding(8, 8)
@@ -221,7 +221,7 @@ func (a *app) stepsView(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
+			ui.Text(c, fmt.Sprintf("任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
 			ui.Spacer(c)
 			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
 			label := "多选"
@@ -239,7 +239,7 @@ func (a *app) stepsView(c *ui.Context) {
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, "从左侧“① 功能”里点一个,它就成为这一步").TextColor(t.TextMuted)
+				ui.Text(c, "从左侧“功能”里点一个,它就成为这一步").TextColor(t.TextMuted)
 			})
 		} else {
 			dt := a.currentTheme()
@@ -457,7 +457,7 @@ func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Gap(8).Padding(10).Children(func() {
 		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "③ 文件").Bold().FontSize(13)
+			ui.Text(c, "文件").Bold().FontSize(13)
 			if ui.Button(c, "添加文件…").Radius(16).Clicked() {
 				go a.addFilesDialog()
 			}
