@@ -1,0 +1,37 @@
+# 构建产物
+reamer.exe
+gui/reamer-gui.exe
+gui/build/
+
+# 运行时状态(可能含 API Key)
+reamer-settings.json
+gui/reamer-settings.json
+.reamer-journal.json
+reamer-list.csv
+
+# 开发期的临时演示/测试目录
+demo/
+csvtest/
+
+# 原始 xTools 软件(三方,参考用,不入库)
+xTools.exe
+xToolsRs.dll
+xToolsEx.dll
+pncrt.dll
+rmme3260.dll
+rmto3260.dll
+xTools.chm
+Language/
+Add-ons/
+chm/
+
+# 书籍(扫描版/版权文件)
+*.epub
+写给大家看的设计书_威廉姆斯_美.epub
+Dont_Make_Me_Think,_Revisited_A_Commo.epub
+
+# 杂项
+*.log
+Thumbs.db
+*.exe
+*.exe~

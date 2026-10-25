@@ -1,0 +1,7 @@
+{
+  "rules": [
+    "template=<META:author> - <META:title><.EXT>",
+    "sanitize",
+    "truncate=120"
+  ]
+}

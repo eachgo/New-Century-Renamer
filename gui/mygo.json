@@ -1,0 +1,6 @@
+{
+  "name": "gui",
+  "identifier": "com.example.gui",
+  "version": "0.1.0",
+  "out": "build"
+}
