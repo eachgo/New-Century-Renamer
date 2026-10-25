@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -238,6 +239,14 @@ func opByID(id string) (opDef, bool) {
 	return opDef{}, false
 }
 
+// escArg escapes commas and backslashes in free-text rule arguments, so
+// regex like \d{1,3} survives the spec string's comma-separated form
+// (core's splitArgs un-escapes).
+func escArg(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	return strings.ReplaceAll(s, ",", "\\,")
+}
+
 // spec renders the rule as a CLI spec string. Positions in the UI are
 // 1-based ("从第 2 个字符"), the CLI takes 0-based.
 func (r *guiRule) spec() string {
@@ -252,7 +261,7 @@ func (r *guiRule) spec() string {
 	case "sanitize":
 		return "sanitize"
 	case "replace":
-		s := "replace=" + r.oldStr + "," + r.newStr
+		s := "replace=" + escArg(r.oldStr) + "," + escArg(r.newStr)
 		if r.regex {
 			s += ",regex"
 		}
@@ -264,18 +273,18 @@ func (r *guiRule) spec() string {
 	case "insert":
 		switch r.insMode {
 		case "front":
-			return "insert=0," + r.text
+			return "insert=0," + escArg(r.text)
 		case "end":
-			return "insert=end," + r.text
+			return "insert=end," + escArg(r.text)
 		default:
-			return fmt.Sprintf("insert=%d,%s", n(r.pos)-1, r.text)
+			return fmt.Sprintf("insert=%d,%s", n(r.pos)-1, escArg(r.text))
 		}
 	case "delete":
 		return fmt.Sprintf("delete=%d,%d", n(r.pos)-1, n(r.count))
 	case "truncate":
 		return fmt.Sprintf("truncate=%d", n(r.maxLen))
 	case "ext":
-		return "ext=" + r.newExt
+		return "ext=" + escArg(r.newExt)
 	case "cc":
 		if r.ccSel == "繁体→简体" {
 			return "cc=t2s"

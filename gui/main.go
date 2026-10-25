@@ -257,6 +257,8 @@ func (a *app) stepsView(c *ui.Context) {
 									Background(cat).TextColor(ui.RGB(255, 255, 255))
 							}
 						})
+						// 色条保留区:两条竖线永远画在这里,不压胶囊
+						ui.Box(c).Width(16)
 					})
 				})
 			}).Gap(0).Grow(1) // 行相接,范围竖线连续;行距由行内 Padding 提供

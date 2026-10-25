@@ -384,3 +384,25 @@ func TestStepRangeBars(t *testing.T) {
 		t.Fatalf("step 14: %v", bars[13])
 	}
 }
+
+// GUI-generated specs must survive commas inside regex arguments:
+// escArg on the GUI side, splitArgs un-escaping in core.
+func TestRegexCommaEndToEnd(t *testing.T) {
+	r := step("replace.re")
+	r.oldStr, r.newStr, r.regex = `\d{1,3}`, `N`, true
+	spec := r.fullSpec()
+	rules, err := core.ParseRules([]string{spec})
+	if err != nil {
+		t.Fatalf("spec %q: %v", spec, err)
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "ab12cd.txt")
+	os.WriteFile(p, []byte("x"), 0o644)
+	plan, errs := core.RunPipeline(rules, []string{p})
+	for _, e := range errs {
+		t.Errorf("pipeline: %v", e)
+	}
+	if plan[0].NewName != "abNcd.txt" {
+		t.Fatalf("got %q want abNcd.txt", plan[0].NewName)
+	}
+}

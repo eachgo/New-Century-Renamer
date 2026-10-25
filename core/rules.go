@@ -156,11 +156,29 @@ func (s scopeStep) Apply(ctx *Ctx, dir, name string) (string, error) {
 	return name, nil
 }
 
+// splitArgs splits a rule's argument string on commas, honoring \, and
+// \ escapes so regex arguments (like {1,3} or [a-z,]) survive the trip
+// from the GUI's spec strings.
 func splitArgs(s string) []string {
 	if s == "" {
 		return nil
 	}
-	return strings.Split(s, ",")
+	var out []string
+	var cur strings.Builder
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '\\' && i+1 < len(s) && (s[i+1] == ',' || s[i+1] == '\\'):
+			cur.WriteByte(s[i+1])
+			i++
+		case s[i] == ',':
+			out = append(out, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteByte(s[i])
+		}
+	}
+	out = append(out, cur.String())
+	return out
 }
 
 func val(args []string, i int) string {
