@@ -334,58 +334,53 @@ func fileExistsFor(p string) bool {
 	return err == nil
 }
 
-// The user's example: step 4 选取文件名 bars 4–8; step 9 排除文件 adds a
-// second bar; step 12 清除筛选 ends the filter bar, 恢复整体 ends the scope.
+// Fixed two slots: [1]=选取 range (right), [0]=筛选 range (left); zero
+// Color = off. 文件名 and 扩展名 take neighboring hues, so switching shows.
 func TestStepRangeBars(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
-	// steps 1..3: plain processing
+	// 1..3 processing
 	for _, id := range []string{"case.lower", "pinyin", "truncate"} {
 		a.steps = append(a.steps, step(id))
 	}
-	// 4: 选取文件名
-	n := step("scope.name")
-	a.steps = append(a.steps, n)
-	// 5..8 processing
-	for _, id := range []string{"case.lower", "case.title", "pinyin", "truncate"} {
-		a.steps = append(a.steps, step(id))
-	}
-	// 9: 排除文件
+	// 4: 选取文件名; 5..8 processing; 9: 排除文件; 10..11 processing;
+	// 12: 选取扩展名(切换); 13: 清除筛选; 14: 恢复整体
+	a.steps = append(a.steps, step("scope.name"))
+	a.steps = append(a.steps, step("case.lower"), step("case.title"), step("pinyin"), step("truncate"))
 	f := step("filter.out")
 	f.pattern = "*.tmp"
 	a.steps = append(a.steps, f)
-	// 10..11 processing
 	a.steps = append(a.steps, step("case.lower"), step("pinyin"))
-	// 12: 清除筛选 13: 恢复整体
+	a.steps = append(a.steps, step("scope.ext"))
 	a.steps = append(a.steps, step("unfilter"), step("scope.all"))
 
 	dt := themeFor(ui.Hex("#2F7A52"))
 	bars := a.stepRangeBars(dt)
 
-	// before 4: no bars
-	if len(bars[2]) != 0 || len(bars[3]) != 1 { // 3=0 bars, 4=scope bar
-		t.Fatalf("steps 3/4: %d %d", len(bars[2]), len(bars[3]))
+	// before 4: both slots off
+	if bars[2] != [2]ui.Color{} {
+		t.Fatalf("step 3: %v", bars[2])
 	}
-	// 5..8: one scope bar
-	for i := 4; i <= 7; i++ {
-		if len(bars[i]) != 1 || bars[i][0] != dt.rangeScope {
+	// 4..8: right slot = scopeName, left off
+	for i := 3; i <= 7; i++ {
+		if bars[i][0].A != 0 || bars[i][1] != dt.rangeScopeName {
 			t.Fatalf("step %d: %v", i+1, bars[i])
 		}
 	}
-	// 9..11: two bars (scope + filter); scope opened first so it keeps the
-	// RIGHTMOST slot — bars grow right-to-left and never shift
+	// 9..12: left = filter, right = scope (name until 11, ext from 12)
 	for i := 8; i <= 10; i++ {
-		if len(bars[i]) != 2 {
-			t.Fatalf("step %d should have 2 bars: %v", i+1, bars[i])
-		}
-		if bars[i][len(bars[i])-1] != dt.rangeScope || bars[i][0] != dt.rangeFilter {
-			t.Fatalf("step %d slot order wrong (oldest must be rightmost): %v", i+1, bars[i])
+		if bars[i][0] != dt.rangeFilter || bars[i][1] != dt.rangeScopeName {
+			t.Fatalf("step %d: %v", i+1, bars[i])
 		}
 	}
-	// 12 清除筛选: scope bar remains; 13 恢复整体: none
-	if len(bars[11]) != 1 || bars[11][0] != dt.rangeScope {
-		t.Fatalf("step 12: %v", bars[11])
+	if bars[11][0] != dt.rangeFilter || bars[11][1] != dt.rangeScopeExt {
+		t.Fatalf("step 12 (选取扩展名): %v", bars[11])
 	}
-	if len(bars[12]) != 0 {
+	// 13 清除筛选: left off, right still ext
+	if bars[12][0].A != 0 || bars[12][1] != dt.rangeScopeExt {
 		t.Fatalf("step 13: %v", bars[12])
+	}
+	// 14 恢复整体: both off
+	if bars[13] != [2]ui.Color{} {
+		t.Fatalf("step 14: %v", bars[13])
 	}
 }

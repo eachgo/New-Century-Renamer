@@ -18,10 +18,12 @@ type derivedTheme struct {
 	selBg       ui.Color // catalog/steps selection: deep seed tone
 	selFg       ui.Color
 	cardBg      ui.Color // settings card ground: near-neutral seed tint
-	// range bars in the step list: filter scope uses the seed's
-	// complement, filename/extension scope a neighboring hue
-	rangeFilter ui.Color
-	rangeScope  ui.Color
+	// range bars: two fixed slots — right = 选取范围 (filename/extension,
+	// two neighboring hues so a switch shows), left = 筛选范围 (the seed's
+	// complement). A slot holds its place transparent when its range is off
+	rangeFilter    ui.Color
+	rangeScopeName ui.Color
+	rangeScopeExt  ui.Color
 	groupColors map[string]ui.Color // fixed color per catalog group
 }
 
@@ -108,9 +110,10 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		selBg:  ui.Oklch(float32(clamp(L, 0.30, 0.42)), float32(cc*0.9), float32(H)),
 		selFg:  ui.RGB(255, 255, 255),
 		cardBg: ui.Oklch(0.962, float32(cc*0.12), float32(H)),
-		// 补色给筛选范围,相近色给选取范围
-		rangeFilter: ui.Oklch(0.62, 0.13, float32(math.Mod(H+180, 360))),
-		rangeScope:  ui.Oklch(0.62, 0.13, float32(math.Mod(H+30, 360))),
+		// 补色给筛选范围,相近色给选取范围(文件名/扩展名两个相邻色相)
+		rangeFilter:    ui.Oklch(0.62, 0.13, float32(math.Mod(H+180, 360))),
+		rangeScopeName: ui.Oklch(0.62, 0.13, float32(math.Mod(H+30, 360))),
+		rangeScopeExt:  ui.Oklch(0.62, 0.13, float32(math.Mod(H+60, 360))),
 		groupColors: groupColors,
 	}
 }

@@ -157,53 +157,38 @@ func (a *app) catalogView(c *ui.Context) {
 	})
 }
 
-// stepRangeBars returns, per step, the colors of the range bars to draw on
-// its right edge: an open 筛选 (filter) range bars every step until 清除筛选,
-// an open 选取 (scope) range until 恢复整体 — nested ranges stack, as the
-// user's example: step 4 (选取文件名) bars 4–8, step 9 (排除文件) adds a
-// second bar from 9 on, until a clear step ends them.
-func (a *app) stepRangeBars(dt *derivedTheme) [][]ui.Color {
-	out := make([][]ui.Color, len(a.steps))
-	// active holds open ranges in the order they opened; the earliest keeps
-	// the rightmost slot, so an existing bar never shifts when a new range
-	// opens (bars grow right-to-left)
-	var active []ui.Color
-	open := func(c ui.Color) {
-		for _, v := range active {
-			if v == c {
-				return
-			}
-		}
-		active = append(active, c)
-	}
-	close := func(c ui.Color) {
-		for i, v := range active {
-			if v == c {
-				active = append(active[:i], active[i+1:]...)
-				return
-			}
-		}
-	}
+// stepRangeBars returns, per step, the two fixed range-bar slots:
+// [0] = left slot for the 筛选 range (seed complement), [1] = right slot
+// for the 选取 range — filename and extension take two neighboring hues so
+// a switch from 选取文件名 to 选取扩展名 shows as a color change instead
+// of one continuous bar. A zero Color means the slot is off (transparent).
+// Slots never move: at most two ranges can be open, each owning its place.
+func (a *app) stepRangeBars(dt *derivedTheme) [][2]ui.Color {
+	out := make([][2]ui.Color, len(a.steps))
+	filterOn := false
+	scopeCol := ui.Color{} // zero = off
 	for i := range a.steps {
 		s := &a.steps[i]
 		key, _ := kindByLabel[s.kind]
 		switch key {
 		case "filter":
-			open(dt.rangeFilter)
+			filterOn = true
 		case "unfilter":
-			close(dt.rangeFilter)
+			filterOn = false
 		case "scope":
-			if s.scopeSel == "整体" {
-				close(dt.rangeScope)
-			} else {
-				open(dt.rangeScope)
+			switch s.scopeSel {
+			case "整体":
+				scopeCol = ui.Color{}
+			case "扩展名":
+				scopeCol = dt.rangeScopeExt
+			default: // 文件名
+				scopeCol = dt.rangeScopeName
 			}
 		}
-		row := make([]ui.Color, len(active))
-		for j, c := range active { // reverse: newest left, oldest right
-			row[len(active)-1-j] = c
+		if filterOn {
+			out[i][0] = dt.rangeFilter
 		}
-		out[i] = row
+		out[i][1] = scopeCol
 	}
 	return out
 }
@@ -233,11 +218,14 @@ func (a *app) stepsView(c *ui.Context) {
 				if i == a.stepSel {
 					row.Background(t.Selection)
 				}
-				// 范围色条自绘:跨越行间距,竖线连续不断;最右 = 最早开启
+				// 范围色条自绘:两槽固定——右槽=选取范围,左槽=筛选范围;
+				// 未激活透明占位,槽位永不移动
 				row.DrawOver(func(p *ui.Painter, r ui.Rect) {
-					n := len(bars[i])
-					for k := 0; k < n; k++ {
-						col := bars[i][n-1-k] // 最早开启在最右槽
+					for k := 0; k < 2; k++ {
+						col := bars[i][1-k] // [1] 右槽,[0] 左槽
+						if col.A == 0 {
+							continue
+						}
 						x := r.X + r.W - 4 - float32(k)*6
 						p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
 					}
