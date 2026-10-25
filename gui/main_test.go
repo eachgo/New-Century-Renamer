@@ -445,7 +445,7 @@ func TestStepsMultiMode(t *testing.T) {
 		a.stepUID++
 		a.steps[i].opUID = a.stepUID
 	}
-	a.stepsMulti = true
+	a.listUnlocked = true
 	// select steps 1 (pinyin) and 3 (truncate) by uid
 	a.chosen.Add(a.steps[0].opUID)
 	a.chosen.Add(a.steps[2].opUID)
