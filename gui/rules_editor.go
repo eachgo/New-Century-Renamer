@@ -11,6 +11,7 @@ import (
 // core.ParseRules — the same engine as the CLI.
 type guiRule struct {
 	opID, opLabel, opDesc string
+	opFlow                bool   // 流程控制步骤:在任务列表里以居中区分
 	kind                  string // label of the rule type, for spec()
 	// replace
 	oldStr, newStr string

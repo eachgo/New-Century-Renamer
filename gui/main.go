@@ -137,7 +137,7 @@ func (a *app) catalogView(c *ui.Context) {
 							a.settingsOpen = true
 						default:
 							r := d.make()
-							r.opID, r.opLabel, r.opDesc = d.id, d.label, d.desc
+							r.opID, r.opLabel, r.opDesc, r.opFlow = d.id, d.label, d.desc, d.flow
 							a.steps = append(a.steps, r)
 							a.stepSel = len(a.steps) - 1
 							a.palSel = d.id
@@ -176,7 +176,13 @@ func (a *app) stepsView(c *ui.Context) {
 				if i == a.stepSel {
 					mark = "▸"
 				}
-				ui.Text(c, fmt.Sprintf("%s%d. %s\n    %s", mark, i+1, s.opLabel, s.summary())).FontSize(12)
+				// 对齐即含义(与目录一致):流程控制步骤居中,处理步骤左对齐
+				align := ui.Start
+				if s.opFlow {
+					align = ui.Center
+				}
+				ui.Text(c, fmt.Sprintf("%s%d. %s\n    %s", mark, i+1, s.opLabel, s.summary())).
+					FontSize(12).Fill().TextAlign(align)
 			}).Grow(1)
 		}
 		// detail of the selected step
