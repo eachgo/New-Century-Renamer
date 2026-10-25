@@ -443,3 +443,90 @@ func TestCSVFingerprintMismatch(t *testing.T) {
 		t.Fatalf("expected fingerprint mismatch error, got %+v", plan[0])
 	}
 }
+
+func buildFlac(artist, title string) []byte {
+	comment := func(kv ...string) []byte {
+		var b []byte
+		vendor := "test"
+		b = append(b, le(uint32(len(vendor)))...)
+		b = append(b, vendor...)
+		b = append(b, le(uint32(len(kv)/2))...)
+		for i := 0; i < len(kv); i += 2 {
+			pair := kv[i] + "=" + kv[i+1]
+			b = append(b, le(uint32(len(pair)))...)
+			b = append(b, pair...)
+		}
+		return b
+	}
+	var out []byte
+	out = append(out, "fLaC"...)
+	blk := comment("ARTIST", artist, "TITLE", title)
+	out = append(out, 0x80|4, byte(len(blk)>>16), byte(len(blk)>>8), byte(len(blk)))
+	out = append(out, blk...)
+	out = append(out, 0xFF, 0x00, 0x00, 0x00) // audio frame marker
+	return out
+}
+
+func le(v uint32) []byte {
+	return []byte{byte(v), byte(v >> 8), byte(v >> 16), byte(v >> 24)}
+}
+
+func TestFlacMeta(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "无人之岛.flac")
+	os.WriteFile(p, buildFlac("邓岳章", "无人之岛"), 0o644)
+	m := ExtractMeta(p)
+	if m["artist"] != "邓岳章" || m["title"] != "无人之岛" {
+		t.Fatalf("flac meta: %#v", m)
+	}
+	// and through a template step, as the user's real flow does
+	plan := runRules(t, []string{"template=<META:author> - <META:title><.EXT>"}, []string{p})
+	if plan[0].NewName != "邓岳章 - 无人之岛.flac" {
+		t.Fatalf("template: %q err=%v", plan[0].NewName, plan[0].Err)
+	}
+}
+
+func buildID3(title, artist string) []byte {
+	frame := func(id, text string) []byte {
+		enc := []byte{3} // UTF-8
+		body := append(enc, []byte(text)...)
+		var f []byte
+		f = append(f, id...)
+		f = append(f, byte(len(body)>>24), byte(len(body)>>16), byte(len(body)>>8), byte(len(body)))
+		f = append(f, 0, 0)
+		f = append(f, body...)
+		return f
+	}
+	frames := append(frame("TIT2", title), frame("TPE1", artist)...)
+	var h []byte
+	h = append(h, "ID3"...)
+	h = append(h, 4, 0, 0)
+	size := len(frames)
+	h = append(h, byte(size>>21&0x7f), byte(size>>14&0x7f), byte(size>>7&0x7f), byte(size&0x7f))
+	return append(h, frames...)
+}
+
+func TestID3Meta(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "song.mp3")
+	os.WriteFile(p, buildID3("歌名", "歌手"), 0o644)
+	m := ExtractMeta(p)
+	if m["title"] != "歌名" || m["artist"] != "歌手" {
+		t.Fatalf("id3 meta: %#v", m)
+	}
+}
+
+// META misses fall back to empty so metadata-less files don't all collapse
+// onto the same literal-name collision.
+func TestMetaMissFallsBackEmpty(t *testing.T) {
+	p := newTxt(t, "plain.txt")
+	plan := runRules(t, []string{"template=<META:author>-<META:title><.EXT>"}, []string{p})
+	if strings.Contains(plan[0].NewName, "META") {
+		t.Fatalf("literal leaked: %q", plan[0].NewName)
+	}
+}
+
+func newTxt(t *testing.T, name string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	os.WriteFile(p, []byte("x"), 0o644)
+	return p
+}

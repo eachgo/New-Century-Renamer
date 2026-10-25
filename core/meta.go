@@ -2,6 +2,7 @@ package core
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/binary"
 	"encoding/xml"
 	"io"
@@ -25,6 +26,12 @@ func ExtractMeta(path string) map[string]string {
 		m = mp4Meta(path)
 	case "pdf":
 		m = pdfMeta(path)
+	case "flac":
+		m = flacMeta(path)
+	case "mp3":
+		m = id3Meta(path)
+	case "ogg", "oga", "opus":
+		m = oggMeta(path)
 	}
 	for k, v := range m {
 		if v != "" {
@@ -261,4 +268,226 @@ func pdfUnescape(s string) string {
 		return string(rs)
 	}
 	return s
+}
+
+// ---- FLAC: METADATA_BLOCK_VORBIS_COMMENT (type 4) ----
+
+func flacMeta(path string) map[string]string {
+	b := headBytes(path, 256<<10)
+	out := map[string]string{}
+	if len(b) < 8 || string(b[0:4]) != "fLaC" {
+		return out
+	}
+	off := 4
+	for off+4 <= len(b) {
+		header := b[off]
+		last := header&0x80 != 0
+		blockType := header & 0x7f
+		size := int(b[off+1])<<16 | int(b[off+2])<<8 | int(b[off+3])
+		off += 4
+		if off+size > len(b) {
+			return out
+		}
+		if blockType == 4 {
+			parseVorbisComment(b[off:off+size], out)
+			return out
+		}
+		off += size
+		if last {
+			break
+		}
+	}
+	return out
+}
+
+// parseVorbisComment reads vendor string then KEY=value pairs (LE lengths,
+// UTF-8), keeping ARTIST/TITLE/ALBUM. Shared by FLAC and OGG.
+func parseVorbisComment(d []byte, out map[string]string) {
+	rd := newLEReader(d)
+	vendor := rd.u32()
+	if !rd.skip(int(vendor)) {
+		return
+	}
+	n := rd.u32()
+	for i := uint32(0); i < n && rd.ok(); i++ {
+		l := rd.u32()
+		s := rd.str(int(l))
+		if s == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(s, "=")
+		if !ok {
+			continue
+		}
+		key := strings.ToUpper(k)
+		switch key {
+		case "ARTIST":
+			out["artist"] = v
+			out["author"] = v // 与 EPUB 的 dc:creator 同义,模板键统一
+		case "TITLE":
+			out["title"] = v
+		case "ALBUM":
+			out["album"] = v
+		}
+	}
+}
+
+type leReader struct {
+	b   []byte
+	off int
+	err bool
+}
+
+func newLEReader(b []byte) *leReader { return &leReader{b: b} }
+
+func (r *leReader) ok() bool { return !r.err }
+
+func (r *leReader) u32() uint32 {
+	if r.off+4 > len(r.b) {
+		r.err = true
+		return 0
+	}
+	v := binary.LittleEndian.Uint32(r.b[r.off:])
+	r.off += 4
+	return v
+}
+
+func (r *leReader) skip(n int) bool {
+	if n < 0 || r.off+n > len(r.b) {
+		r.err = true
+		return false
+	}
+	r.off += n
+	return true
+}
+
+func (r *leReader) str(n int) string {
+	if n < 0 || r.off+n > len(r.b) {
+		r.err = true
+		return ""
+	}
+	s := string(r.b[r.off : r.off+n])
+	r.off += n
+	return s
+}
+
+// headBytes reads at most the first n bytes of a file.
+func headBytes(path string, n int) []byte {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	b := make([]byte, n)
+	m, _ := io.ReadFull(f, b)
+	return b[:m]
+}
+
+// ---- MP3: ID3v2.3/2.4 text frames (TPE1/TIT2/TALB) ----
+
+func id3Meta(path string) map[string]string {
+	b := headBytes(path, 512<<10)
+	out := map[string]string{}
+	if len(b) < 10 || string(b[0:3]) != "ID3" {
+		return out
+	}
+	ver := b[3] // 3 or 4; 2.2 frames differ and are rare — skip
+	if ver != 3 && ver != 4 {
+		return out
+	}
+	size := syncsafe(b[6:10])
+	if 10+size > len(b) {
+		size = len(b) - 10
+	}
+	body := b[10 : 10+size]
+	pos := 0
+	for pos+10 <= len(body) {
+		id := string(body[pos : pos+4])
+		if id[0] == 0 {
+			break // padding
+		}
+		var fs int
+		if ver == 4 {
+			fs = syncsafe(body[pos+4 : pos+8])
+		} else {
+			fs = int(binary.BigEndian.Uint32(body[pos+4 : pos+8]))
+		}
+		if fs < 0 || pos+10+fs > len(body) {
+			break
+		}
+		text := id3Text(body[pos+10 : pos+10+fs])
+		switch id {
+		case "TPE1":
+			out["artist"] = text
+			out["author"] = text
+		case "TIT2":
+			out["title"] = text
+		case "TALB":
+			out["album"] = text
+		}
+		pos += 10 + fs
+	}
+	return out
+}
+
+// id3Text decodes a frame's text (first byte = encoding).
+func id3Text(d []byte) string {
+	if len(d) < 1 {
+		return ""
+	}
+	data := bytes.TrimRight(d[1:], "\x00")
+	switch d[0] {
+	case 0: // ISO-8859-1
+		r := make([]rune, 0, len(data))
+		for _, c := range data {
+			r = append(r, rune(c))
+		}
+		return string(r)
+	case 1: // UTF-16 with BOM
+		return utf16Decode(data, true)
+	case 2: // UTF-16BE
+		return utf16Decode(data, false)
+	default: // 3 = UTF-8
+		return string(data)
+	}
+}
+
+func utf16Decode(b []byte, bom bool) string {
+	if bom && len(b) >= 2 {
+		if b[0] == 0xFF && b[1] == 0xFE {
+			b = b[2:]
+		} else if b[0] == 0xFE && b[1] == 0xFF {
+			b = b[2:]
+			bom = false
+		}
+	}
+	rs := make([]rune, 0, len(b)/2)
+	be := !bom // after stripping a LE BOM, remaining is LE; no BOM default BE per spec case 1 is BOM'd
+	for i := 0; i+1 < len(b); i += 2 {
+		var u uint16
+		if be {
+			u = uint16(b[i])<<8 | uint16(b[i+1])
+		} else {
+			u = uint16(b[i]) | uint16(b[i+1])<<8
+		}
+		rs = append(rs, rune(u))
+	}
+	return string(rs)
+}
+
+func syncsafe(b []byte) int {
+	return int(b[0]&0x7f)<<21 | int(b[1]&0x7f)<<14 | int(b[2]&0x7f)<<7 | int(b[3]&0x7f)
+}
+
+// ---- OGG: first Vorbis-comment header page ----
+
+func oggMeta(path string) map[string]string {
+	b := headBytes(path, 256<<10)
+	out := map[string]string{}
+	idx := bytes.Index(b, []byte("vorbis"))
+	if idx < 0 {
+		return out
+	}
+	parseVorbisComment(b[idx+7:], out)
+	return out
 }

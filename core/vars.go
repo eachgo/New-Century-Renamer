@@ -105,7 +105,9 @@ func ExpandVars(tpl string, ctx *Ctx, dir, name string) string {
 					return v
 				}
 			}
-			return m
+			// 未命中回退空串:保留 <META:…> 字面量会让无元数据的
+			// 文件全部变成同一个名字,批量互相冲突
+			return ""
 		case strings.HasPrefix(key, "Pinyin:"):
 			inner := strings.TrimPrefix(key, "Pinyin:")
 			if inner == "NAME" {
