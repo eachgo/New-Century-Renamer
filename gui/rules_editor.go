@@ -12,6 +12,7 @@ import (
 // core.ParseRules — the same engine as the CLI.
 type guiRule struct {
 	opID, opLabel, opDesc string
+	opUID                 int    // step identity for stable multi-selection
 	opFlow                bool   // 流程控制步骤:在任务列表里以居中区分
 	opGroup               string // catalog group, for the category chip
 	kind                  string // label of the rule type, for spec()

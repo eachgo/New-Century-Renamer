@@ -19,6 +19,8 @@ func newTestFile(t *testing.T, name string) string {
 	return p
 }
 
+var testStepUID int
+
 func step(id string) guiRule {
 	d, ok := opByID(id)
 	if !ok {
@@ -27,6 +29,8 @@ func step(id string) guiRule {
 	r := d.make()
 	r.opID, r.opLabel = d.id, d.label
 	r.opDesc, r.opGroup, r.opFlow = d.desc, d.group, d.flow
+	testStepUID++
+	r.opUID = testStepUID
 	return r
 }
 
@@ -430,5 +434,55 @@ func TestExtColors(t *testing.T) {
 		if r := contrastRatio(c, dt.cardBgFor(false)); r < 1.15 {
 			t.Errorf("chip vs card contrast too low: %.2f", r)
 		}
+	}
+}
+
+// 多选模式:批量删除与拖动重排
+func TestStepsMultiMode(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin"), step("scope.name"), step("case.lower"), step("truncate")}
+	for i := range a.steps {
+		a.stepUID++
+		a.steps[i].opUID = a.stepUID
+	}
+	a.stepsMulti = true
+	// select steps 1 (pinyin) and 3 (truncate) by uid
+	a.chosen.Add(a.steps[0].opUID)
+	a.chosen.Add(a.steps[2].opUID)
+
+	tt := ui.NewTester(a.view, 1280, 800)
+	if !tt.HasText("已选 2 步") {
+		t.Error("多选面板未显示")
+	}
+	tt.Frame() // 物化当前帧,避免点击落在首帧构建中途
+	// batch delete
+	if err := tt.Click("删除所选"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.steps) != 2 || a.chosen.Len() != 0 {
+		t.Fatalf("batch delete: steps=%d chosen=%d", len(a.steps), a.chosen.Len())
+	}
+	if a.steps[0].opLabel != "选取文件名" || a.steps[1].opLabel != "截断长度" {
+		t.Fatalf("wrong survivors: %s, %s", a.steps[0].opLabel, a.steps[1].opLabel)
+	}
+}
+
+// moveSteps is the Reorder callback: dragged rows land before `to`.
+func TestMoveSteps(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin"), step("sanitize"), step("case.lower"), step("truncate")}
+	// drag rows 0 and 1 to before index 4 (end)
+	a.moveSteps([]int{0, 1}, 4)
+	want := []string{"全部转小写", "截断长度", "文件名转拼音", "非法字符转全角"}
+	for i, w := range want {
+		if a.steps[i].opLabel != w {
+			t.Fatalf("move end: %d got %s want %s", i, a.steps[i].opLabel, w)
+		}
+	}
+	// drag row 3 (非法字符转全角) back to index 0
+	a.moveSteps([]int{3}, 0)
+	if a.steps[0].opLabel != "非法字符转全角" {
+		t.Fatalf("move to front: %s", a.steps[0].opLabel)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -43,11 +44,14 @@ type app struct {
 	confirmClear bool                // 清空列表 needs a second click
 	saveErr      string              // settings dialog save error, shown in-dialog
 
-	steps    []guiRule // ordered task steps
-	stepSel  int       // selected step, -1 = none
-	stepList ui.ListState
-	palSel   string // last catalog op added, highlighted in the list
-	palHint  string // hovered/selected catalog entry's explanation
+	steps      []guiRule // ordered task steps
+	stepSel    int       // selected step, -1 = none
+	stepList   ui.ListState
+	palSel     string            // last catalog op added, highlighted in the list
+	stepsMulti bool              // 多选模式
+	stepUID    int               // 自增步骤身份
+	chosen     ui.Selection[int] // multi-selected step uids
+	palHint    string            // hovered/selected catalog entry's explanation
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -150,6 +154,8 @@ func (a *app) catalogView(c *ui.Context) {
 						default:
 							r := d.make()
 							r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
+							a.stepUID++
+							r.opUID = a.stepUID
 							a.steps = append(a.steps, r)
 							a.stepSel = len(a.steps) - 1
 							a.palSel = d.id
@@ -213,7 +219,16 @@ func (a *app) stepsView(c *ui.Context) {
 		a.stepSel = len(a.steps) - 1
 	}
 	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
-		ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
+			ui.Spacer(c)
+			// 文字也可点击,和开关等效
+			if ui.Text(c, "多选").FontSize(12).TextColor(t.TextMuted).Clicked() {
+				a.stepsMulti = !a.stepsMulti
+				a.chosen.Clear()
+			}
+			ui.Switch(c, &a.stepsMulti)
+		})
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
@@ -221,6 +236,18 @@ func (a *app) stepsView(c *ui.Context) {
 		} else {
 			dt := a.currentTheme()
 			bars := a.stepRangeBars(dt)
+			a.stepList.Key = func(i int) any { return a.steps[i].opUID }
+			a.stepList.Selected = nil
+			a.stepList.Selection = nil
+			a.stepList.Reorder = nil
+			if a.stepsMulti {
+				a.stepList.Selection = &a.chosen
+				a.stepList.Reorder = func(rows []int, to int) {
+					a.moveSteps(rows, to)
+				}
+			} else {
+				a.stepList.Selected = &a.stepSel
+			}
 			ui.List(c, &a.stepList, len(a.steps), func(i int) {
 				s := a.steps[i]
 				cat := dt.groupColor(s.opGroup)
@@ -275,8 +302,22 @@ func (a *app) stepsView(c *ui.Context) {
 				})
 			}).Gap(0).Grow(1) // 行相接,范围竖线连续;行距由行内 Padding 提供
 		}
+		// 多选模式:批量操作替代单步参数区
+		if a.stepsMulti {
+			n := a.chosen.Len()
+			ui.Divider(c)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, fmt.Sprintf("已选 %d 步", n)).Bold()
+				if ui.Button(c, "删除所选").Radius(16).Disabled(n == 0).Clicked() {
+					a.deleteChosen()
+				}
+				if ui.Button(c, "全不选").Radius(16).Disabled(n == 0).Clicked() {
+					a.chosen.Clear()
+				}
+			})
+		}
 		// detail of the selected step
-		if a.stepSel >= 0 && a.stepSel < len(a.steps) {
+		if !a.stepsMulti && a.stepSel >= 0 && a.stepSel < len(a.steps) {
 			r := &a.steps[a.stepSel]
 			ui.Divider(c)
 			ui.Text(c, r.opLabel).Bold()
@@ -297,12 +338,66 @@ func (a *app) stepsView(c *ui.Context) {
 				}
 				if ui.Button(c, "复制").Clicked() {
 					cp := *r
+					a.stepUID++
+					cp.opUID = a.stepUID
 					a.steps = append(a.steps, cp)
 					a.stepSel = len(a.steps) - 1
 				}
 			})
 		}
 	})
+}
+
+// moveSteps is the List's Reorder callback: the user dragged rows (the
+// multi-selection, or a single row) to before index to.
+func (a *app) moveSteps(rows []int, to int) {
+	sort.Ints(rows)
+	moved := make([]guiRule, 0, len(rows))
+	kept := make([]guiRule, 0, len(a.steps))
+	shift := 0
+	isDragged := map[int]bool{}
+	for _, r := range rows {
+		isDragged[r] = true
+	}
+	for i, s := range a.steps {
+		if isDragged[i] {
+			moved = append(moved, s)
+			if i < to {
+				shift++
+			}
+			continue
+		}
+		kept = append(kept, s)
+	}
+	at := to - shift
+	if at < 0 {
+		at = 0
+	}
+	if at > len(kept) {
+		at = len(kept)
+	}
+	out := append(kept[:at:at], moved...)
+	out = append(out, kept[at:]...)
+	a.steps = out
+}
+
+// deleteChosen removes every multi-selected step.
+func (a *app) deleteChosen() {
+	drop := map[int]bool{}
+	for uid := range a.chosen.All() {
+		drop[uid] = true
+	}
+	kept := a.steps[:0]
+	for _, s := range a.steps {
+		if drop[s.opUID] {
+			continue
+		}
+		kept = append(kept, s)
+	}
+	n := len(a.steps) - len(kept)
+	a.steps = kept
+	a.chosen.Clear()
+	a.status = fmt.Sprintf("已删除 %d 个步骤", n)
 }
 
 func (a *app) swapSteps(i, j int) {
