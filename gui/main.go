@@ -45,6 +45,7 @@ type app struct {
 	stepSel  int       // selected step, -1 = none
 	stepList ui.ListState
 	palSel   string // last catalog op added, highlighted in the list
+	palHint  string // hovered/selected catalog entry's explanation
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -90,7 +91,7 @@ func (a *app) catalogView(c *ui.Context) {
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
 	ui.Column(c).Fill().Children(func() {
-		ui.Text(c, "① 功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
+		ui.Text(c, "③ 功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
 		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
 			for _, g := range groups {
 				ui.Text(c, g).FontSize(12).TextColor(t.TextMuted).Padding(8, 8)
@@ -106,13 +107,27 @@ func (a *app) catalogView(c *ui.Context) {
 					case item.Hovered():
 						item.Background(t.SurfaceHover)
 					}
+					// 对齐即含义:处理步骤左对齐;流程控制与工具动作居中。
+					// 不用读文字,扫一眼对齐方式就知道条目性质
+					align := ui.Start
+					if d.flow || d.act != "" {
+						align = ui.Center
+					}
 					item.Children(func() {
 						if a.palSel == d.id {
-							ui.Text(c, d.label).SingleLine().Fill().TextAlign(ui.Start).Padding(5, 10).TextColor(selFg)
+							ui.Text(c, d.label).SingleLine().Fill().TextAlign(align).Padding(5, 10).TextColor(selFg)
 						} else {
-							ui.Text(c, d.label).SingleLine().Fill().TextAlign(ui.Start).Padding(5, 10)
+							ui.Text(c, d.label).SingleLine().Fill().TextAlign(align).Padding(5, 10)
 						}
 					})
+					if item.Hovered() || a.palSel == d.id {
+						// 悬停即说明:用户可以先弄明白再决定点不点
+						if d.act != "" {
+							a.palHint = d.desc
+						} else {
+							a.palHint = d.desc + "\n点击加入任务步骤,在“② 任务步骤”里调整参数与顺序"
+						}
+					}
 					if item.Clicked() {
 						switch d.act {
 						case "import-csv":
@@ -122,13 +137,21 @@ func (a *app) catalogView(c *ui.Context) {
 							a.settingsOpen = true
 						default:
 							r := d.make()
-							r.opID, r.opLabel = d.id, d.label
+							r.opID, r.opLabel, r.opDesc = d.id, d.label, d.desc
 							a.steps = append(a.steps, r)
 							a.stepSel = len(a.steps) - 1
 							a.palSel = d.id
 						}
 					}
 				}
+			}
+		})
+		// 底部说明区:固定高度,内容变化不移动目录条目(否则点击会被位移打断)
+		ui.Column(c).Fill().Height(64).Padding(8, 10).Gap(4).Background(t.Background).Children(func() {
+			if a.palHint != "" {
+				ui.Text(c, a.palHint).FontSize(12).TextColor(t.TextMuted)
+			} else {
+				ui.Text(c, "悬停查看功能说明\n左对齐 = 改名步骤 · 居中 = 流程控制/工具").FontSize(12).TextColor(t.TextMuted)
 			}
 		})
 	})
@@ -161,6 +184,9 @@ func (a *app) stepsView(c *ui.Context) {
 			r := &a.steps[a.stepSel]
 			ui.Divider(c)
 			ui.Text(c, r.opLabel).Bold()
+			if r.opDesc != "" {
+				ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
+			}
 			r.paramsEditor(c, t)
 			ui.Row(c).Gap(8).Children(func() {
 				if ui.Button(c, "上移").Disabled(a.stepSel == 0).Clicked() {
@@ -196,7 +222,8 @@ func (a *app) swapSteps(i, j int) {
 func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Gap(8).Padding(10).Children(func() {
-		ui.Row(c).Gap(8).Wrap().Children(func() {
+		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "① 文件").Bold().FontSize(13)
 			if ui.Button(c, "添加文件…").Radius(16).Clicked() {
 				go a.addFilesDialog()
 			}

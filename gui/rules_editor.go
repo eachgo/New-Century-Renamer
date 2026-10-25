@@ -10,8 +10,8 @@ import (
 // defaults; the detail form edits it; spec() renders it to a CLI spec for
 // core.ParseRules — the same engine as the CLI.
 type guiRule struct {
-	opID, opLabel string
-	kind          string // label of the rule type, for spec()
+	opID, opLabel, opDesc string
+	kind                  string // label of the rule type, for spec()
 	// replace
 	oldStr, newStr string
 	regex          bool
@@ -46,6 +46,7 @@ type guiRule struct {
 // settings) and never join the step list.
 type opDef struct {
 	id, group, label string
+	desc             string // one line of what it does, shown on hover
 	make             func() guiRule
 	act              string // non-empty: runs an action instead of a step
 	flow             bool   // 流程控制(筛选/范围): not a direct rename
@@ -91,139 +92,139 @@ func baseRule(kind string) guiRule {
 // catalog is the grouped palette of the left pane. Each entry is a full,
 // named operation ("大小转换 · 全部小写"), not a type plus sub-dropdowns.
 var catalog = []opDef{
-	{id: "filter", group: "筛选/范围", label: "筛选文件", make: func() guiRule {
+	{id: "filter", group: "筛选/范围", flow: true, label: "筛选文件", desc: "之后步骤只作用于匹配通配符的文件(如 *.mp3),其余原样通过", make: func() guiRule {
 		return baseRule("filter")
 	}},
-	{id: "filter.out", group: "筛选/范围", label: "排除文件", make: func() guiRule {
+	{id: "filter.out", group: "筛选/范围", flow: true, label: "排除文件", desc: "排除匹配的文件,其余文件继续被后续步骤处理", make: func() guiRule {
 		r := baseRule("filter")
 		r.invert = true
 		return r
 	}},
-	{id: "unfilter", group: "筛选/范围", label: "清除筛选", make: func() guiRule {
+	{id: "unfilter", group: "筛选/范围", flow: true, label: "清除筛选", desc: "取消筛选,恢复全部文件参与后续步骤", make: func() guiRule {
 		return baseRule("unfilter")
 	}},
-	{id: "scope.name", group: "筛选/范围", label: "选取文件名", make: func() guiRule {
+	{id: "scope.name", group: "筛选/范围", flow: true, label: "选取文件名", desc: "之后步骤只改文件名主体,不动扩展名", make: func() guiRule {
 		r := baseRule("scope")
 		r.scopeSel = "文件名"
 		return r
 	}},
-	{id: "scope.ext", group: "筛选/范围", label: "选取扩展名", make: func() guiRule {
+	{id: "scope.ext", group: "筛选/范围", flow: true, label: "选取扩展名", desc: "之后步骤只改扩展名,不动文件名主体", make: func() guiRule {
 		r := baseRule("scope")
 		r.scopeSel = "扩展名"
 		return r
 	}},
-	{id: "scope.all", group: "筛选/范围", label: "恢复整体", make: func() guiRule {
+	{id: "scope.all", group: "筛选/范围", flow: true, label: "恢复整体", desc: "之后步骤作用于完整文件名(默认)", make: func() guiRule {
 		r := baseRule("scope")
 		r.scopeSel = "整体"
 		return r
 	}},
-	{id: "pinyin", group: "转换", label: "文件名转拼音", make: func() guiRule {
+	{id: "pinyin", group: "转换", label: "文件名转拼音", desc: "汉字转拼音,全角字母数字自动转半角", make: func() guiRule {
 		return baseRule("pinyin")
 	}},
-	{id: "sanitize", group: "转换", label: "非法字符转全角", make: func() guiRule {
+	{id: "sanitize", group: "转换", label: "非法字符转全角", desc: "Windows 保留字符(如 : / ? *)转为全角,信息不丢失", make: func() guiRule {
 		return baseRule("sanitize")
 	}},
-	{id: "cc.s2t", group: "转换", label: "简体转繁体", make: func() guiRule {
+	{id: "cc.s2t", group: "转换", label: "简体转繁体", desc: "用 OpenCC 词典把文件名转为繁体", make: func() guiRule {
 		r := baseRule("cc")
 		r.ccSel = "简体→繁体"
 		return r
 	}},
-	{id: "cc.t2s", group: "转换", label: "繁体转简体", make: func() guiRule {
+	{id: "cc.t2s", group: "转换", label: "繁体转简体", desc: "用 OpenCC 词典把文件名转为简体", make: func() guiRule {
 		r := baseRule("cc")
 		r.ccSel = "繁体→简体"
 		return r
 	}},
-	{id: "romaji", group: "转换", label: "假名转罗马音", make: func() guiRule {
+	{id: "romaji", group: "转换", label: "假名转罗马音", desc: "平假名/片假名转拉丁字母(汉字保留)", make: func() guiRule {
 		return baseRule("romaji")
 	}},
-	{id: "case.upper", group: "大小写", label: "全部转大写", make: func() guiRule {
+	{id: "case.upper", group: "大小写", label: "全部转大写", desc: "文件名所有字母转大写", make: func() guiRule {
 		r := baseRule("case")
 		r.caseMode = "大写"
 		return r
 	}},
-	{id: "case.lower", group: "大小写", label: "全部转小写", make: func() guiRule {
+	{id: "case.lower", group: "大小写", label: "全部转小写", desc: "文件名所有字母转小写", make: func() guiRule {
 		r := baseRule("case")
 		r.caseMode = "小写"
 		return r
 	}},
-	{id: "case.title", group: "大小写", label: "单词首字母大写", make: func() guiRule {
+	{id: "case.title", group: "大小写", label: "单词首字母大写", desc: "每个单词首字母大写(标题式)", make: func() guiRule {
 		r := baseRule("case")
 		r.caseMode = "标题"
 		return r
 	}},
-	{id: "replace", group: "替换", label: "查找替换", make: func() guiRule {
+	{id: "replace", group: "替换", label: "查找替换", desc: "把查找的文字替换为指定内容", make: func() guiRule {
 		return baseRule("replace")
 	}},
-	{id: "replace.re", group: "替换", label: "正则替换", make: func() guiRule {
+	{id: "replace.re", group: "替换", label: "正则替换", desc: "用正则表达式查找并替换", make: func() guiRule {
 		r := baseRule("replace")
 		r.regex = true
 		return r
 	}},
-	{id: "del.re", group: "替换", label: "正则删除", make: func() guiRule {
+	{id: "del.re", group: "替换", label: "正则删除", desc: "删除正则表达式匹配到的部分", make: func() guiRule {
 		r := baseRule("replace")
 		r.regex = true
 		return r
 	}},
-	{id: "ins.front", group: "结构", label: "文件名前添加", make: func() guiRule {
+	{id: "ins.front", group: "结构", label: "文件名前添加", desc: "在文件名主体开头插入文字", make: func() guiRule {
 		r := baseRule("insert")
 		r.insMode = "front"
 		return r
 	}},
-	{id: "ins.end", group: "结构", label: "文件名后添加", make: func() guiRule {
+	{id: "ins.end", group: "结构", label: "文件名后添加", desc: "在文件名主体末尾(扩展名之前)插入文字", make: func() guiRule {
 		r := baseRule("insert")
 		r.insMode = "end"
 		return r
 	}},
-	{id: "insert", group: "结构", label: "指定位置插入", make: func() guiRule {
+	{id: "insert", group: "结构", label: "指定位置插入", desc: "从第 N 个字符处插入文字", make: func() guiRule {
 		return baseRule("insert")
 	}},
-	{id: "delete", group: "结构", label: "删除字符", make: func() guiRule {
+	{id: "delete", group: "结构", label: "删除字符", desc: "从第 N 个字符起删除指定数量的字符", make: func() guiRule {
 		return baseRule("delete")
 	}},
-	{id: "truncate", group: "结构", label: "截断长度", make: func() guiRule {
+	{id: "truncate", group: "结构", label: "截断长度", desc: "文件名主体最多保留 N 个字符", make: func() guiRule {
 		return baseRule("truncate")
 	}},
-	{id: "ext", group: "扩展名", label: "修改扩展名", make: func() guiRule {
+	{id: "ext", group: "扩展名", label: "修改扩展名", desc: "替换扩展名;填空则删除扩展名", make: func() guiRule {
 		return baseRule("ext")
 	}},
-	{id: "ext.del", group: "扩展名", label: "删除扩展名", make: func() guiRule {
+	{id: "ext.del", group: "扩展名", label: "删除扩展名", desc: "去掉文件的扩展名", make: func() guiRule {
 		r := baseRule("ext")
 		r.newExt = ""
 		return r
 	}},
-	{id: "seq", group: "编号", label: "追加序号", make: func() guiRule {
+	{id: "seq", group: "编号", label: "追加序号", desc: "文件名末尾追加编号;可分组重新计数、补零、用字母", make: func() guiRule {
 		return baseRule("seq")
 	}},
-	{id: "seq.prefix", group: "编号", label: "序号前缀", make: func() guiRule {
+	{id: "seq.prefix", group: "编号", label: "序号前缀", desc: "编号放文件名前面,如 01-原名", make: func() guiRule {
 		r := baseRule("seq")
 		r.numTpl = "<N>-<NAME><.EXT>"
 		return r
 	}},
-	{id: "meta.title", group: "元数据", label: "用标题命名", make: func() guiRule {
+	{id: "meta.title", group: "元数据", label: "用标题命名", desc: "用元数据标题(EPUB/MP4/PDF)作为文件名", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<META:title><.EXT>"
 		return r
 	}},
-	{id: "meta.author", group: "元数据", label: "作者 - 标题", make: func() guiRule {
+	{id: "meta.author", group: "元数据", label: "作者 - 标题", desc: "用元数据的作者和标题命名,如 作者 - 书名", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<META:author> - <META:title><.EXT>"
 		return r
 	}},
-	{id: "date.suffix", group: "日期", label: "文件名加日期", make: func() guiRule {
+	{id: "date.suffix", group: "日期", label: "文件名加日期", desc: "文件名后附加文件修改日期", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<NAME>_<DATE><.EXT>"
 		return r
 	}},
-	{id: "ai", group: "智能", label: "AI 按内容命名", make: func() guiRule {
+	{id: "ai", group: "智能", label: "AI 按内容命名", desc: "调用 AI 接口读文件内容,按内容起名(需在设置里配置)", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<AI:根据文件内容起一个简短的名字><.EXT>"
 		return r
 	}},
-	{id: "tpl", group: "高级", label: "自定义模板", make: func() guiRule {
+	{id: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名,可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
 		return baseRule("template")
 	}},
-	{id: "act.import-csv", group: "高级", label: "导入编辑好的CSV改名", act: "import-csv"},
-	{id: "act.settings", group: "高级", label: "设置", act: "settings"},
+	{id: "act.import-csv", group: "高级", label: "导入编辑好的CSV改名", desc: "按导出的 CSV 列表(new_name 列)批量改名;点击立即执行,不加入步骤", act: "import-csv"},
+	{id: "act.settings", group: "高级", label: "设置", desc: "AI 接口、主题颜色、日志位置;点击打开设置窗口,不加入步骤", act: "settings"},
 }
 
 func opByID(id string) (opDef, bool) {
