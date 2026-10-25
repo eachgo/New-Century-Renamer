@@ -510,3 +510,22 @@ func TestMultiSelectEntry(t *testing.T) {
 		t.Fatal("点完成后未退出")
 	}
 }
+
+// 三栏编号须与物理顺序一致(左①功能 → 中②步骤 → 右③文件)
+func TestPaneNumbersMatchLayout(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	fr, ok1 := tt.Find("① 功能 · 点击加入步骤")
+	sr, ok2 := tt.Find("② 任务步骤(0)")
+	vr, ok3 := tt.Find("③ 文件")
+	if !ok1 || !ok2 || !ok3 {
+		t.Fatalf("pane titles missing: %v %v %v", ok1, ok2, ok3)
+	}
+	if !(fr.X < sr.X && sr.X < vr.X) {
+		t.Fatalf("编号与位置不一致: ①=%v ②=%v ③=%v", fr.X, sr.X, vr.X)
+	}
+	if !tt.HasText("批量更名:左边挑处理步骤,这里放文件,改名会实时预览") {
+		t.Error("空状态缺少产品定位文案")
+	}
+}
