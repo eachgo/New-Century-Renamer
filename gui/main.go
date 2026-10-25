@@ -516,6 +516,7 @@ func (a *app) addPaths(paths []string) {
 			a.files = append(a.files, statFile(p))
 		}
 	}
+	a.assignExtColors(a.currentTheme())
 	a.status = fmt.Sprintf("已添加,共 %d 个文件", len(a.files))
 	a.confirmClear = false
 	a.applied = false
@@ -589,6 +590,7 @@ func (a *app) importCSV() {
 		return
 	}
 	plan, errs := core.ImportCSV(paths[0])
+	a.assignExtColors(a.currentTheme())
 	a.ops = plan
 	a.files = a.files[:0]
 	for _, op := range plan {
@@ -721,6 +723,7 @@ func (a *app) apply() {
 				a.files[i] = statFile(filepath.Join(a.ops[i].Dir, a.ops[i].NewName))
 			}
 		}
+		a.assignExtColors(a.currentTheme())
 	}
 	a.update()
 }
@@ -739,6 +742,7 @@ func (a *app) undo() {
 				a.files[i] = statFile(filepath.Join(a.ops[i].Dir, a.ops[i].OldName))
 			}
 		}
+		a.assignExtColors(a.currentTheme())
 		a.applied = true
 	}
 	a.update()

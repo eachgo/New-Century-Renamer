@@ -61,6 +61,7 @@ func SaveSettings(s Settings) error {
 // ApplySettings pushes the settings into the core (AI override) and returns
 // the journal path to use.
 func (a *app) ApplySettings() {
+	a.assignExtColors(a.currentTheme())
 	core.SetAIConfig(a.settings.AI.Base, a.settings.AI.Key, a.settings.AI.Model)
 }
 
