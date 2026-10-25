@@ -1,0 +1,205 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo/ui"
+)
+
+// resetCopy rebuilds the working copy from the pristine testfile directory.
+func resetCopy(t *testing.T) (dir string, paths []string) {
+	t.Helper()
+	src := "M:/_tmp6/reamer/testfile"
+	dir = "M:/_tmp6/e2e-copy"
+	if _, err := os.Stat(src); err != nil {
+		t.Skip("no testfile dir")
+	}
+	os.RemoveAll(dir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ents, _ := os.ReadDir(src)
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		os.WriteFile(p, b, 0o644)
+		paths = append(paths, p)
+	}
+	return dir, paths
+}
+
+// TestE2EApplyUndo drives the real app over real files: add → preview →
+// apply → verify on disk → undo → verify restored.
+func TestE2EApplyUndo(t *testing.T) {
+	dir, paths := resetCopy(t)
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(dir, ".journal.json")
+	a.addPaths(paths)
+	if len(a.files) != len(paths) {
+		t.Fatalf("added %d of %d files", len(a.files), len(paths))
+	}
+	tt := ui.NewTester(a.view, 1280, 1300)
+	tt.Frame()
+	for _, label := range []string{"全部转小写", "追加序号"} {
+		if err := tt.Click(label); err != nil {
+			t.Fatalf("click %s: %v", label, err)
+		}
+		tt.Frame()
+	}
+	if countChanges(a.ops) == 0 {
+		t.Fatalf("no preview changes")
+	}
+	before := snapshot(t, dir)
+	a.apply()
+	applied := 0
+	for _, op := range a.ops {
+		if op.Applied {
+			applied++
+		}
+	}
+	after := snapshot(t, dir)
+	diff := 0
+	for name := range before {
+		if !after[name] {
+			diff++
+		}
+	}
+	t.Logf("applied=%d diskchanged=%d files=%d", applied, diff, len(paths))
+	if applied == 0 || diff != applied {
+		t.Fatalf("apply mismatch")
+	}
+	a.undo()
+	restored := snapshot(t, dir)
+	missing := 0
+	for name := range before {
+		if !restored[name] {
+			missing++
+		}
+	}
+	if missing != 0 {
+		t.Fatalf("%d names not restored", missing)
+	}
+	t.Logf("undo ok, %d names restored", len(before))
+}
+
+// TestE2EMetadataFlow uses real FLAC/EPUB/PDF/MP3 files through <META:...>
+func TestE2EMetadataFlow(t *testing.T) {
+	dir, paths := resetCopy(t)
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(dir, ".journal.json")
+	a.addPaths(paths)
+	tt := ui.NewTester(a.view, 1280, 1300)
+	tt.Frame()
+
+	// 作者 - 标题 preset step
+	if err := tt.Click("作者 - 标题"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	withMeta := 0
+	for i, op := range a.ops {
+		if i < 3 || op.NewName != op.OldName {
+			t.Logf("meta: %q -> %q", op.OldName, op.NewName)
+		}
+		if op.NewName != op.OldName && !strings.Contains(op.NewName, "META") {
+			withMeta++
+		}
+	}
+	t.Logf("files with metadata resolution: %d of %d", withMeta, len(a.ops))
+	if withMeta == 0 {
+		t.Error("no file resolved metadata (flac/mp3/epub/pdf expected)")
+	}
+	// no literal placeholders may leak into names
+	for _, op := range a.ops {
+		if strings.Contains(op.NewName, "<META") || strings.Contains(op.NewName, "<") {
+			t.Errorf("literal variable leaked: %q", op.NewName)
+		}
+	}
+}
+
+// TestE2ENarrowWindow checks the touch-sized layout still works: switch
+// panel sizes, pick-mode, editing a step.
+func TestE2ENarrowWindow(t *testing.T) {
+	dir, paths := resetCopy(t)
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(dir, ".journal.json")
+	a.addPaths(paths)
+	tt := ui.NewTester(a.view, 900, 640) // 窄窗口
+	tt.Frame()
+	tt.SetSize(760, 560)
+	tt.Frame()
+	if !tt.HasText("① 文件") {
+		t.Error("files pane missing in narrow window")
+	}
+	// add a step through the visible catalog area (scroll is needed; use state)
+	a.steps = append(a.steps, func() guiRule { r := step("pinyin"); a.stepUID++; r.opUID = a.stepUID; return r }())
+	tt.Frame()
+	if !tt.HasText("多选") {
+		t.Error("多选 entry missing in narrow window")
+	}
+	if err := tt.Click("多选"); err != nil {
+		t.Errorf("click 多选: %v", err)
+	}
+	tt.Frame()
+	if !a.pickMode {
+		t.Error("pick mode did not engage")
+	}
+}
+
+// TestE2EBulkPerformance: many files, live preview must stay responsive.
+func TestE2EBulkPerformance(t *testing.T) {
+	dir, paths := resetCopy(t)
+	// multiply to ~600 files
+	var many []string
+	for k := 0; k < 20; k++ {
+		for _, p := range paths {
+			base := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+			ext := filepath.Ext(p)
+			dst := filepath.Join(dir, base+"_"+string(rune('a'+k))+ext)
+			if b, err := os.ReadFile(p); err == nil {
+				os.WriteFile(dst, b, 0o644)
+				many = append(many, dst)
+			}
+		}
+	}
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(dir, ".journal.json")
+	start := time.Now()
+	a.addPaths(many)
+	addDur := time.Since(start)
+	tt := ui.NewTester(a.view, 1280, 900)
+	tt.Frame()
+	start = time.Now()
+	a.steps = append(a.steps, func() guiRule { r := step("pinyin"); a.stepUID++; r.opUID = a.stepUID; return r }())
+	tt.Frame()
+	previewDur := time.Since(start)
+	t.Logf("%d files: add=%v preview=%v changes=%d", len(a.files), addDur, previewDur, countChanges(a.ops))
+	if previewDur > 3*time.Second {
+		t.Errorf("preview too slow: %v", previewDur)
+	}
+}
+
+func snapshot(t *testing.T, dir string) map[string]bool {
+	t.Helper()
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]bool{}
+	for _, e := range ents {
+		if !e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			m[e.Name()] = true
+		}
+	}
+	return m
+}

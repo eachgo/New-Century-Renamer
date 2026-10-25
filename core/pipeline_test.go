@@ -530,3 +530,31 @@ func newTxt(t *testing.T, name string) string {
 	os.WriteFile(p, []byte("x"), 0o644)
 	return p
 }
+
+// 无元数据文件:模板含 META 但全部为空时保持原名,不生成 " - .ext"
+func TestTemplateAllMetaEmptyKeepsName(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "照片.png")
+	os.WriteFile(p, []byte("x"), 0o644)
+	plan := runRules(t, []string{"template=<META:author> - <META:title><.EXT>"}, []string{p})
+	if plan[0].NewName != "照片.png" {
+		t.Fatalf("应保持原名, got %q", plan[0].NewName)
+	}
+	// 有元数据时正常套用
+	flac := filepath.Join(dir, "song.flac")
+	os.WriteFile(flac, buildFlac("歌手", "歌名"), 0o644)
+	plan = runRules(t, []string{"template=<META:author> - <META:title><.EXT>"}, []string{flac})
+	if plan[0].NewName != "歌手 - 歌名.flac" {
+		t.Fatalf("元数据模板失败, got %q", plan[0].NewName)
+	}
+}
+
+// ID3 文本末尾的 NUL 不能吃掉最后一个字符(UTF-16LE 尾字节是 0x00)
+func TestID3KeepsLastChar(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "t.mp3")
+	os.WriteFile(p, buildID3("THE UNION", "Awich"), 0o644)
+	m := ExtractMeta(p)
+	if m["title"] != "THE UNION" {
+		t.Fatalf("标题被截断: %q", m["title"])
+	}
+}

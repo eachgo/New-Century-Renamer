@@ -260,7 +260,7 @@ func pdfUnescape(s string) string {
 	s = strings.ReplaceAll(s, "\\\\", "\\")
 	// UTF-16BE with BOM -> Go string
 	if strings.HasPrefix(s, "\xfe\xff") {
-		b := []byte(s[3:])
+		b := []byte(s[2:])
 		rs := make([]rune, 0, len(b)/2)
 		for i := 0; i+1 < len(b); i += 2 {
 			rs = append(rs, rune(uint16(b[i])<<8|uint16(b[i+1])))
@@ -435,7 +435,7 @@ func id3Text(d []byte) string {
 	if len(d) < 1 {
 		return ""
 	}
-	data := bytes.TrimRight(d[1:], "\x00")
+	data := d[1:]
 	switch d[0] {
 	case 0: // ISO-8859-1
 		r := make([]rune, 0, len(data))
@@ -444,11 +444,11 @@ func id3Text(d []byte) string {
 		}
 		return string(r)
 	case 1: // UTF-16 with BOM
-		return utf16Decode(data, true)
+		return strings.TrimRight(utf16Decode(data, true), "\x00")
 	case 2: // UTF-16BE
-		return utf16Decode(data, false)
+		return strings.TrimRight(utf16Decode(data, false), "\x00")
 	default: // 3 = UTF-8
-		return string(data)
+		return strings.TrimRight(string(data), "\x00")
 	}
 }
 
