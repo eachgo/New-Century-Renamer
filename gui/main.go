@@ -51,6 +51,7 @@ type app struct {
 	stepUID  int               // 自增步骤身份
 	chosen   ui.Selection[int] // multi-selected step uids
 	pickMode bool              // 显示行内多选圆点(触摸入口)
+	pickOpen bool              // 设置里的主色选择器是否展开
 	palHint  string            // hovered/selected catalog entry's explanation
 
 	splitL, splitM float32 // pane divider positions

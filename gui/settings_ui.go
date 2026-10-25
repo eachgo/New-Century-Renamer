@@ -81,12 +81,27 @@ func (a *app) settingsDialog(c *ui.Context) {
 							})
 						})
 						row("主色", func() {
-							// disabled in place rather than hidden: the
-							// layout never jumps, and the control explains
-							// itself (gray = off)
-							p := ui.ColorPicker(c, &a.seedPick)
-							p.Disabled(a.seedFollow)
+							// 平时只显示当前色块 + 更改按钮(主色不是高频操作,
+							// 展开的色彩面板会把整个对话框挤满)
+							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+								sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
+								sw.Border(1, t.Border)
+								ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
+								label := "更改…"
+								if a.pickOpen {
+									label = "收起"
+								}
+								if ui.Button(c, label).Radius(14).Disabled(a.seedFollow).Clicked() {
+									a.pickOpen = !a.pickOpen
+								}
+							})
 						})
+						if a.pickOpen && !a.seedFollow {
+							ui.Row(c).Children(func() {
+								p := ui.ColorPicker(c, &a.seedPick)
+								p.Disabled(a.seedFollow)
+							})
+						}
 					})
 					card("设置文件", func() {
 						ui.Text(c, "设置保存在程序目录 "+settingsFile+",可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
