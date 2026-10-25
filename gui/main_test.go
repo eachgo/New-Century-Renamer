@@ -486,13 +486,27 @@ func TestMoveSteps(t *testing.T) {
 	}
 }
 
-// 多选提示常驻(让纯鼠标用户也知道 Ctrl+点击)
-func TestMultiSelectHint(t *testing.T) {
+// 多选入口:标题行按钮;默认不显示圆点,开启后才出现(触摸友好)
+func TestMultiSelectEntry(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	a.steps = []guiRule{step("pinyin")}
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if !tt.HasText("Ctrl+点击 多选 · 拖动排序") {
-		t.Fatal("多选提示缺失")
+	if !tt.HasText("多选") {
+		t.Fatal("多选入口按钮缺失")
+	}
+	if err := tt.Click("多选"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.pickMode {
+		t.Fatal("点多选后未进入圆点模式")
+	}
+	if err := tt.Click("完成"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.pickMode {
+		t.Fatal("点完成后未退出")
 	}
 }

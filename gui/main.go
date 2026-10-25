@@ -50,6 +50,7 @@ type app struct {
 	palSel   string            // last catalog op added, highlighted in the list
 	stepUID  int               // 自增步骤身份
 	chosen   ui.Selection[int] // multi-selected step uids
+	pickMode bool              // 显示行内多选圆点(触摸入口)
 	palHint  string            // hovered/selected catalog entry's explanation
 
 	splitL, splitM float32 // pane divider positions
@@ -220,8 +221,18 @@ func (a *app) stepsView(c *ui.Context) {
 	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
-			// 常驻提示:Ctrl+点击多选(纯鼠标/触摸环境也能从这学到)
-			ui.Text(c, "Ctrl+点击 多选 · 拖动排序").FontSize(11).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
+			label := "多选"
+			if a.pickMode {
+				label = "完成"
+			}
+			if ui.Button(c, label).Radius(14).Clicked() {
+				a.pickMode = !a.pickMode
+				if !a.pickMode {
+					a.chosen.Clear()
+				}
+			}
 		})
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
@@ -293,9 +304,11 @@ func (a *app) stepsView(c *ui.Context) {
 									Background(cat).TextColor(ui.RGB(255, 255, 255))
 							}
 						})
-						// 多选圆点:触摸/纯鼠标环境没有 Ctrl,点它即加入/移出多选
-						{
-							picked := a.chosen.Has(s.opUID)
+						// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
+						// 本行被悬停、或已在本行的选择里;悬停与已选时占位,
+						// 保证布局不跳
+						picked := a.chosen.Has(s.opUID)
+						if a.pickMode || picked || row.Hovered() {
 							dotColor := t.Border
 							if picked {
 								dotColor = t.Accent
