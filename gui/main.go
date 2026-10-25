@@ -304,6 +304,7 @@ func (a *app) stepsView(c *ui.Context) {
 		}
 		// 多选模式:批量操作替代单步参数区
 		if a.stepsMulti {
+			ui.Text(c, "Ctrl+点击 加选 · 拖动已选整组移动 · 点击空白处重选").FontSize(11).TextColor(t.TextMuted)
 			n := a.chosen.Len()
 			ui.Divider(c)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
