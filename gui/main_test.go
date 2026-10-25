@@ -529,3 +529,16 @@ func TestPaneNumbersMatchLayout(t *testing.T) {
 		t.Error("空状态缺少产品定位文案")
 	}
 }
+
+// 左栏说明区不给设计语言做注释;默认文案应为行动指引
+func TestCatalogHintIsActionable(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if tt.HasText("左对齐 = 改名步骤 · 居中 = 流程控制/工具") {
+		t.Fatal("设计语言说明仍在")
+	}
+	if !tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
+		t.Error("缺少行动指引")
+	}
+}
