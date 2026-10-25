@@ -558,3 +558,61 @@ func TestID3KeepsLastChar(t *testing.T) {
 		t.Fatalf("标题被截断: %q", m["title"])
 	}
 }
+
+// 双层 BOM(编辑器重存常见)不能让表头识别失败
+func TestCSVDoubleBOM(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "a.txt")
+	os.WriteFile(p, []byte("x"), 0o644)
+	sum, _ := FileSHA256(p)
+	var buf bytes.Buffer
+	ExportCSV(&buf, []string{p})
+	raw := buf.Bytes()
+	doubled := append([]byte{0xef, 0xbb, 0xbf}, raw...) // 再加一层
+	csvPath := filepath.Join(dir, "list.csv")
+	os.WriteFile(csvPath, doubled, 0o644)
+	plan, errs := ImportCSV(csvPath)
+	for _, e := range errs {
+		t.Fatalf("import: %v", e)
+	}
+	if len(plan) != 1 || plan[0].Err != nil {
+		t.Fatalf("plan=%+v", plan)
+	}
+	_ = sum
+}
+
+// 内容完全相同的多个文件(sha256 相同)也要能各自定位,不能都指向同一个
+func TestCSVDuplicateContent(t *testing.T) {
+	dir := t.TempDir()
+	var files []string
+	for _, n := range []string{"a.txt", "b.txt", "c.txt"} {
+		p := filepath.Join(dir, n)
+		os.WriteFile(p, []byte("same content"), 0o644)
+		files = append(files, p)
+	}
+	var buf bytes.Buffer
+	ExportCSV(&buf, files)
+	// 改名后再导入原名表
+	os.Rename(files[0], filepath.Join(dir, "a2.txt"))
+	os.Rename(files[1], filepath.Join(dir, "b2.txt"))
+	os.Rename(files[2], filepath.Join(dir, "c2.txt"))
+	csvPath := filepath.Join(dir, "list.csv")
+	os.WriteFile(csvPath, buf.Bytes(), 0o644)
+	plan, errs := ImportCSV(csvPath)
+	for _, e := range errs {
+		t.Fatalf("import: %v", e)
+	}
+	if len(plan) != 3 {
+		t.Fatalf("plan=%d", len(plan))
+	}
+	seen := map[string]bool{}
+	for _, op := range plan {
+		if op.Err != nil {
+			t.Fatalf("op err: %v", op.Err)
+		}
+		if seen[op.OldName] {
+			t.Fatalf("两个行指向同一文件: %s", op.OldName)
+		}
+		seen[op.OldName] = true
+	}
+}
