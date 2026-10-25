@@ -285,7 +285,11 @@ func (a *app) stepsView(c *ui.Context) {
 						// 文字区:处理步骤左对齐,流程控制居中——胶囊区
 						// 固定宽度,居中位置稳定不被挤掉
 						if s.opFlow {
-							ui.Text(c, s.opLabel+" — "+s.summary()).FontSize(12).Fill().TextAlign(ui.Center).TextColor(labCol)
+							label := s.opLabel
+							if v := s.summary(); v != "" {
+								label += " — " + v
+							}
+							ui.Text(c, label).FontSize(12).Fill().TextAlign(ui.Center).TextColor(labCol)
 						} else {
 							ui.Row(c).Fill().Gap(6).Children(func() {
 								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
