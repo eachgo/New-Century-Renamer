@@ -17,10 +17,11 @@ import (
 
 // fileInfo is one file in the list, with the facts the table shows.
 type fileInfo struct {
-	path    string
-	size    int64
-	modTime time.Time
-	typ     string // 识别类型
+	path     string
+	size     int64
+	modTime  time.Time
+	typ      string // by extension
+	realType string // sniffed from content; differs → warning chip
 }
 
 // app is the state the window shows: three panes — catalog, task steps,
@@ -350,43 +351,89 @@ func (a *app) filesView(c *ui.Context) {
 				ui.Text(c, "把文件或文件夹拖到窗口任意位置,或点“添加文件…”").TextColor(t.TextMuted)
 			})
 		} else {
-			cols := []ui.TableColumn{
-				{Title: "文件名", Width: 230, Sortable: true},
-				{Title: "预览", Width: 230},
-				{Title: "扩展名", Width: 64},
-				{Title: "日期", Width: 120, Sortable: true},
-				{Title: "路径", Width: 200},
-				{Title: "大小", Width: 76, Align: ui.End, Sortable: true},
-				{Title: "识别类型", Width: 110},
-				{Title: "结果", Width: 190},
-			}
-			ui.Table(c, &a.table, cols, len(a.files), func(row, col int) {
-				f := a.files[row]
-				switch col {
-				case 0:
-					ui.Text(c, filepath.Base(f.path)).SingleLine()
-				case 1:
-					if row < len(a.ops) {
-						ui.Text(c, a.ops[row].NewName).SingleLine()
+			dt := a.currentTheme()
+			// 每个文件两张行卡:上行预览名(胶囊文件名.胶囊扩展名),下行
+			// 原始数据(原名/路径三层/真实类型/日期/大小),右缘结果
+			ui.List(c, &a.table, len(a.files), func(i int) {
+				f := a.files[i]
+				ui.Row(c).Fill().Gap(8).Children(func() {
+					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
+						Background(dt.cardBgFor(a.isDark()))
+					card.Children(func() {
+						// 上行:预览名,扩展名按类型着色
+						name := f.path
+						if i < len(a.ops) && a.ops[i].NewName != "" {
+							name = a.ops[i].NewName
+						}
+						stem, ext := filepathSplitName(name)
+						cat := extCategory(strings.ToLower(ext))
+						col := fileCatColor(dt, cat)
+						ui.Row(c).Gap(4).Children(func() {
+							ui.Text(c, stem).FontSize(13).Padding(2, 10).Radius(8).
+								Background(col.Alpha(0.16))
+							if ext != "" {
+								ui.Text(c, "."+ext).FontSize(13).Padding(2, 10).Radius(8).
+									Background(col).TextColor(ui.RGB(255, 255, 255))
+							}
+							ui.Spacer(c)
+						})
+						// 下行:原始数据,muted 小胶囊
+						ui.Row(c).Gap(6).Children(func() {
+							oldStem, oldExt := filepathSplitName(f.path)
+							ui.Text(c, oldStem+oldExt).FontSize(11).Padding(1, 6).Radius(6).
+								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(160).Ellipsis("…")
+							ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
+								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).Ellipsis("…")
+							// 真实类型:与扩展名不符时警示
+							if f.realType != "" && !strings.EqualFold(f.realType, strings.TrimPrefix(oldExt, ".")) {
+								ui.Text(c, "实际 "+f.realType).FontSize(11).Padding(1, 6).Radius(6).
+									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger)
+							}
+							ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(11).Padding(1, 6).Radius(6).
+								Background(t.SurfaceHover).TextColor(t.TextMuted)
+							ui.Text(c, humanSize(f.size)).FontSize(11).Padding(1, 6).Radius(6).
+								Background(t.SurfaceHover).TextColor(t.TextMuted)
+							ui.Spacer(c)
+						})
+					})
+					// 右缘结果:成功/失败/将更名/不变
+					if i < len(a.ops) {
+						res, col := a.resultChip(a.ops[i])
+						ui.Text(c, res).FontSize(12).Padding(2, 10).Radius(8).
+							Background(col.Alpha(0.16)).TextColor(col)
 					}
-				case 2:
-					ui.Text(c, strings.TrimPrefix(filepath.Ext(f.path), "."))
-				case 3:
-					ui.Text(c, f.modTime.Format("2006-01-02 15:04"))
-				case 4:
-					ui.Text(c, filepath.Dir(f.path)).SingleLine()
-				case 5:
-					ui.Text(c, humanSize(f.size))
-				case 6:
-					ui.Text(c, f.typ).SingleLine()
-				case 7:
-					if row < len(a.ops) {
-						ui.Text(c, a.resultText(a.ops[row])).SingleLine()
-					}
-				}
-			}).Grow(1)
+				})
+			}).Gap(6).Grow(1)
 		}
 	})
+}
+
+// resultChip gives the outcome text and its color.
+func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
+	t := a.currentTheme().light
+	if a.isDark() {
+		t = a.currentTheme().dark
+	}
+	switch {
+	case op.Err != nil:
+		return "失败", t.Danger
+	case op.Applied:
+		return "成功", t.Success
+	case a.applied:
+		return "跳过", t.TextMuted
+	case op.OldName == op.NewName:
+		return "不变", t.TextMuted
+	}
+	return "将更名", t.Accent
+}
+
+// filepathSplitName splits a bare file name into stem and ".ext".
+func filepathSplitName(name string) (stem, ext string) {
+	i := strings.LastIndexByte(name, '.')
+	if i <= 0 {
+		return name, ""
+	}
+	return name[:i], name[i:]
 }
 
 // resultText is the 结果 column: pending state in preview, outcome after apply.
@@ -536,6 +583,7 @@ func statFile(p string) fileInfo {
 		fi.size, fi.modTime = st.Size(), st.ModTime()
 	}
 	fi.typ = detectType(p)
+	fi.realType = sniffMagic(p)
 	return fi
 }
 
