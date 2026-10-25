@@ -97,7 +97,7 @@ func (a *app) catalogView(c *ui.Context) {
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
 	ui.Column(c).Fill().Children(func() {
-		ui.Text(c, "③ 功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
+		ui.Text(c, "① 功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
 		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
 			for _, g := range groups {
 				ui.Text(c, g).FontSize(12).TextColor(t.TextMuted).Padding(8, 8)
@@ -237,7 +237,9 @@ func (a *app) stepsView(c *ui.Context) {
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
-			ui.Text(c, "从左侧选择功能加入步骤").TextColor(t.TextMuted)
+			ui.Column(c).Grow(1).Center().Children(func() {
+				ui.Text(c, "从左侧“① 功能”里点一个,它就成为这一步").TextColor(t.TextMuted)
+			})
 		} else {
 			dt := a.currentTheme()
 			bars := a.stepRangeBars(dt)
@@ -448,7 +450,7 @@ func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).Fill().Gap(8).Padding(10).Children(func() {
 		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "① 文件").Bold().FontSize(13)
+			ui.Text(c, "③ 文件").Bold().FontSize(13)
 			if ui.Button(c, "添加文件…").Radius(16).Clicked() {
 				go a.addFilesDialog()
 			}
@@ -487,8 +489,9 @@ func (a *app) filesView(c *ui.Context) {
 			}
 		})
 		if len(a.files) == 0 {
-			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, "把文件或文件夹拖到窗口任意位置,或点“添加文件…”").TextColor(t.TextMuted)
+			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
+				ui.Text(c, "批量更名:左边挑处理步骤,这里放文件,改名会实时预览").FontSize(13).TextColor(t.Text)
+				ui.Text(c, "把文件或文件夹拖进窗口,或点“添加文件…”").FontSize(12).TextColor(t.TextMuted)
 			})
 		} else {
 			dt := a.currentTheme()
