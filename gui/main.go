@@ -352,42 +352,61 @@ func (a *app) filesView(c *ui.Context) {
 			})
 		} else {
 			dt := a.currentTheme()
-			// 每个文件两张行卡:上行预览名(胶囊文件名.胶囊扩展名),下行
-			// 原始数据(原名/路径三层/真实类型/日期/大小),右缘结果
+			// 每个文件两行卡:上行 原名 → 新名(预览)对照,左原右新;
+			// 下行 原始数据胶囊,路径悬停显示绝对地址
 			ui.List(c, &a.table, len(a.files), func(i int) {
 				f := a.files[i]
 				ui.Row(c).Fill().Gap(8).Children(func() {
 					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
 						Background(dt.cardBgFor(a.isDark()))
 					card.Children(func() {
-						// 上行:预览名,扩展名按类型着色
-						name := f.path
+						oldName := filepath.Base(f.path)
+						newName := oldName
 						if i < len(a.ops) && a.ops[i].NewName != "" {
-							name = a.ops[i].NewName
+							newName = a.ops[i].NewName
 						}
-						stem, ext := filepathSplitName(name)
-						cat := extCategory(strings.ToLower(ext))
-						col := fileCatColor(dt, cat)
+						changed := newName != oldName
+						oStem, oExt := filepathSplitName(oldName)
+						nStem, nExt := filepathSplitName(newName)
+						col := fileCatColor(dt, extCategory(strings.ToLower(nExt)))
 						ui.Row(c).Gap(4).Children(func() {
-							ui.Text(c, stem).FontSize(13).Padding(2, 10).Radius(8).
-								Background(col.Alpha(0.16))
-							if ext != "" {
-								ui.Text(c, "."+ext).FontSize(13).Padding(2, 10).Radius(8).
-									Background(col).TextColor(ui.RGB(255, 255, 255))
+							// 原名
+							ui.Text(c, oStem).FontSize(13).Padding(2, 10).Radius(8).
+								Background(t.SurfaceHover).MaxWidth(180).Ellipsis("…")
+							if oExt != "" {
+								ui.Text(c, oExt).FontSize(13).Padding(2, 10).Radius(8).
+									Background(t.SurfaceHover).TextColor(t.TextMuted)
+							}
+							if changed {
+								ui.Text(c, "→").TextColor(t.TextMuted)
+								// 新名(预览),类型色强调
+								ui.Text(c, nStem).FontSize(13).Bold().Padding(2, 10).Radius(8).
+									Background(col.Alpha(0.18)).MaxWidth(180).Ellipsis("…")
+								if nExt != "" {
+									ui.Text(c, nExt).FontSize(13).Padding(2, 10).Radius(8).
+										Background(col).TextColor(ui.RGB(255, 255, 255))
+								}
 							}
 							ui.Spacer(c)
 						})
-						// 下行:原始数据,muted 小胶囊
+						// 下行:原始数据胶囊;路径悬停显示绝对地址
 						ui.Row(c).Gap(6).Children(func() {
-							oldStem, oldExt := filepathSplitName(f.path)
-							ui.Text(c, oldStem+oldExt).FontSize(11).Padding(1, 6).Radius(6).
-								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(160).Ellipsis("…")
-							ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
+							path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
 								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).Ellipsis("…")
-							// 真实类型:与扩展名不符时警示
-							if f.realType != "" && !strings.EqualFold(f.realType, strings.TrimPrefix(oldExt, ".")) {
-								ui.Text(c, "实际 "+f.realType).FontSize(11).Padding(1, 6).Radius(6).
-									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger)
+							path.Tooltip(filepath.Dir(f.path))
+							// 真实类型:始终显示;与扩展名不符时红色警示
+							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
+							if f.realType != "" {
+								if !strings.EqualFold(f.realType, extNoDot) {
+									ui.Text(c, "实际 "+f.realType).FontSize(11).Padding(1, 6).Radius(6).
+										Background(t.Danger.Alpha(0.15)).TextColor(t.Danger)
+								} else {
+									ui.Text(c, f.realType).FontSize(11).Padding(1, 6).Radius(6).
+										Background(t.SurfaceHover).TextColor(t.TextMuted)
+								}
+							} else if f.typ != "" && f.typ != "无扩展名" {
+								ui.Text(c, f.typ).FontSize(11).Padding(1, 6).Radius(6).
+									Background(t.SurfaceHover).TextColor(t.TextMuted)
 							}
 							ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(11).Padding(1, 6).Radius(6).
 								Background(t.SurfaceHover).TextColor(t.TextMuted)
