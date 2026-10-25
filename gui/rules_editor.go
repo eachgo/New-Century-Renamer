@@ -382,65 +382,58 @@ func (r *guiRule) summary() string {
 }
 
 // paramsEditor builds the detail form of one step below the task list.
+// One parameter per line (fixed-width label + control): the middle pane
+// can be narrow, so nothing wraps into mismatched pairs.
 func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
-	lbl := func(s string) { ui.Text(c, s).FontSize(12).TextColor(t.TextMuted) }
-	key, _ := kindByLabel[r.kind]
-	// parameters stack vertically: the middle pane can be narrow, and a
-	// single long row would overflow it
-	ui.Column(c).Gap(6).Children(func() {
-		ui.Row(c).Gap(8).Wrap().Children(func() {
-			switch key {
-			case "pinyin", "sanitize", "unfilter", "romaji":
-				lbl("此步骤无参数")
-			case "cc":
-				ui.Select(c, &r.ccSel, []string{"简体→繁体", "繁体→简体"}).Width(130)
-			case "filter":
-				ui.TextInput(c, &r.pattern).Placeholder("通配符,如 *.mp3").Width(180)
-				lbl("排除匹配项(取反)")
-				ui.Switch(c, &r.invert)
-			case "scope":
-				ui.Select(c, &r.scopeSel, []string{"文件名", "扩展名", "整体"}).Width(110)
-			case "replace":
-				ui.TextInput(c, &r.oldStr).Placeholder("查找").Width(150)
-				ui.TextInput(c, &r.newStr).Placeholder("替换为").Width(150)
-				lbl("正则")
-				ui.Switch(c, &r.regex)
-			case "template":
-				ui.TextInput(c, &r.tpl).Placeholder("<META:author> - <META:title><.EXT>").Fill()
-			case "case":
-				ui.Select(c, &r.caseMode, []string{"大写", "小写", "标题"}).Width(110)
-			case "insert":
-				ui.Select(c, &r.insMode, []string{"文件名前", "文件名后", "指定位置"}).Width(110)
-				if r.insMode == "指定位置" {
-					lbl("位置(第几个字符)")
-					ui.NumberInput(c, &r.pos, 1, 9999, 1).Width(72)
-				}
-				ui.TextInput(c, &r.text).Placeholder("插入文本").Width(180)
-			case "delete":
-				lbl("从第几个字符")
-				ui.NumberInput(c, &r.pos, 1, 9999, 1).Width(72)
-				lbl("删除数量")
-				ui.NumberInput(c, &r.count, 1, 9999, 1).Width(72)
-			case "truncate":
-				lbl("保留长度")
-				ui.NumberInput(c, &r.maxLen, 1, 9999, 1).Width(72)
-			case "ext":
-				ui.TextInput(c, &r.newExt).Placeholder("新扩展名,空=删除扩展名").Width(200)
-			case "seq":
-				ui.Select(c, &r.numBase, []string{"数字", "字母"}).Width(90)
-				if r.numBase == "字母" {
-					ui.Select(c, &r.numCase, []string{"大写", "小写"}).Width(90)
-				} else {
-					lbl("不足位补齐到")
-					ui.NumberInput(c, &r.seqWidth, 1, 9, 1).Width(56)
-				}
-				ui.Select(c, &r.numGroup, []string{"不分组", "按扩展名", "按文件夹"}).Width(120)
-				lbl("起始")
-				ui.NumberInput(c, &r.seqStart, -9999, 999999, 1).Width(72)
-				lbl("步长")
-				ui.NumberInput(c, &r.seqStep, -999, 999, 1).Width(64)
-				ui.TextInput(c, &r.numTpl).Placeholder("编号模板,如 第<N>话_<NAME><.EXT>;空=追加到文件名末尾").Fill()
-			}
+	pline := func(label string, ctl func()) {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Width(96)
+			ctl()
 		})
-	})
+	}
+	key, _ := kindByLabel[r.kind]
+	switch key {
+	case "pinyin", "sanitize", "unfilter", "romaji":
+		pline("参数", func() { ui.Text(c, "此步骤无参数").TextColor(t.TextMuted) })
+	case "filter":
+		pline("匹配通配符", func() { ui.TextInput(c, &r.pattern).Placeholder("如 *.mp3").FillWidth() })
+		pline("排除匹配项", func() { ui.Switch(c, &r.invert) })
+	case "scope":
+		pline("选取范围", func() { ui.Select(c, &r.scopeSel, []string{"文件名", "扩展名", "整体"}).Width(160) })
+	case "replace":
+		pline("查找", func() { ui.TextInput(c, &r.oldStr).Placeholder("查找").FillWidth() })
+		pline("替换为", func() { ui.TextInput(c, &r.newStr).Placeholder("替换为").FillWidth() })
+		pline("正则", func() { ui.Switch(c, &r.regex) })
+	case "template":
+		pline("模板", func() { ui.TextInput(c, &r.tpl).Placeholder("<META:author> - <META:title><.EXT>").FillWidth() })
+	case "case":
+		pline("转换方式", func() { ui.Select(c, &r.caseMode, []string{"大写", "小写", "标题"}).Width(160) })
+	case "insert":
+		pline("插入位置", func() { ui.Select(c, &r.insMode, []string{"文件名前", "文件名后", "指定位置"}).Width(160) })
+		if r.insMode == "指定位置" {
+			pline("第几个字符", func() { ui.NumberInput(c, &r.pos, 1, 9999, 1).Width(90) })
+		}
+		pline("插入文本", func() { ui.TextInput(c, &r.text).Placeholder("插入文本").FillWidth() })
+	case "delete":
+		pline("从第几个字符", func() { ui.NumberInput(c, &r.pos, 1, 9999, 1).Width(90) })
+		pline("删除数量", func() { ui.NumberInput(c, &r.count, 1, 9999, 1).Width(90) })
+	case "truncate":
+		pline("保留长度", func() { ui.NumberInput(c, &r.maxLen, 1, 9999, 1).Width(90) })
+	case "ext":
+		pline("新扩展名", func() { ui.TextInput(c, &r.newExt).Placeholder("空=删除扩展名").FillWidth() })
+	case "seq":
+		pline("编号类型", func() { ui.Select(c, &r.numBase, []string{"数字", "字母"}).Width(120) })
+		if r.numBase == "字母" {
+			pline("大小写", func() { ui.Select(c, &r.numCase, []string{"大写", "小写"}).Width(120) })
+		} else {
+			pline("不足位补齐", func() { ui.NumberInput(c, &r.seqWidth, 1, 9, 1).Width(90) })
+		}
+		pline("分组方式", func() { ui.Select(c, &r.numGroup, []string{"不分组", "按扩展名", "按文件夹"}).Width(180) })
+		pline("起始 / 步长", func() {
+			ui.NumberInput(c, &r.seqStart, -9999, 999999, 1).Width(70)
+			ui.Text(c, "/").TextColor(t.TextMuted)
+			ui.NumberInput(c, &r.seqStep, -999, 999, 1).Width(70)
+		})
+		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>,空=追加").FillWidth() })
+	}
 }
