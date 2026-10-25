@@ -26,6 +26,7 @@ func step(id string) guiRule {
 	}
 	r := d.make()
 	r.opID, r.opLabel = d.id, d.label
+	r.opDesc, r.opGroup, r.opFlow = d.desc, d.group, d.flow
 	return r
 }
 

@@ -217,7 +217,8 @@ func (a *app) stepsView(c *ui.Context) {
 	}
 	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
 		ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
-		a.stepList.Selected = &a.stepSel
+		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
+		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
 			ui.Text(c, "从左侧选择功能加入步骤").TextColor(t.TextMuted)
 		} else {
@@ -228,19 +229,33 @@ func (a *app) stepsView(c *ui.Context) {
 				cat := dt.groupColor(s.opGroup)
 				// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
 				// 扫颜色即可读流程,不用逐个读编号
-				ui.Row(c).Gap(6).Children(func() {
-					ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, s.opLabel).FontSize(12).Bold()
-					ui.Spacer(c) // 胶囊与色条右对齐;流程控制的文字仍居中
-					if v := s.summary(); v != "" && v != s.opLabel {
-						ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).
-							Background(cat.Alpha(0.16)).TextColor(t.Text)
-					}
-					ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
-						Background(cat).TextColor(ui.RGB(255, 255, 255))
-					for _, bar := range bars[i] {
-						ui.Box(c).Size(4, 26).Background(bar)
-					}
+				row := ui.Column(c).Fill().Padding(2, 6).Radius(6)
+				if i == a.stepSel {
+					row.Background(t.Selection)
+				}
+				row.Children(func() {
+					ui.Row(c).Gap(6).Children(func() {
+						if s.opFlow {
+							ui.Spacer(c) // 流程控制居中,处理步骤左对齐
+						}
+						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(t.TextMuted)
+						ui.Text(c, s.opLabel).FontSize(12).Bold()
+						ui.Spacer(c) // 胶囊与色条右对齐
+						if v := s.summary(); v != "" && v != s.opLabel {
+							ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).
+								Background(cat.Alpha(0.16)).TextColor(t.Text)
+						}
+						// 连续同类别:胶囊退化为同色圆点,换组才显示文字
+						if i > 0 && a.steps[i-1].opGroup == s.opGroup {
+							ui.Box(c).Size(9, 9).Background(cat)
+						} else {
+							ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
+								Background(cat).TextColor(ui.RGB(255, 255, 255))
+						}
+						for _, bar := range bars[i] {
+							ui.Box(c).Size(4, 26).Background(bar)
+						}
+					})
 				})
 			}).Grow(1)
 		}
