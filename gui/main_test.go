@@ -485,3 +485,14 @@ func TestMoveSteps(t *testing.T) {
 		t.Fatalf("move to front: %s", a.steps[0].opLabel)
 	}
 }
+
+// 多选提示常驻(让纯鼠标用户也知道 Ctrl+点击)
+func TestMultiSelectHint(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin")}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	if !tt.HasText("Ctrl+点击 多选 · 拖动排序") {
+		t.Fatal("多选提示缺失")
+	}
+}

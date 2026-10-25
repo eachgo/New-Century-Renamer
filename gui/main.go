@@ -218,7 +218,11 @@ func (a *app) stepsView(c *ui.Context) {
 		a.stepSel = len(a.steps) - 1
 	}
 	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
-		ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
+			// 常驻提示:Ctrl+点击多选(纯鼠标/触摸环境也能从这学到)
+			ui.Text(c, "Ctrl+点击 多选 · 拖动排序").FontSize(11).TextColor(t.TextMuted)
+		})
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
