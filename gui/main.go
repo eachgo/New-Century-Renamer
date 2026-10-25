@@ -116,8 +116,15 @@ func (a *app) catalogView(c *ui.Context) {
 						align = ui.Center
 					}
 					item.Children(func() {
+						// 图标走色彩管线:按分组类别色(与步骤行类别胶囊同源),
+						// 选中时白——图标即类别指示,扫色即知
 						if ic := opIcon(d.icon); ic != nil {
-							ui.Icon(c, ic).FontSize(14)
+							ie := ui.Icon(c, ic).FontSize(14)
+							if a.palSel == d.id {
+								ie.TextColor(selFg)
+							} else {
+								ie.TextColor(a.currentTheme().groupColor(d.group))
+							}
 						}
 						if a.palSel == d.id {
 							ui.Text(c, d.label).SingleLine().Fill().TextAlign(align).Padding(5, 10).TextColor(selFg)
