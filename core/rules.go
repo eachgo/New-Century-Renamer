@@ -193,7 +193,50 @@ func val(args []string, i int) string {
 type templateRule string
 
 func (t templateRule) Apply(ctx *Ctx, dir, name string) (string, error) {
-	return ExpandVars(string(t), ctx, dir, name), nil
+	tpl := string(t)
+	// 模板里用到的 META 变量若全部为空(文件没有元数据),跳过该文件:
+	// 否则 "作者 - 标题" 会退化成 " - ",把所有无元数据的文件改名成同一个
+	if refs := metaRefs(tpl); len(refs) > 0 {
+		anyValue := false
+		for _, k := range refs {
+			if ctx.Meta != nil && ctx.Meta[k] != "" {
+				anyValue = true
+				break
+			}
+		}
+		if !anyValue {
+			return name, nil
+		}
+	}
+	out := ExpandVars(tpl, ctx, dir, name)
+	if strings.TrimSpace(out) == "" || strings.TrimSpace(splitExtStem(out)) == "" {
+		return name, nil
+	}
+	return out, nil
+}
+
+// metaRefs lists the <META:...> keys a template refers to.
+func metaRefs(tpl string) []string {
+	var out []string
+	rest := tpl
+	for {
+		i := strings.Index(rest, "<META:")
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len("<META:"):]
+		j := strings.IndexByte(rest, '>')
+		if j < 0 {
+			return out
+		}
+		out = append(out, rest[:j])
+		rest = rest[j:]
+	}
+}
+
+func splitExtStem(name string) string {
+	stem, _ := splitExt(name)
+	return stem
 }
 
 // ---- replace ----
