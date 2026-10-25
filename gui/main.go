@@ -116,6 +116,9 @@ func (a *app) catalogView(c *ui.Context) {
 						align = ui.Center
 					}
 					item.Children(func() {
+						if ic := opIcon(d.icon); ic != nil {
+							ui.Icon(c, ic).FontSize(14)
+						}
 						if a.palSel == d.id {
 							ui.Text(c, d.label).SingleLine().Fill().TextAlign(align).Padding(5, 10).TextColor(selFg)
 						} else {
