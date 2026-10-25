@@ -164,31 +164,46 @@ func (a *app) catalogView(c *ui.Context) {
 // second bar from 9 on, until a clear step ends them.
 func (a *app) stepRangeBars(dt *derivedTheme) [][]ui.Color {
 	out := make([][]ui.Color, len(a.steps))
-	filterOn := false
-	scopeOn := false
+	// active holds open ranges in the order they opened; the earliest keeps
+	// the rightmost slot, so an existing bar never shifts when a new range
+	// opens (bars grow right-to-left)
+	var active []ui.Color
+	open := func(c ui.Color) {
+		for _, v := range active {
+			if v == c {
+				return
+			}
+		}
+		active = append(active, c)
+	}
+	close := func(c ui.Color) {
+		for i, v := range active {
+			if v == c {
+				active = append(active[:i], active[i+1:]...)
+				return
+			}
+		}
+	}
 	for i := range a.steps {
 		s := &a.steps[i]
 		key, _ := kindByLabel[s.kind]
 		switch key {
 		case "filter":
-			filterOn = true
+			open(dt.rangeFilter)
 		case "unfilter":
-			filterOn = false
+			close(dt.rangeFilter)
 		case "scope":
 			if s.scopeSel == "整体" {
-				scopeOn = false
+				close(dt.rangeScope)
 			} else {
-				scopeOn = true
+				open(dt.rangeScope)
 			}
 		}
-		var bars []ui.Color
-		if filterOn {
-			bars = append(bars, dt.rangeFilter)
+		row := make([]ui.Color, len(active))
+		for j, c := range active { // reverse: newest left, oldest right
+			row[len(active)-1-j] = c
 		}
-		if scopeOn {
-			bars = append(bars, dt.rangeScope)
-		}
-		out[i] = bars
+		out[i] = row
 	}
 	return out
 }
@@ -214,20 +229,15 @@ func (a *app) stepsView(c *ui.Context) {
 				// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
 				// 扫颜色即可读流程,不用逐个读编号
 				ui.Row(c).Gap(6).Children(func() {
-					if s.opFlow {
-						ui.Spacer(c) // 流程控制居中,处理步骤左对齐
-					}
 					ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, s.opLabel).FontSize(12).Bold()
+					ui.Spacer(c) // 胶囊与色条右对齐;流程控制的文字仍居中
 					if v := s.summary(); v != "" && v != s.opLabel {
 						ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).
 							Background(cat.Alpha(0.16)).TextColor(t.Text)
 					}
 					ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
 						Background(cat).TextColor(ui.RGB(255, 255, 255))
-					if s.opFlow {
-						ui.Spacer(c)
-					}
 					for _, bar := range bars[i] {
 						ui.Box(c).Size(4, 26).Background(bar)
 					}

@@ -370,10 +370,14 @@ func TestStepRangeBars(t *testing.T) {
 			t.Fatalf("step %d: %v", i+1, bars[i])
 		}
 	}
-	// 9..11: two bars (scope + filter)
+	// 9..11: two bars (scope + filter); scope opened first so it keeps the
+	// RIGHTMOST slot — bars grow right-to-left and never shift
 	for i := 8; i <= 10; i++ {
 		if len(bars[i]) != 2 {
 			t.Fatalf("step %d should have 2 bars: %v", i+1, bars[i])
+		}
+		if bars[i][len(bars[i])-1] != dt.rangeScope || bars[i][0] != dt.rangeFilter {
+			t.Fatalf("step %d slot order wrong (oldest must be rightmost): %v", i+1, bars[i])
 		}
 	}
 	// 12 清除筛选: scope bar remains; 13 恢复整体: none
