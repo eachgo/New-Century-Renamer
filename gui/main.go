@@ -44,14 +44,13 @@ type app struct {
 	confirmClear bool                // 清空列表 needs a second click
 	saveErr      string              // settings dialog save error, shown in-dialog
 
-	steps        []guiRule // ordered task steps
-	stepSel      int       // selected step, -1 = none
-	stepList     ui.ListState
-	palSel       string            // last catalog op added, highlighted in the list
-	listUnlocked bool              // 解锁列表:可选中/多选/拖动/批量删除
-	stepUID      int               // 自增步骤身份
-	chosen       ui.Selection[int] // multi-selected step uids
-	palHint      string            // hovered/selected catalog entry's explanation
+	steps    []guiRule // ordered task steps
+	stepSel  int       // selected step, -1 = none
+	stepList ui.ListState
+	palSel   string            // last catalog op added, highlighted in the list
+	stepUID  int               // 自增步骤身份
+	chosen   ui.Selection[int] // multi-selected step uids
+	palHint  string            // hovered/selected catalog entry's explanation
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -219,19 +218,7 @@ func (a *app) stepsView(c *ui.Context) {
 		a.stepSel = len(a.steps) - 1
 	}
 	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
-			ui.Spacer(c)
-			if ui.Text(c, "解锁列表").FontSize(12).TextColor(t.TextMuted).Clicked() {
-				a.listUnlocked = !a.listUnlocked
-				a.chosen.Clear()
-				a.stepSel = -1
-			}
-			ui.Switch(c, &a.listUnlocked)
-		})
-		if a.listUnlocked {
-			ui.Text(c, "已解锁:点击选中(Ctrl+点击 加选)· 拖动整组移动 · 再点开关锁定").FontSize(11).TextColor(t.TextMuted)
-		}
+		ui.Text(c, fmt.Sprintf("② 任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
@@ -239,28 +226,20 @@ func (a *app) stepsView(c *ui.Context) {
 		} else {
 			dt := a.currentTheme()
 			bars := a.stepRangeBars(dt)
-			if a.listUnlocked {
-				a.stepList.Key = func(i int) any { return a.steps[i].opUID }
-				a.stepList.Selected = &a.stepSel
-				a.stepList.Selection = &a.chosen
-				a.stepList.Reorder = func(rows []int, to int) {
-					a.moveSteps(rows, to)
-				}
-			} else {
-				// 锁定=纯预览:无 Key/Selected/Selection,mygo 没有任何
-				// 选中绘制,行文字保持主题深色(对比度问题无从发生)
-				a.stepList.Key = nil
-				a.stepList.Selected = nil
-				a.stepList.Selection = nil
-				a.stepList.Reorder = nil
+			// 始终可选中、可编辑;多选与拖动也不需要模式开关
+			a.stepList.Key = func(i int) any { return a.steps[i].opUID }
+			a.stepList.Selected = &a.stepSel
+			a.stepList.Selection = &a.chosen
+			a.stepList.Reorder = func(rows []int, to int) {
+				a.moveSteps(rows, to)
 			}
 			ui.List(c, &a.stepList, len(a.steps), func(i int) {
 				s := a.steps[i]
 				cat := dt.groupColor(s.opGroup)
 				// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
 				// 扫颜色即可读流程,不用逐个读编号
-				// 高亮选中态只在解锁模式存在;锁定时列表是纯预览
-				hot := a.listUnlocked && (i == a.stepSel || a.chosen.Has(s.opUID))
+				// 当前步骤与多选集合都高亮
+				hot := i == a.stepSel || a.chosen.Has(s.opUID)
 				row := ui.Column(c).Fill().Padding(5, 6).Radius(6)
 				if hot {
 					row.Background(t.Selection)
@@ -316,8 +295,8 @@ func (a *app) stepsView(c *ui.Context) {
 				})
 			}).Gap(0).Grow(1) // 行相接,范围竖线连续;行距由行内 Padding 提供
 		}
-		// 解锁模式:Ctrl+点击加选、拖动整组、批量删除
-		if a.listUnlocked && a.chosen.Len() > 0 {
+		// 多选(Ctrl+点击)时的批量操作
+		if a.chosen.Len() > 0 {
 			n := a.chosen.Len()
 			ui.Divider(c)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -330,7 +309,7 @@ func (a *app) stepsView(c *ui.Context) {
 				}
 			})
 		}
-		// detail of the selected step (锁定时无选中,参数区随之隐藏)
+		// detail of the selected step — 选中即可编辑,无需解锁
 		if a.stepSel >= 0 && a.stepSel < len(a.steps) {
 			r := &a.steps[a.stepSel]
 			ui.Divider(c)
