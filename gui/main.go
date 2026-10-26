@@ -65,6 +65,15 @@ func (a *app) view(c *ui.Context) {
 	} else {
 		c.SetTheme(dt.light)
 	}
+	// 逃生键:模式类状态必须能被一键解除,用户不会被困在里面
+	if a.pickOpen && c.Shortcut(0, ui.KeyEscape) {
+		a.pickOpen = false
+	} else if a.pickMode && c.Shortcut(0, ui.KeyEscape) {
+		a.pickMode = false
+		a.chosen.Clear()
+	} else if a.settingsOpen && c.Shortcut(0, ui.KeyEscape) {
+		a.settingsOpen = false
+	}
 	// live preview on any change (AI steps need the explicit button)
 	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
 		if !strings.Contains(spec, "<AI:") {
