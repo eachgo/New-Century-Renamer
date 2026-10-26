@@ -17,7 +17,8 @@ import (
 	"strings"
 )
 
-const version = "0.1.0"
+// version 为变量以便 build.ps1 用 -ldflags -X 注入
+var version = "0.1.0"
 
 func usage() {
 	fmt.Print(`reamer ` + version + ` - 批量更名器(继承 xTools 巧思的现代版)

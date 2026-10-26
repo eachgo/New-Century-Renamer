@@ -36,3 +36,5 @@ Thumbs.db
 *.exe
 *.exe~
 dbg*.png
+
+dist/
