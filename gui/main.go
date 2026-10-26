@@ -103,13 +103,15 @@ func (a *app) view(c *ui.Context) {
 			ui.Spacer(c)
 			ui.Text(c, "批量更名").FontSize(11).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
 		})
+		// 只 Grow 不 Fill:Fill 会让 Split 想占满整列(含标题栏那几十像素),
+		// 于是内容画到标题栏底下。Grow(1) 只吃标题栏之外的剩余空间
 		ui.Split(c, &a.splitL,
 			func() { a.catalogView(c) },
 			func() {
 				ui.Split(c, &a.splitM,
 					func() { a.stepsView(c) },
 					func() { a.filesView(c) })
-			}).Fill().Grow(1)
+			}).Grow(1).FillWidth()
 	})
 	a.settingsDialog(c)
 }
