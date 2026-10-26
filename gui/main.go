@@ -52,6 +52,7 @@ type app struct {
 	chosen   ui.Selection[int] // multi-selected step uids
 	pickMode bool              // 显示行内多选圆点(触摸入口)
 	pickOpen bool              // 设置里的主色选择器是否展开
+	dialogs  dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
 	palHint  string            // hovered/selected catalog entry's explanation
 
 	splitL, splitM float32 // pane divider positions
@@ -694,10 +695,31 @@ func (a *app) addPaths(paths []string) {
 	a.update() // addPaths runs off the view pass (dialogs, drops)
 }
 
+// dialogs are injectable so tests drive the whole flow without a window:
+// nil means the real mygo dialogs.
+type dialogHooks struct {
+	open func(mygo.OpenDialogOptions) ([]string, error)
+	save func(mygo.SaveDialogOptions) (string, error)
+}
+
+func (a *app) openDialog(opts mygo.OpenDialogOptions) ([]string, error) {
+	if a.dialogs.open != nil {
+		return a.dialogs.open(opts)
+	}
+	return mygo.Dialog.Open(opts)
+}
+
+func (a *app) saveDialog(opts mygo.SaveDialogOptions) (string, error) {
+	if a.dialogs.save != nil {
+		return a.dialogs.save(opts)
+	}
+	return mygo.Dialog.Save(opts)
+}
+
 func (a *app) addFilesDialog() {
 	a.busy = true
 	a.update()
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+	paths, err := a.openDialog(mygo.OpenDialogOptions{
 		Parent:   a.win,
 		Multiple: true,
 	})
@@ -714,7 +736,7 @@ func (a *app) addFilesDialog() {
 func (a *app) exportCSV() {
 	a.busy = true
 	a.update()
-	out, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+	out, err := a.saveDialog(mygo.SaveDialogOptions{
 		Parent:      a.win,
 		Title:       "导出文件列表 CSV",
 		DefaultPath: "reamer-list.csv",
@@ -756,7 +778,7 @@ func (a *app) exportTo(path string) error {
 func (a *app) importCSV() {
 	a.busy = true
 	a.update()
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+	paths, err := a.openDialog(mygo.OpenDialogOptions{
 		Parent: a.win,
 		Title:  "导入文件列表 CSV",
 	})

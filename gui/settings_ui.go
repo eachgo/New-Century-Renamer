@@ -152,7 +152,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 func (a *app) exportSettings() {
 	a.busy = true
 	a.update()
-	out, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
+	out, err := a.saveDialog(mygo.SaveDialogOptions{
 		Parent:      a.win,
 		Title:       "导出设置",
 		DefaultPath: "reamer-settings.json",
@@ -173,7 +173,7 @@ func (a *app) exportSettings() {
 func (a *app) importSettings() {
 	a.busy = true
 	a.update()
-	paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+	paths, err := a.openDialog(mygo.OpenDialogOptions{
 		Parent: a.win,
 		Title:  "导入设置",
 	})
