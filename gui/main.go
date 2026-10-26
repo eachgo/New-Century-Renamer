@@ -85,13 +85,32 @@ func (a *app) view(c *ui.Context) {
 	if a.splitL == 0 {
 		a.splitL, a.splitM = 220, 330
 	}
-	ui.Split(c, &a.splitL,
-		func() { a.catalogView(c) },
-		func() {
-			ui.Split(c, &a.splitM,
-				func() { a.stepsView(c) },
-				func() { a.filesView(c) })
-		}).Fill()
+	// 顶部自绘标题栏:与窗口背景一体,整条可拖动;右侧留窗口按钮的位置。
+	// 窗口用 TitleBarHidden 保留按钮/阴影/圆角,系统标题栏则不再出现
+	bar := c.TitleBar()
+	titleH := float32(38)
+	if bar.Height > titleH {
+		titleH = bar.Height
+	}
+	t := c.Theme()
+	ui.Column(c).Fill().Children(func() {
+		ui.Row(c).Height(titleH).Padding(0, float32(bar.Right), 0, float32(bar.Left)).DragWindow().
+			AlignItems(ui.Center).Children(func() {
+			brand := ui.Text(c, "reamer").Bold().FontSize(13).Padding(0, 8)
+			if bar.Left == 0 {
+				brand.PaddingStart(float32(bar.Left) + 8)
+			}
+			ui.Spacer(c)
+			ui.Text(c, "批量更名").FontSize(11).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
+		})
+		ui.Split(c, &a.splitL,
+			func() { a.catalogView(c) },
+			func() {
+				ui.Split(c, &a.splitM,
+					func() { a.stepsView(c) },
+					func() { a.filesView(c) })
+			}).Fill().Grow(1)
+	})
 	a.settingsDialog(c)
 }
 
@@ -1005,13 +1024,15 @@ func main() {
 	a.ApplySettings()
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:     "reamer",
-			Width:     1280,
-			Height:    720,
-			MinWidth:  900,
-			MinHeight: 480,
-			StateKey:  "main",
-			Content:   ui.View(a.view),
+			Title:          "reamer",
+			Width:          1280,
+			Height:         720,
+			MinWidth:       900,
+			MinHeight:      480,
+			StateKey:       "main",
+			TitleBarStyle:  mygo.TitleBarHidden,
+			TitleBarHeight: 38,
+			Content:        ui.View(a.view),
 		})
 		// the whole window accepts file drops, not just one element
 		a.win.OnFileDrop(func(e *mygo.FileDropEvent) {

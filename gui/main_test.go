@@ -601,3 +601,18 @@ func TestEscapeExitsModes(t *testing.T) {
 		t.Error("Esc 未收起主色面板")
 	}
 }
+
+// 三栏无编号;功能栏说明"点击加入步骤"
+func TestPanesNoNumbers(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	for _, s := range tt.Texts() {
+		if strings.HasPrefix(s, "① ") || strings.HasPrefix(s, "② ") || strings.HasPrefix(s, "③ ") {
+			t.Fatalf("栏标题仍有编号: %q", s)
+		}
+	}
+	if !tt.HasText("功能 · 点击加入步骤") {
+		t.Error("功能栏缺引导")
+	}
+}
