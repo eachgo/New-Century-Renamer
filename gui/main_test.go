@@ -568,3 +568,36 @@ func TestNoDanglingDash(t *testing.T) {
 		}
 	}
 }
+
+// 逃生键:多选/设置/主色面板都能被 Esc 一键解除
+func TestEscapeExitsModes(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin")}
+	a.pickMode = true
+	a.chosen.Add(a.steps[0].opUID)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.pickMode || a.chosen.Len() != 0 {
+		t.Fatalf("Esc 未退出多选: pickMode=%v chosen=%d", a.pickMode, a.chosen.Len())
+	}
+
+	// 设置对话框
+	a.settingsOpen = true
+	tt.Frame()
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.settingsOpen {
+		t.Error("Esc 未关闭设置")
+	}
+
+	// 主色面板
+	a.pickOpen = true
+	tt.Frame()
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.pickOpen {
+		t.Error("Esc 未收起主色面板")
+	}
+}
