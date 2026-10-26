@@ -965,6 +965,10 @@ func humanSize(n int64) string {
 }
 
 func main() {
+	// 单实例:两个 reamer 同时跑会互相覆盖 journal、各自执行更名
+	if !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
 	a := &app{stepSel: -1, settings: LoadSettings()}
 	a.syncSeedUI()
 	a.ApplySettings()
