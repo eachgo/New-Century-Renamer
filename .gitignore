@@ -26,6 +26,9 @@ csvtest/
 # 端到端测试(gui/e2e_test.go)在此目录缺失时自动 skip。
 testfile/
 
+# 本地开发笔记(只给自己看,不上 GitHub)
+NOTES.md
+
 # 调试截图
 dbg*.png
 
