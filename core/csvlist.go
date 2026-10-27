@@ -14,9 +14,9 @@ import (
 // The export/edit/import round trip, the modern form of xTools' "export
 // file list, edit in your editor, import back to rename":
 //
-//   reamer export -o list.csv files...   (CSV columns: sha256,dir,name,new_name)
+//   ncreamer export -o list.csv files...   (CSV columns: sha256,dir,name,new_name)
 //   ... edit the new_name column anywhere ...
-//   reamer import list.csv -apply        (files located by sha256)
+//   ncreamer import list.csv -apply        (files located by sha256)
 //
 // The fingerprint lets the import find the file even if its name column
 // was renamed in the meantime, and detects edits to the file's content.

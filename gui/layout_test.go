@@ -18,7 +18,7 @@ func TestLayoutTitlebarNoOverlap(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 
-	brand, ok := tt.Find("reamer")
+	brand, ok := tt.Find("New Century Renamer")
 	if !ok {
 		t.Fatal("标题栏品牌文字缺失")
 	}
@@ -43,4 +43,3 @@ func TestLayoutTitlebarNoOverlap(t *testing.T) {
 	}
 	_ = dir
 }
-

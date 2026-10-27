@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"reamer/core"
+	"ncreamer/core"
 )
 
 // Settings are everything worth keeping between runs. Designed extensible
@@ -26,9 +26,9 @@ type Settings struct {
 	} `json:"theme"`
 }
 
-const settingsFile = "reamer-settings.json"
+const settingsFile = "ncreamer-settings.json"
 
-// settingsPath puts reamer-settings.json next to the executable.
+// settingsPath puts ncreamer-settings.json next to the executable.
 func settingsPath() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -38,7 +38,7 @@ func settingsPath() string {
 }
 
 func defaultSettings() Settings {
-	s := Settings{Journal: ".reamer-journal.json"}
+	s := Settings{Journal: ".ncreamer-journal.json"}
 	s.AI.Base = "https://api.openai.com/v1"
 	s.Theme.Mode = "跟随系统"
 	return s

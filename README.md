@@ -47,7 +47,7 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 - [x] **中文友好**：汉字转拼音、繁简互转（OpenCC）、假名转罗马音、全角半角处理
 - [x] **非法字符改全角**：`/ \ : * ? " < > |` 不会粗暴删掉（删掉就丢信息了），而是换成 `／＼：＊？＂＜＞｜`
 - [x] **CSV 清单即备份**：导出列表带每个文件的 sha256 指纹——文件名被改乱了，也能靠"内容没变"找回原名
-- [x] **一键回滚**：操作日志记录了每一次改名，`reamer undo` 整批退回去
+- [x] **一键回滚**：操作日志记录了每一次改名，`ncreamer undo` 整批退回去
 - [x] **纯 64 位 / ARM 的现代重制**：单个可执行文件，无运行时、无安装器、无 cgo
 - [ ] 更多元数据格式：MKV、EXIF（见[路线图](#路线图)）
 - [ ] 音频标签写入（目前只读不写）
@@ -60,10 +60,10 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 
 ### Windows
 
-从 [Releases](https://github.com/OWNER/reamer/releases) 下载对应架构的两个文件，放在同一个文件夹里：
+从 [Releases](https://github.com/OWNER/ncreamer/releases) 下载对应架构的两个文件，放在同一个文件夹里：
 
-- `reamer-gui-windows-amd64.exe` —— 双击打开界面（改名叫 `跨向更名器.exe` 也行，界面不受影响）
-- `reamer-windows-amd64.exe` —— 命令行版，适合写进批处理
+- `ncreamer-gui-windows-amd64.exe` —— 双击打开界面（改名叫 `跨向更名器.exe` 也行，界面不受影响）
+- `ncreamer-windows-amd64.exe` —— 命令行版，适合写进批处理
 
 ARM 版（如骁龙本）把 `amd64` 换成 `arm64`。
 
@@ -72,25 +72,25 @@ ARM 版（如骁龙本）把 `amd64` 换成 `arm64`。
 一条命令装 CLI 到 `/usr/local/bin`：
 
 ```bash
-curl -fsSL https://github.com/OWNER/reamer/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/OWNER/ncreamer/releases/latest/download/install.sh | bash
 ```
 
 `install.sh` 会按 `uname -s` / `uname -m` 挑对应的二进制，**并且用发布时生成的 `SHA256SUMS.txt` 校验**——下载坏了或者被中途替换过，脚本不会往下装。想先看看它做什么：
 
 ```bash
-curl -fsSL https://github.com/OWNER/reamer/releases/latest/download/install.sh | less
+curl -fsSL https://github.com/OWNER/ncreamer/releases/latest/download/install.sh | less
 ```
 
 不放心管道的话也可以手动来：
 
 ```bash
-curl -LO https://github.com/OWNER/reamer/releases/latest/download/reamer-darwin-arm64
-curl -LO https://github.com/OWNER/reamer/releases/latest/download/SHA256SUMS.txt
+curl -LO https://github.com/OWNER/ncreamer/releases/latest/download/ncreamer-darwin-arm64
+curl -LO https://github.com/OWNER/ncreamer/releases/latest/download/SHA256SUMS.txt
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing    # Linux 上用 sha256sum -c
-chmod +x reamer-darwin-arm64 && mv reamer-darwin-arm64 /usr/local/bin/reamer
+chmod +x ncreamer-darwin-arm64 && mv ncreamer-darwin-arm64 /usr/local/bin/ncreamer
 ```
 
-macOS 版 GUI（`reamer-gui-darwin-arm64`）同理，下载后 `chmod +x` 直接跑。
+macOS 版 GUI（`ncreamer-gui-darwin-arm64`）同理，下载后 `chmod +x` 直接跑。
 
 > macOS 上没签名没公证，首次打开会被 Gatekeeper 拦一下：右键点图标 → 打开，或者到"系统设置 → 隐私与安全性"里放行一次。
 
@@ -101,10 +101,13 @@ Linux 只发布 CLI：GUI 依赖桌面环境里的 WebKitGTK，各发行版差�
 需要 Go 1.22 以上（`gui/` 里要求 1.27，老版本 Go 会经 `GOTOOLCHAIN=auto` 自动下载工具链）。
 
 ```bash
-git clone https://github.com/OWNER/reamer && cd reamer
-go build -o reamer ./cmd/reamer          # CLI
-cd gui && go build .                      # GUI(纯 Go,无 cgo)
+git clone https://github.com/OWNER/ncreamer && cd ncreamer
+go build -o ncreamer ./cmd/ncreamer         # CLI
+cd gui && go build .                        # GUI(纯 Go,无 cgo)
 ```
+
+> 命令行程序叫 `ncreamer`，界面程序叫 `ncreamer-gui`。
+> 仓库名与 Go 模块名也都是 `ncreamer`——原来叫 `reamer`，重名风险太大，改名时一并处理了。
 
 或者用自带脚本一次出全套（Windows PowerShell）：
 
@@ -139,16 +142,16 @@ cd gui && go build .                      # GUI(纯 Go,无 cgo)
 
 ```bash
 # 预览（默认，绝不改文件）
-reamer -r pinyin -r sanitize 某目录/
+ncreamer -r pinyin -r sanitize 某目录/
 
 # 用专辑标签重命名，非法字符自动转全角
-reamer -r 'template=<META:artist> - <META:title><.EXT>' -r 'seq=1,2' 音乐/
+ncreamer -r 'template=<META:artist> - <META:title><.EXT>' -r 'seq=1,2' 音乐/
 
 # 确认无误，加 -apply 才真的执行
-reamer -apply -r pinyin 某目录/
+ncreamer -apply -r pinyin 某目录/
 
 # 后悔了
-reamer undo -journal .reamer-journal.json
+reamer undo -journal .ncreamer-journal.json
 ```
 
 输出的样子：
@@ -188,7 +191,7 @@ reamer undo -journal .reamer-journal.json
 单条规则也可以直接加前缀只作用于部分文件，写法是 `if:模式>>规则`：
 
 ```bash
-reamer -r 'if:*.mp3>>pinyin' 某目录/    # 只有 mp3 转拼音，其他文件原样通过
+ncreamer -r 'if:*.mp3>>pinyin' 某目录/    # 只有 mp3 转拼音，其他文件原样通过
 ```
 
 ### 变量
@@ -213,11 +216,11 @@ reamer -r 'if:*.mp3>>pinyin' 某目录/    # 只有 mp3 转拼音，其他文件
 任意 OpenAI 兼容接口都行，用环境变量配置（GUI 里也可以在设置中填，优先级更高）：
 
 ```bash
-export REAMER_AI_BASE=https://api.deepseek.com/v1
-export REAMER_AI_KEY=sk-...
-export REAMER_AI_MODEL=deepseek-chat
+export NCREAMER_AI_BASE=https://api.deepseek.com/v1
+export NCREAMER_AI_KEY=sk-...
+export NCREAMER_AI_MODEL=deepseek-chat
 
-reamer -r 'template=<AI:根据内容起一个简短描述性文件名>_<SEQ><.EXT>' -r sanitize 笔记/
+ncreamer -r 'template=<AI:根据内容起一个简短描述性文件名>_<SEQ><.EXT>' -r sanitize 笔记/
 ```
 
 它会读文件内容（文本、PDF 的文本层等）再生成名字。**这一步要联网、要花钱，所以只在你点"预览"或运行命令时发生一次**，之后结果会缓存，反复改别的参数不会重复请求。
@@ -225,10 +228,10 @@ reamer -r 'template=<AI:根据内容起一个简短描述性文件名>_<SEQ><.EX
 ### CSV 清单：改乱了也能找回来
 
 ```bash
-reamer export -o list.csv 某目录/     # 导出：sha256 + 路径 + 原名 + 新名
+ncreamer export -o list.csv 某目录/     # 导出：sha256 + 路径 + 原名 + 新名
 # 在 Excel/编辑器里改 new_name 列，然后导回
-reamer import list.csv               # 先预览
-reamer import -apply list.csv        # 执行
+ncreamer import list.csv               # 先预览
+ncreamer import -apply list.csv        # 执行
 ```
 
 关键在于那一列 sha256：**文件名改乱了，内容没变**，所以每个文件都能按指纹认领自己的原名，内容完全相同的多个文件也能各自对上号。这是独立于操作日志的第二条退路。
@@ -248,7 +251,7 @@ reamer import -apply list.csv        # 执行
 ```
 
 ```bash
-reamer -p presets/book-meta.json 书库/
+ncreamer -p presets/book-meta.json 书库/
 ```
 
 仓库里的 [`presets/`](presets/) 放了一些现成的。
@@ -277,7 +280,7 @@ reamer -p presets/book-meta.json 书库/
 手工等价：
 
 ```bash
-go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o reamer ./cmd/reamer
+go build -trimpath -ldflags "-s -w -X main.version=0.1.0" -o ncreamer ./cmd/ncreamer
 cd gui && go build -trimpath -ldflags "-s -w -H=windowsgui" .
 ```
 

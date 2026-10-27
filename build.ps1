@@ -1,4 +1,4 @@
-# 构建 reamer 的 CLI 与 GUI
+# 构建 ncreamer(跨向更名器)的 CLI 与 GUI
 #   .\build.ps1          # 只构建当前平台
 #   .\build.ps1 -All     # 交叉编译 Windows/Linux/macOS 的 amd64 与 arm64
 # 输出为纯文本(不用 Format-Table),便于被其他脚本管道消费。
@@ -20,20 +20,20 @@ $targets = if ($All) {
 }
 
 function Build-Cli([string]$goos, [string]$goarch) {
-    $name = "reamer-$goos-$goarch"
+    $name = "ncreamer-$goos-$goarch"
     if ($goos -eq "windows") { $name += ".exe" }
     $out = Join-Path $dist $name
     Write-Host "  CLI  $name"
     Push-Location $root
     try {
         $env:GOOS = $goos; $env:GOARCH = $goarch
-        go build -trimpath -ldflags "-s -w -X main.version=$Version" -o $out ./cmd/reamer
+        go build -trimpath -ldflags "-s -w -X main.version=$Version" -o $out ./cmd/ncreamer
         if ($LASTEXITCODE) { throw "CLI 构建失败 ($goos/$goarch)" }
     } finally { Pop-Location }
 }
 
 function Build-Gui([string]$goos, [string]$goarch) {
-    $name = "reamer-gui-$goos-$goarch"
+    $name = "ncreamer-gui-$goos-$goarch"
     if ($goos -eq "windows") { $name += ".exe" }
     $out = Join-Path $dist $name
     Write-Host "  GUI  $name"

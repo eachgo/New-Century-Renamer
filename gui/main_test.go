@@ -8,7 +8,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"reamer/core"
+	"ncreamer/core"
 )
 
 func newTestFile(t *testing.T, name string) string {

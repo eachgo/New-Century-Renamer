@@ -13,6 +13,9 @@
 ### 变更
 - `testfile/`(约 200MB 的音频/PDF 素材)移出版本库,E2E 测试在该目录缺失时自动跳过。
 - 仓库只保留可构建的源码与文档;`dist/`、调试截图、三方 xTools 原件一律忽略。
+- **项目改名为 ncreamer**:原 `reamer` 重名风险大。命令行、产物名、日志/配置文件、环境变量
+  (`NCREAMER_AI_*`)、Go 模块与目录(`cmd/ncreamer`)全部随之调整;`ncreamer undo` 等子命令写法不变。
+  标题栏仍显示全名「New Century Renamer」——人读的界面不受标识符长度限制。
 
 ## [ux-stable-12] 2026-10-27
 
