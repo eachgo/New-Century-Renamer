@@ -11,7 +11,7 @@ import (
 // matugen idea: the user (or the desktop's accent) picks a single color and
 // every role follows, in OKLCH so tones land perceptually even.
 //
-// The derivation keeps reamer's "Mono" temperament: calm ground, restrained
+// The derivation keeps ncreamer's "Mono" temperament: calm ground, restrained
 // chroma, the seed as the only accent.
 type derivedTheme struct {
 	light, dark *ui.Theme

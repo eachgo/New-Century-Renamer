@@ -14,14 +14,14 @@ import (
 
 // <AI:指示> variables: send the filename plus a content snippet to an
 // OpenAI-compatible chat endpoint and get back a filename-safe fragment.
-// Config via env: REAMER_AI_BASE / REAMER_AI_KEY / REAMER_AI_MODEL.
+// Config via env: NCREAMER_AI_BASE / NCREAMER_AI_KEY / NCREAMER_AI_MODEL.
 // Without a key, AI variables fail soft (placeholder stays, error shown).
 
 // settings can override the environment (SetAIConfig), so the GUI's
 // settings dialog works without requiring env vars.
 var aiOverrideBase, aiOverrideKey, aiOverrideModel string
 
-// SetAIConfig overrides the REAMER_AI_* environment variables. Empty
+// SetAIConfig overrides the NCREAMER_AI_* environment variables. Empty
 // fields fall back to the environment.
 func SetAIConfig(base, key, model string) {
 	aiOverrideBase, aiOverrideKey, aiOverrideModel = base, key, model
@@ -30,13 +30,13 @@ func SetAIConfig(base, key, model string) {
 func aiConfig() (base, key, model string, ok bool) {
 	base, key, model = aiOverrideBase, aiOverrideKey, aiOverrideModel
 	if base == "" {
-		base = os.Getenv("REAMER_AI_BASE")
+		base = os.Getenv("NCREAMER_AI_BASE")
 	}
 	if key == "" {
-		key = os.Getenv("REAMER_AI_KEY")
+		key = os.Getenv("NCREAMER_AI_KEY")
 	}
 	if model == "" {
-		model = os.Getenv("REAMER_AI_MODEL")
+		model = os.Getenv("NCREAMER_AI_MODEL")
 	}
 	if base == "" {
 		base = "https://api.openai.com/v1"
@@ -50,7 +50,7 @@ func aiConfig() (base, key, model string, ok bool) {
 func aiGenerate(path, instruction string) (string, error) {
 	base, key, model, ok := aiConfig()
 	if !ok {
-		return "", fmt.Errorf("未设置 REAMER_AI_KEY")
+		return "", fmt.Errorf("未设置 NCREAMER_AI_KEY")
 	}
 	snippet := contentSnippet(path)
 	user := fmt.Sprintf("文件名: %s\n文件类型: %s\n%s\n文件内容片段:\n%s",

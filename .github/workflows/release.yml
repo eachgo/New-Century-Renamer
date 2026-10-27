@@ -51,15 +51,15 @@ jobs:
           mkdir -p dist
 
           build_cli() {
-            local goos=$1 goarch=$2 name="reamer-$1-$2"
+            local goos=$1 goarch=$2 name="ncreamer-$1-$2"
             [ "$goos" = "windows" ] && name="$name.exe"
             echo "CLI  $name"
             GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 \
-              go build -trimpath -ldflags "-s -w -X main.version=$v" -o "dist/$name" ./cmd/reamer
+              go build -trimpath -ldflags "-s -w -X main.version=$v" -o "dist/$name" ./cmd/ncreamer
           }
 
           build_gui() {
-            local goos=$1 goarch=$2 name="reamer-gui-$1-$2"
+            local goos=$1 goarch=$2 name="ncreamer-gui-$1-$2"
             [ "$goos" = "windows" ] && name="$name.exe"
             echo "GUI  $name"
             local ldflags="-s -w"
@@ -87,21 +87,21 @@ jobs:
           v="${{ steps.ver.outputs.version }}"
           base="https://github.com/${{ github.repository }}/releases/download/v${v}"
           cd dist
-          sha256sum reamer-* > SHA256SUMS.txt
+          sha256sum ncreamer-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
           {
             echo '#!/usr/bin/env bash'
-            echo '# 把 reamer CLI 装到 $PREFIX/bin(默认 /usr/local/bin)'
+            echo '# 把 ncreamer CLI 装到 $PREFIX/bin(默认 /usr/local/bin)'
             echo 'set -euo pipefail'
-            echo "VERSION=\"\${REAMER_VERSION:-$v}\""
+            echo "VERSION=\"\${NCREAMER_VERSION:-$v}\""
             echo "BASE=\"$base\""
             echo 'PREFIX="${PREFIX:-/usr/local}"'
             echo 'os="$(uname -s | tr "[:upper:]" "[:lower:]")"'
             echo 'arch="$(uname -m)"'
             echo 'case "$arch" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "不支持的架构: $arch"; exit 1 ;; esac'
             echo 'case "$os" in darwin|linux) ;; *) echo "不支持的系统: $os(Windows 请直接下载 exe)"; exit 1 ;; esac'
-            echo 'bin="reamer-${os}-${arch}"'
+            echo 'bin="ncreamer-${os}-${arch}"'
             echo 'tmp="$(mktemp)"; sums="$(mktemp)"'
             echo 'trap '"'"'rm -f "$tmp" "$sums"'"'"' EXIT'
             echo 'echo "下载 $BASE/$bin"'
@@ -117,11 +117,11 @@ jobs:
             echo 'if [ -z "$want" ] || [ "$want" != "$got" ]; then'
             echo '  echo "校验失败:期望 $want,实际 $got"; exit 1'
             echo 'fi'
-            echo 'echo "校验通过,安装到 $PREFIX/bin/reamer"'
+            echo 'echo "校验通过,安装到 $PREFIX/bin/ncreamer"'
             echo 'chmod +x "$tmp"'
             echo 'mkdir -p "$PREFIX/bin"'
-            echo 'mv "$tmp" "$PREFIX/bin/reamer"'
-            echo 'echo "完成:reamer -v"'
+            echo 'mv "$tmp" "$PREFIX/bin/ncreamer"'
+            echo 'echo "完成:ncreamer -v"'
           } > install.sh
           sed -i 's/\r$//' install.sh
           chmod +x install.sh
@@ -134,9 +134,9 @@ jobs:
           set -euo pipefail
           cd dist
           # Windows:CLI + GUI 放同一个包,用户解压即用
-          mkdir -p pkg-win && cp reamer-windows-amd64.exe reamer-gui-windows-amd64.exe pkg-win/
+          mkdir -p pkg-win && cp ncreamer-windows-amd64.exe ncreamer-gui-windows-amd64.exe pkg-win/
           cp "../README.md" "../CHANGELOG.md" pkg-win/ 2>/dev/null || true
-          ( cd pkg-win && zip -q -r ../reamer-windows-amd64.zip . )
+          ( cd pkg-win && zip -q -r ../ncreamer-windows-amd64.zip . )
           rm -rf pkg-win
           ls -l
 
@@ -150,6 +150,6 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            dist/reamer-*
+            dist/ncreamer-*
             dist/SHA256SUMS.txt
             dist/install.sh

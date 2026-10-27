@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// journal keeps every applied rename so `reamer undo` can roll the whole
+// journal keeps every applied rename so `ncreamer undo` can roll the whole
 // batch back — the modern form of xTools' "check before apply" caution.
 
 type journalFile struct {

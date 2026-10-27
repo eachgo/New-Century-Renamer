@@ -13,7 +13,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
-	"reamer/core"
+	"ncreamer/core"
 )
 
 // fileInfo is one file in the list, with the facts the table shows.
@@ -96,7 +96,7 @@ func (a *app) view(c *ui.Context) {
 	ui.Column(c).Fill().Children(func() {
 		ui.Row(c).Height(titleH).Padding(0, float32(bar.Right), 0, float32(bar.Left)).DragWindow().
 			AlignItems(ui.Center).Children(func() {
-			brand := ui.Text(c, "reamer").Bold().FontSize(13).Padding(0, 8)
+			brand := ui.Text(c, "New Century Renamer").Bold().FontSize(13).Padding(0, 8)
 			if bar.Left == 0 {
 				brand.PaddingStart(float32(bar.Left) + 8)
 			}
@@ -760,7 +760,7 @@ func (a *app) exportCSV() {
 	out, err := a.saveDialog(mygo.SaveDialogOptions{
 		Parent:      a.win,
 		Title:       "导出文件列表 CSV",
-		DefaultPath: "reamer-list.csv",
+		DefaultPath: "ncreamer-list.csv",
 	})
 	a.busy = false
 	if err != nil || out == "" {
@@ -1017,7 +1017,7 @@ func humanSize(n int64) string {
 }
 
 func main() {
-	// 单实例:两个 reamer 同时跑会互相覆盖 journal、各自执行更名
+	// 单实例:两个 ncreamer 同时跑会互相覆盖 journal、各自执行更名
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
@@ -1026,7 +1026,7 @@ func main() {
 	a.ApplySettings()
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:          "reamer",
+			Title:          "跨向更名器 New Century Renamer",
 			Width:          1280,
 			Height:         720,
 			MinWidth:       900,

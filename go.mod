@@ -1,4 +1,4 @@
-module reamer
+module ncreamer
 
 go 1.22.5
 

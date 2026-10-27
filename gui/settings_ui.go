@@ -62,12 +62,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 							ui.TextInput(c, &a.settings.AI.Model).Placeholder("deepseek-chat").Fill()
 						})
 						row("API Key", func() {
-							ui.TextInput(c, &a.settings.AI.Key).Placeholder("sk-…(留空用环境变量 REAMER_AI_KEY)").Fill()
+							ui.TextInput(c, &a.settings.AI.Key).Placeholder("sk-…(留空用环境变量 NCREAMER_AI_KEY)").Fill()
 						})
 					})
 					card("文件", func() {
 						row("操作日志", func() {
-							ui.TextInput(c, &a.settings.Journal).Placeholder(".reamer-journal.json").Fill()
+							ui.TextInput(c, &a.settings.Journal).Placeholder(".ncreamer-journal.json").Fill()
 						})
 					})
 					card("主题", func() {
@@ -155,7 +155,7 @@ func (a *app) exportSettings() {
 	out, err := a.saveDialog(mygo.SaveDialogOptions{
 		Parent:      a.win,
 		Title:       "导出设置",
-		DefaultPath: "reamer-settings.json",
+		DefaultPath: "ncreamer-settings.json",
 	})
 	a.busy = false
 	if err != nil || out == "" {

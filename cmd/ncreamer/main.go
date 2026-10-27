@@ -1,10 +1,11 @@
-// reamer - a modern cross-platform batch renamer, inheriting the design
-// philosophy of the classic xTools renamer: multi-step rule pipeline,
-// metadata variables, pinyin conversion, careful preview & undo.
+// ncreamer (跨向更名器 / New Century Renamer) - a modern cross-platform
+// batch renamer, inheriting the design philosophy of the classic xTools
+// renamer: multi-step rule pipeline, metadata variables, pinyin conversion,
+// careful preview & undo.
 package main
 
 import (
-	"reamer/core"
+	"ncreamer/core"
 )
 
 import (
@@ -21,11 +22,11 @@ import (
 var version = "0.1.0"
 
 func usage() {
-	fmt.Print(`reamer ` + version + ` - 批量更名器(继承 xTools 巧思的现代版)
+	fmt.Print(`ncreamer ` + version + ` - 跨向更名器 New Century Renamer(继承 xTools 巧思的现代版)
 
 用法:
-  reamer [选项] 文件或目录...
-  reamer undo -journal 重新命名日志.json
+  ncreamer [选项] 文件或目录...
+  ncreamer undo -journal 重新命名日志.json
 
 规则(按 -r 顺序依次应用, 可重复):
   template=T     模板重建文件名, T 中可用变量(见下)
@@ -48,11 +49,11 @@ func usage() {
   -r rule        一条规则, 可重复
   -p preset.json 从 JSON 文件读规则(格式: {"rules":["pinyin", ...]})
   -apply         实际执行(默认只预览)
-  -journal F     指定日志文件(默认 .reamer-journal.json; 仅 -apply 时写入)
+  -journal F     指定日志文件(默认 .ncreamer-journal.json; 仅 -apply 时写入)
   -recursive     目录参数时递归列举
   -v             版本
 
-AI 配置(环境变量): REAMER_AI_BASE / REAMER_AI_KEY / REAMER_AI_MODEL
+AI 配置(环境变量): NCREAMER_AI_BASE / NCREAMER_AI_KEY / NCREAMER_AI_MODEL
 `)
 }
 
@@ -62,7 +63,7 @@ func main() {
 		out := fs.String("o", "", "输出 CSV 文件(默认 stdout)")
 		fs.Parse(os.Args[2:])
 		if fs.NArg() == 0 {
-			fatal(fmt.Errorf("用法: reamer export [-o list.csv] 文件..."))
+			fatal(fmt.Errorf("用法: ncreamer export [-o list.csv] 文件..."))
 		}
 		files, err := expandInputs(fs.Args(), false)
 		if err != nil {
@@ -81,17 +82,17 @@ func main() {
 			fatal(err)
 		}
 		if *out != "" {
-			fmt.Printf("已导出 %d 个文件到 %s(new_name 列编辑后用 reamer import 导回)\n", len(files), *out)
+			fmt.Printf("已导出 %d 个文件到 %s(new_name 列编辑后用 ncreamer import 导回)\n", len(files), *out)
 		}
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "import" {
 		fs := flag.NewFlagSet("import", flag.ExitOnError)
 		apply := fs.Bool("apply", false, "实际执行")
-		journal := fs.String("journal", ".reamer-journal.json", "日志文件")
+		journal := fs.String("journal", ".ncreamer-journal.json", "日志文件")
 		fs.Parse(os.Args[2:])
 		if fs.NArg() != 1 {
-			fatal(fmt.Errorf("用法: reamer import [-apply] list.csv"))
+			fatal(fmt.Errorf("用法: ncreamer import [-apply] list.csv"))
 		}
 		plan, errs := core.ImportCSV(fs.Arg(0))
 		for _, e := range errs {
@@ -117,12 +118,12 @@ func main() {
 		if err := core.ApplyPlan(plan, *journal); err != nil {
 			fatal(err)
 		}
-		fmt.Printf("已执行, 日志 %s; 可用 reamer undo -journal %s 回滚\n", *journal, *journal)
+		fmt.Printf("已执行, 日志 %s; 可用 ncreamer undo -journal %s 回滚\n", *journal, *journal)
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "undo" {
 		fs := flag.NewFlagSet("undo", flag.ExitOnError)
-		journal := fs.String("journal", ".reamer-journal.json", "日志文件")
+		journal := fs.String("journal", ".ncreamer-journal.json", "日志文件")
 		fs.Parse(os.Args[2:])
 		if err := core.UndoJournal(*journal); err != nil {
 			fatal(err)
@@ -130,7 +131,7 @@ func main() {
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "-v" {
-		fmt.Println("reamer", version)
+		fmt.Println("ncreamer", version)
 		return
 	}
 
@@ -141,11 +142,11 @@ func main() {
 		journal   string
 		recursive bool
 	)
-	fs := flag.NewFlagSet("reamer", flag.ExitOnError)
+	fs := flag.NewFlagSet("ncreamer", flag.ExitOnError)
 	fs.Var(&ruleArgs, "r", "规则, 可重复")
 	fs.StringVar(&preset, "p", "", "预设 JSON 文件")
 	fs.BoolVar(&apply, "apply", false, "实际执行")
-	fs.StringVar(&journal, "journal", ".reamer-journal.json", "日志文件")
+	fs.StringVar(&journal, "journal", ".ncreamer-journal.json", "日志文件")
 	fs.BoolVar(&recursive, "recursive", false, "递归")
 	fs.Usage = func() { usage() }
 	fs.Parse(os.Args[1:])
@@ -212,7 +213,7 @@ func main() {
 	if err := core.ApplyPlan(plan, journal); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("已执行, 日志写入 %s; 可用 `reamer undo -journal %s` 回滚\n", journal, journal)
+	fmt.Printf("已执行, 日志写入 %s; 可用 `ncreamer undo -journal %s` 回滚\n", journal, journal)
 }
 
 func countOK(plan []core.RenameOp) (n int) {

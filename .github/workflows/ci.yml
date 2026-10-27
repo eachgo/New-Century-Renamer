@@ -48,7 +48,7 @@ jobs:
         run: go test ./... -count=1
 
       - name: 构建 CLI
-        run: go build ./cmd/reamer
+        run: go build ./cmd/ncreamer
 
       # GUI 依赖 mygo(纯 Go 无 cgo),三平台都能编译;
       # 但只有 Windows 产物是给用户双击用的,其余平台仅作编译回归。

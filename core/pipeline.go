@@ -289,7 +289,7 @@ func rename(old, new string, self bool) error {
 	if !self {
 		return os.Rename(old, new)
 	}
-	tmp := new + ".reamer-tmp"
+	tmp := new + ".ncreamer-tmp"
 	if err := os.Rename(old, tmp); err != nil {
 		return err
 	}

@@ -1,14 +1,20 @@
 # 构建产物
-reamer.exe
-reamer-gui.exe
-gui/reamer-gui.exe
+cmd/ncreamer/*.exe
+ncreamer.exe
+ncreamer-gui.exe
+gui/ncreamer-gui.exe
 gui/gui.exe
 gui/build/
 dist/
 
 # 运行时状态(可能含 API Key)
+ncreamer-settings.json
+gui/ncreamer-settings.json
+.ncreamer-journal.json
+ncreamer-list.csv
+
+# 改名前的旧文件名(REAMER_* 时代),留着防止误提交
 reamer-settings.json
-gui/reamer-settings.json
 .reamer-journal.json
 reamer-list.csv
 
