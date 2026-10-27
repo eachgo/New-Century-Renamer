@@ -2,6 +2,18 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/);里程碑对应 git 标签。
 
+## [Unreleased] 面向 GitHub 发布
+
+### 新增
+- **GitHub 发布配套**:README 补全安装/使用/规则/变量/构建章节;CI(三平台构建 + 测试 + gofmt + vet);
+  tag 触发的 Release 工作流(交叉编译 → SHA256SUMS → install.sh → draft release);
+  issue 模板、PR 模板、Dependabot、标签自动归类;Release Notes 按 `enhancement`/`bug` 等标签分组。
+- **install.sh**:按 `uname` 选二进制并用 `SHA256SUMS.txt` 校验,校验不过直接退出,不会装半个文件。
+
+### 变更
+- `testfile/`(约 200MB 的音频/PDF 素材)移出版本库,E2E 测试在该目录缺失时自动跳过。
+- 仓库只保留可构建的源码与文档;`dist/`、调试截图、三方 xTools 原件一律忽略。
+
 ## [ux-stable-12] 2026-10-27
 
 ### 新增

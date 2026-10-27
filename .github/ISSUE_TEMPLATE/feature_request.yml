@@ -1,0 +1,27 @@
+name: 功能建议
+description: 提出想要的能力
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你想解决什么问题
+      description: 说场景比说方案有用。"我有 3000 个扫描件,想按日期归档"比"加一个重命名按钮"信息多得多
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你设想的做法
+      description: 如果能对上的话,说明它该是管线里的一条规则、一个元变量,还是界面上的一个入口
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 现在怎么凑合
+      description: 你现在用什么办法解决?xTools、批量改名软件、写脚本?
+    validations:
+      required: false

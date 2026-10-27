@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号(不含 v,仅手动触发时使用)"
+        required: true
+        default: "0.1.0"
+
+permissions:
+  contents: write
+
+env:
+  GOTOOLCHAIN: auto
+
+jobs:
+  release:
+    name: 交叉编译并发布
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            gui/go.sum
+
+      - name: 确定版本号
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # 产物与 build.ps1 -All 完全一致,只是改在本机流水线上跑,
+      # 保证发布包与脚本产物同名同结构。
+      - name: 交叉编译
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          mkdir -p dist
+
+          build_cli() {
+            local goos=$1 goarch=$2 name="reamer-$1-$2"
+            [ "$goos" = "windows" ] && name="$name.exe"
+            echo "CLI  $name"
+            GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 \
+              go build -trimpath -ldflags "-s -w -X main.version=$v" -o "dist/$name" ./cmd/reamer
+          }
+
+          build_gui() {
+            local goos=$1 goarch=$2 name="reamer-gui-$1-$2"
+            [ "$goos" = "windows" ] && name="$name.exe"
+            echo "GUI  $name"
+            local ldflags="-s -w"
+            # Windows 双击不弹控制台黑框
+            [ "$goos" = "windows" ] && ldflags="$ldflags -H=windowsgui"
+            ( cd gui && GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 \
+                go build -trimpath -ldflags "$ldflags" -o "../dist/$name" . )
+          }
+
+          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/arm64; do
+            goos="${t%%/*}"; goarch="${t##*/}"
+            build_cli "$goos" "$goarch"
+            # mygo 的 Linux GUI 需要桌面环境(WebKitGTK/GTK),Linux 只出 CLI
+            [ "$goos" != "linux" ] && build_gui "$goos" "$goarch"
+          done
+
+          ls -l dist
+
+      # 快捷走 CLI:Linux/macOS 用户几乎一定会用 curl 装下来的一条命令。
+      # 脚本会顺手用 SHA256SUMS.txt 校验,下载被截断/被替换时直接失败。
+      - name: 生成校验和与安装脚本
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          base="https://github.com/${{ github.repository }}/releases/download/v${v}"
+          cd dist
+          sha256sum reamer-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+          {
+            echo '#!/usr/bin/env bash'
+            echo '# 把 reamer CLI 装到 $PREFIX/bin(默认 /usr/local/bin)'
+            echo 'set -euo pipefail'
+            echo "VERSION=\"\${REAMER_VERSION:-$v}\""
+            echo "BASE=\"$base\""
+            echo 'PREFIX="${PREFIX:-/usr/local}"'
+            echo 'os="$(uname -s | tr "[:upper:]" "[:lower:]")"'
+            echo 'arch="$(uname -m)"'
+            echo 'case "$arch" in x86_64|amd64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "不支持的架构: $arch"; exit 1 ;; esac'
+            echo 'case "$os" in darwin|linux) ;; *) echo "不支持的系统: $os(Windows 请直接下载 exe)"; exit 1 ;; esac'
+            echo 'bin="reamer-${os}-${arch}"'
+            echo 'tmp="$(mktemp)"; sums="$(mktemp)"'
+            echo 'trap '"'"'rm -f "$tmp" "$sums"'"'"' EXIT'
+            echo 'echo "下载 $BASE/$bin"'
+            echo 'curl -fsSL "$BASE/$bin" -o "$tmp"'
+            echo 'curl -fsSL "$BASE/SHA256SUMS.txt" -o "$sums"'
+            echo 'if command -v sha256sum >/dev/null 2>&1; then'
+            echo '  want="$(grep " $bin\$" "$sums" | cut -d" " -f1)"'
+            echo '  got="$(sha256sum "$tmp" | cut -d" " -f1)"'
+            echo 'else'
+            echo '  want="$(grep " $bin\$" "$sums" | cut -d" " -f1)"'
+            echo '  got="$(shasum -a 256 "$tmp" | cut -d" " -f1)"'
+            echo 'fi'
+            echo 'if [ -z "$want" ] || [ "$want" != "$got" ]; then'
+            echo '  echo "校验失败:期望 $want,实际 $got"; exit 1'
+            echo 'fi'
+            echo 'echo "校验通过,安装到 $PREFIX/bin/reamer"'
+            echo 'chmod +x "$tmp"'
+            echo 'mkdir -p "$PREFIX/bin"'
+            echo 'mv "$tmp" "$PREFIX/bin/reamer"'
+            echo 'echo "完成:reamer -v"'
+          } > install.sh
+          sed -i 's/\r$//' install.sh
+          chmod +x install.sh
+          bash -n install.sh   # 语法自检
+          head -5 install.sh
+
+      - name: 打包 zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          # Windows:CLI + GUI 放同一个包,用户解压即用
+          mkdir -p pkg-win && cp reamer-windows-amd64.exe reamer-gui-windows-amd64.exe pkg-win/
+          cp "../README.md" "../CHANGELOG.md" pkg-win/ 2>/dev/null || true
+          ( cd pkg-win && zip -q -r ../reamer-windows-amd64.zip . )
+          rm -rf pkg-win
+          ls -l
+
+      - name: 发布
+        uses: softprops/action-gh-release@v2
+        with:
+          # workflow_dispatch 手动触发时没有 tag,临时建一个
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.ver.outputs.version) || github.ref_name }}
+          name: 跨向更名器 ${{ steps.ver.outputs.version }}
+          draft: true
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/reamer-*
+            dist/SHA256SUMS.txt
+            dist/install.sh
