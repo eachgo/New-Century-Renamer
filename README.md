@@ -48,7 +48,7 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 - [x] **非法字符改全角**：`/ \ : * ? " < > |` 不会粗暴删掉（删掉就丢信息了），而是换成 `／＼：＊？＂＜＞｜`
 - [x] **CSV 清单即备份**：导出列表带每个文件的 sha256 指纹——文件名被改乱了，也能靠"内容没变"找回原名
 - [x] **一键回滚**：操作日志记录了每一次改名，`ncreamer undo` 整批退回去
-- [x] **纯 64 位 / ARM 的现代重制**：单个可执行文件，无安装器、无 cgo，交叉编译一份全平台通用（GUI 版借用系统自带的 WebView 运行时，见[环境要求](#环境要求)）
+- [x] **纯 64 位 / ARM 的现代重制**：单个可执行文件，无安装器、无 cgo，交叉编译一份全平台通用（GUI 版借用系统自带的 WebView 运行时）
 - [ ] 更多元数据格式：MKV、EXIF（见[路线图](#路线图)）
 - [ ] 音频标签写入（目前只读不写）
 
@@ -66,8 +66,6 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 - `ncreamer-windows-amd64.exe` —— 命令行版，适合写进批处理
 
 ARM 版（如骁龙本）把 `amd64` 换成 `arm64`。
-
-> 界面版需要系统里的 WebView2 Runtime（Win10/11 一般已预装）。若双击后提示缺少 WebView2，去[微软官网](https://developer.microsoft.com/microsoft-edge/webview2/)装一次即可；命令行版不需要它。
 
 ### macOS / Linux
 
@@ -97,20 +95,6 @@ macOS 版 GUI（`ncreamer-gui-darwin-arm64`）同理，下载后 `chmod +x` 直�
 > macOS 上没签名没公证，首次打开会被 Gatekeeper 拦一下：右键点图标 → 打开，或者到"系统设置 → 隐私与安全性"里放行一次。
 
 Linux 只发布 CLI：GUI 依赖桌面环境里的 WebKitGTK，各发行版差异太大，不提供通用二进制（想用界面可以自己编译，见[构建](#构建)）。
-
-### 环境要求
-
-命令行版（`ncreamer`）是**真正零依赖**的单文件，拷到任何同架构的机器上就能跑，什么运行库都不用装。
-
-图形界面版（`ncreamer-gui`）**借系统自带的 WebView 来渲染窗口**——程序本身仍然是纯 Go、无 cgo、单个可执行文件，但运行时会用到系统里的网页内核：
-
-| 平台 | 需要什么 | 说明 |
-|---|---|---|
-| Windows 10/11 | **WebView2 Runtime** | 现代 Windows 一般已预装；没有的话双击会提示，去微软官网装一次 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 即可，永久生效 |
-| macOS | 系统自带 WebKit | 无需额外安装（首次打开会被 Gatekeeper 拦一下，见上） |
-| Linux | **GTK 3 + WebKitGTK** | 发行版通常不预装，需自行安装（Debian/Ubuntu：`sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0`；Fedora：`webkit2gtk4.1`）；因为各发行版差异大，官方不提供 GUI 通用二进制，需要界面请从源码编译 |
-
-换句话说：**只想要批量更名，用 CLI；想要界面，Windows/macOS 下载即用，Linux 需先装好 GTK/WebKitGTK 再自行编译。**
 
 ### 从源码构建
 
