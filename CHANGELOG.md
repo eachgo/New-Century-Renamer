@@ -20,6 +20,14 @@
   (`NCREAMER_AI_*`)、Go 模块与目录(`cmd/ncreamer`)全部随之调整;`ncreamer undo` 等子命令写法不变。
   标题栏仍显示全名「New Century Renamer」——人读的界面不受标识符长度限制。
 
+### 新增(AI 内容采样)
+- `<AI:...>` 现在真的读内容再起名,不再只发文件名:core/aisource.go 实现了
+
+  PDF 文本层(含 Type0/Identity-H 的 ToUnicode CMap 还原,beginbfchar/beginbfrange)、
+  EPUB 正文 XHTML、压缩包目录+小说明文件、JPEG/TIFF 的 EXIF,再叠加已有的容器元数据。
+  全部零依赖、纯标准库,不联网也能取内容。
+- 新增 `core/aisource_test.go`:PDF/EPUB/ZIP/纯文本/二进制回落各自断言能抠出内容。
+
 ### 文档
 - AI 命名一节改写为优势说明:读 PDF 文本层 / EPUB 版权页 / 压缩包内部列表 / 文本 / EXIF 再起名,
   定位为 7B~9B 本地模型最擅长的任务,强调默认本地推理、内容不出网。

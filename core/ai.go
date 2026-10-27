@@ -100,24 +100,89 @@ func aiGenerate(path, instruction string) (string, error) {
 }
 
 // contentSnippet reads a text-ish prefix of the file for the model.
-// For unknown binaries we send only the name and type.
+// Beyond plain text we read what the file has that is legible without OCR:
+// PDF text layer, EPUB content documents, archive listings, image EXIF, and
+// container metadata (title/artist/album). Reading the content instead of
+// guessing from the name is the whole point of handing this to a small
+// local model.
 func contentSnippet(path string) string {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 	var texty = map[string]bool{
 		"txt": true, "md": true, "log": true, "csv": true, "json": true,
 		"srt": true, "ass": true, "vtt": true, "html": true, "htm": true, "xml": true,
 	}
-	if !texty[ext] {
-		return "(二进制文件, 无文本片段)"
+	var parts []string
+
+	if texty[ext] {
+		if s := readPrefix(path, 6000); s != "" {
+			parts = append(parts, s)
+		}
+	} else {
+		switch ext {
+		case "pdf":
+			parts = append(parts, pdfTextLayer(path))
+		case "epub":
+			parts = append(parts, epubText(path))
+		case "zip", "cbz", "jar", "apk", "docx", "xlsx", "pptx":
+			parts = append(parts, zipListing(path))
+		case "tar", "gz", "tgz", "bz2", "xz", "7z", "rar":
+			parts = append(parts, "(压缩包, 无法解出目录: 仅凭文件名和大小推断)")
+		case "jpg", "jpeg", "tif", "tiff", "webp", "heic", "png":
+			parts = append(parts, exifSummary(path))
+		}
 	}
-	b, err := os.ReadFile(path)
+
+	// Container metadata is useful on its own and cheap to add.
+	if m := ExtractMeta(path); len(m) > 0 {
+		var kv []string
+		for _, k := range []string{"title", "artist", "album", "author", "creator", "date", "publisher"} {
+			if v, ok := m[k]; ok && v != "" {
+				kv = append(kv, k+": "+v)
+			}
+		}
+		if len(kv) > 0 {
+			parts = append(parts, "元数据: "+strings.Join(kv, "; "))
+		}
+	}
+
+	joined := strings.TrimSpace(strings.Join(parts, "\n"))
+	if joined == "" {
+		// Nothing readable: say so, so the model leans on the name and type.
+		return fmt.Sprintf("(无可用文本, 文件大小 %s)", humanSize(path))
+	}
+	return truncate(joined, 6000)
+}
+
+func readPrefix(path string, n int) string {
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	if len(b) > 6000 {
-		b = b[:6000]
+	defer f.Close()
+	b := make([]byte, n)
+	m, _ := io.ReadFull(f, b)
+	if m <= 0 {
+		return ""
 	}
-	return string(b)
+	return string(b[:m])
+}
+
+func humanSize(path string) string {
+	st, err := os.Stat(path)
+	if err != nil {
+		return "未知"
+	}
+	n := float64(st.Size())
+	units := []string{"B", "KB", "MB", "GB"}
+	i := 0
+	for n >= 1024 && i < len(units)-1 {
+		n /= 1024
+		i++
+	}
+	if i == 0 {
+		return fmt.Sprintf("%.0f %s", n, units[i])
+	}
+	return fmt.Sprintf("%.1f %s", n, units[i])
 }
 
 func sanitizeFragment(s string) string {
