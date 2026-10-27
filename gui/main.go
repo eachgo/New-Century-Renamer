@@ -34,6 +34,7 @@ type app struct {
 	ops      []core.RenameOp // preview or apply result, aligned with files
 	status   string
 	busy     bool
+	busyAI   bool // busy because an AI (network) call is in flight — show spinner
 	applied  bool // true after 执行/回滚, until steps or files change
 	lastSpec string
 
@@ -512,8 +513,12 @@ func (a *app) filesView(c *ui.Context) {
 		ui.Row(c).Gap(8).Wrap().Children(func() {
 			// 预览只对 AI 步骤有意义(其余实时预览已自动),藏起来免得让人想"要不要点"
 			if a.hasAIStep() {
-				if ui.PrimaryButton(c, "预览(AI 联网命名)").Radius(16).Disabled(a.busy || len(a.files) == 0).Clicked() {
-					a.preview()
+				previewLabel := "预览(AI 联网命名)"
+				if a.busyAI {
+					previewLabel = "联网命名中…"
+				}
+				if ui.PrimaryButton(c, previewLabel).Radius(16).Disabled(a.busy || len(a.files) == 0).Clicked() {
+					go a.previewAsync()
 				}
 			}
 			if ui.Button(c, "执行更名").Radius(16).Disabled(a.busy || !a.hasChanges()).Clicked() {
@@ -523,7 +528,14 @@ func (a *app) filesView(c *ui.Context) {
 				go a.undo()
 			}
 			if a.busy {
-				ui.Text(c, "处理中…").TextColor(t.TextMuted)
+				ui.Row(c).Gap(8).Children(func() {
+					ui.Spinner(c)
+					label := "处理中…"
+					if a.busyAI {
+						label = "正在联网命名,模型思考中…"
+					}
+					ui.Text(c, label).TextColor(t.TextMuted)
+				})
 			} else if a.status != "" {
 				ui.Text(c, a.status).TextColor(a.statusColor(t))
 			}
@@ -851,6 +863,23 @@ func (a *app) stepSpecs() []string {
 		}
 	}
 	return out
+}
+
+// previewAsync runs the pipeline off the UI thread, because AI steps block on
+// the network for as long as the model takes (often tens of seconds). Doing
+// this synchronously in the click handler froze the window with no feedback;
+// now the UI shows a spinner while we wait. apply/undo follow the same shape.
+func (a *app) previewAsync() {
+	a.busy = true
+	a.busyAI = true
+	a.status = "正在联网命名,模型思考中…"
+	a.update()
+	defer func() {
+		a.busy = false
+		a.busyAI = false
+		a.update()
+	}()
+	a.preview()
 }
 
 func (a *app) preview() {
