@@ -149,7 +149,17 @@ jobs:
           draft: true
           prerelease: false
           generate_release_notes: true
+          # 逐个列出,不要用 dist/ncreamer-*,否则会把打包好的 zip 再传一遍
+          # ——zip 里已经装着 windows 的两个 exe,重复上传等于多发 24MB。
           files: |
-            dist/ncreamer-*
+            dist/ncreamer-darwin-arm64
+            dist/ncreamer-gui-darwin-arm64
+            dist/ncreamer-linux-amd64
+            dist/ncreamer-linux-arm64
+            dist/ncreamer-windows-amd64.exe
+            dist/ncreamer-windows-arm64.exe
+            dist/ncreamer-gui-windows-amd64.exe
+            dist/ncreamer-gui-windows-arm64.exe
+            dist/ncreamer-windows-amd64.zip
             dist/SHA256SUMS.txt
             dist/install.sh
