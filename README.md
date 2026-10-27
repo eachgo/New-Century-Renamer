@@ -60,7 +60,7 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 
 ### Windows
 
-从 [Releases](https://github.com/OWNER/ncreamer/releases) 下载对应架构的两个文件，放在同一个文件夹里：
+从 [Releases](https://github.com/eachgo/New-Century-Renamer/releases) 下载对应架构的两个文件，放在同一个文件夹里：
 
 - `ncreamer-gui-windows-amd64.exe` —— 双击打开界面（改名叫 `跨向更名器.exe` 也行，界面不受影响）
 - `ncreamer-windows-amd64.exe` —— 命令行版，适合写进批处理
@@ -72,20 +72,20 @@ ARM 版（如骁龙本）把 `amd64` 换成 `arm64`。
 一条命令装 CLI 到 `/usr/local/bin`：
 
 ```bash
-curl -fsSL https://github.com/OWNER/ncreamer/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/eachgo/New-Century-Renamer/releases/latest/download/install.sh | bash
 ```
 
 `install.sh` 会按 `uname -s` / `uname -m` 挑对应的二进制，**并且用发布时生成的 `SHA256SUMS.txt` 校验**——下载坏了或者被中途替换过，脚本不会往下装。想先看看它做什么：
 
 ```bash
-curl -fsSL https://github.com/OWNER/ncreamer/releases/latest/download/install.sh | less
+curl -fsSL https://github.com/eachgo/New-Century-Renamer/releases/latest/download/install.sh | less
 ```
 
 不放心管道的话也可以手动来：
 
 ```bash
-curl -LO https://github.com/OWNER/ncreamer/releases/latest/download/ncreamer-darwin-arm64
-curl -LO https://github.com/OWNER/ncreamer/releases/latest/download/SHA256SUMS.txt
+curl -LO https://github.com/eachgo/New-Century-Renamer/releases/latest/download/ncreamer-darwin-arm64
+curl -LO https://github.com/eachgo/New-Century-Renamer/releases/latest/download/SHA256SUMS.txt
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing    # Linux 上用 sha256sum -c
 chmod +x ncreamer-darwin-arm64 && mv ncreamer-darwin-arm64 /usr/local/bin/ncreamer
 ```
@@ -101,7 +101,7 @@ Linux 只发布 CLI：GUI 依赖桌面环境里的 WebKitGTK，各发行版差�
 需要 Go 1.22 以上（`gui/` 里要求 1.27，老版本 Go 会经 `GOTOOLCHAIN=auto` 自动下载工具链）。
 
 ```bash
-git clone https://github.com/OWNER/ncreamer && cd ncreamer
+git clone https://github.com/eachgo/New-Century-Renamer && cd New-Century-Renamer
 go build -o ncreamer ./cmd/ncreamer         # CLI
 cd gui && go build .                        # GUI(纯 Go,无 cgo)
 ```
@@ -293,16 +293,14 @@ cd gui && go build -trimpath -ldflags "-s -w -H=windowsgui" .
 ```bash
 go test ./...                              # 规则引擎
 cd gui && go test -skip '^TestE2E' .       # 界面无头测试
-cd gui && go test -run TestE2E -v .        # 真实文件端到端(需要 testfile/ 素材)
+cd gui && go test -run TestE2E -v .        # 真实文件端到端
 ```
 
-端到端测试会真的建目录、真的改名、真的回滚，再逐个核对磁盘上的结果——其中包括 `the union.mp3` → `THE UNION.MP3` 这类大小写改名。
-
-`testfile/` 是本地素材目录（约 200MB 的音频/PDF），**不入库**；没有它时 E2E 测试会自己跳过。
+前两条在任何机器上都能跑。端到端测试会真的建目录、真的改名、真的回滚，再逐个核对磁盘上的结果——其中包括 `the union.mp3` → `THE UNION.MP3` 这类大小写改名；它需要一份带音频/PDF 的素材目录，没有就自动跳过。
 
 ## 路线图
 
-- 更多元数据：MKV、EXIF
+- 更多元数据：MKV
 - 设置页改进：AI 配置按已配置/未配置折叠、主色实时预览条
 
 ## 致谢
