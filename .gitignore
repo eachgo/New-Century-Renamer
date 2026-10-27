@@ -31,6 +31,7 @@ NOTES.md
 
 # 调试截图
 dbg*.png
+audit-*.png
 
 # 原始 xTools 软件(三方,参考用,不入库)
 xTools.exe
