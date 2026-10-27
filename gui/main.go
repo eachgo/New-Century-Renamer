@@ -1026,7 +1026,7 @@ func main() {
 	a.ApplySettings()
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
-			Title:          "跨向更名器 New Century Renamer",
+			Title:          "New Century Renamer",
 			Width:          1280,
 			Height:         720,
 			MinWidth:       900,
