@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/);里程碑对应 git 标签。
 
-## [Unreleased] 面向 GitHub 发布
+## [0.1.0] - 2026-10-27 · 首个公开版本
 
 ### 新增
 - **GitHub 发布配套**:README 补全安装/使用/规则/变量/构建章节;CI(三平台构建 + 测试 + gofmt + vet);
