@@ -11,13 +11,37 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// findTestfile 从当前目录逐级向上找素材目录。仓库根下的 testfile/ 不入库,
+// 没有就直接跳过,这样别人 clone 下来跑测试不会红。
+func findTestfile() (string, bool) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", false
+	}
+	for i := 0; i < 4; i++ {
+		p := filepath.Join(dir, "testfile")
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return p, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", false
+}
+
 // resetCopy rebuilds the working copy from the pristine testfile directory.
 func resetCopy(t *testing.T) (dir string, paths []string) {
 	t.Helper()
-	src := "M:/_tmp6/reamer/testfile"
-	dir = "M:/_tmp6/e2e-copy"
-	if _, err := os.Stat(src); err != nil {
+	src, ok := findTestfile()
+	if !ok {
 		t.Skip("no testfile dir")
+	}
+	dir = os.Getenv("NCREAMER_E2E_DIR")
+	if dir == "" {
+		dir = filepath.Join(os.TempDir(), "ncreamer-e2e-copy")
 	}
 	os.RemoveAll(dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

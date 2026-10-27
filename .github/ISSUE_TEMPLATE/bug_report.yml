@@ -23,7 +23,7 @@ body:
     id: version
     attributes:
       label: 版本
-      description: GUI 在设置里,CLI 用 `reamer -v`
+      description: GUI 在设置里,CLI 用 `ncreamer -v`
       placeholder: "0.1.0"
     validations:
       required: true
@@ -59,7 +59,7 @@ body:
       label: 复现步骤
       description: CLI 请附上完整命令;GUI 请说明点了哪些步骤、参数是什么
       placeholder: |
-        1. reamer -r 'template=<META:artist> - <META:title><.EXT>' 某目录/
+        1. ncreamer -r 'template=<META:artist> - <META:title><.EXT>' 某目录/
         2. ……
     validations:
       required: true
@@ -89,5 +89,5 @@ body:
     attributes:
       label: 确认
       options:
-        - label: 我已经看过 README 和 `reamer`(无参数)的帮助输出
+        - label: 我已经看过 README 和 `ncreamer`(无参数)的帮助输出
         - label: 问题能用预览模式(不加 `-apply`)复现

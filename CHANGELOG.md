@@ -9,13 +9,22 @@
   tag 触发的 Release 工作流(交叉编译 → SHA256SUMS → install.sh → draft release);
   issue 模板、PR 模板、Dependabot、标签自动归类;Release Notes 按 `enhancement`/`bug` 等标签分组。
 - **install.sh**:按 `uname` 选二进制并用 `SHA256SUMS.txt` 校验,校验不过直接退出,不会装半个文件。
+- **MIT 许可证**:补 `LICENSE` 文件,README 许可证章节补全。
+- **界面截图**:`docs/screenshot.png` 作为 README 头图。
 
 ### 变更
-- `testfile/`(约 200MB 的音频/PDF 素材)移出版本库,E2E 测试在该目录缺失时自动跳过。
+- `testfile/`(约 200MB 的音频/PDF 素材)移出版本库,E2E 测试在该目录缺失时自动跳过;
+  素材路径改为从当前目录逐级向上查找,不再写死本机绝对路径,可用 `NCREAMER_E2E_DIR` 指定工作副本位置。
 - 仓库只保留可构建的源码与文档;`dist/`、调试截图、三方 xTools 原件一律忽略。
 - **项目改名为 ncreamer**:原 `reamer` 重名风险大。命令行、产物名、日志/配置文件、环境变量
   (`NCREAMER_AI_*`)、Go 模块与目录(`cmd/ncreamer`)全部随之调整;`ncreamer undo` 等子命令写法不变。
   标题栏仍显示全名「New Century Renamer」——人读的界面不受标识符长度限制。
+
+### 文档
+- AI 命名一节改写为优势说明:读 PDF 文本层 / EPUB 版权页 / 压缩包内部列表 / 文本 / EXIF 再起名,
+  定位为 7B~9B 本地模型最擅长的任务,强调默认本地推理、内容不出网。
+- 删去「几条设计上的取舍」一节。
+- 致谢不再提 xTools:该项目 2004 年后已停止更新、作者无法联系,不擅自称承接。
 
 ## [ux-stable-12] 2026-10-27
 
