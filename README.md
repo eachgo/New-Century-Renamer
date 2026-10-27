@@ -2,7 +2,7 @@
 
 > 让你找回世纪初管理文件的感觉。
 
-![界面截图](gui/audit-titlebar.png)
+![界面截图](docs/screenshot.png)
 
 ---
 
@@ -24,7 +24,7 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 
 ## 它和别的改名软件不一样的地方
 
-大多数改名工具把你变成一个正则表达式工程师。跨向更名器继承的是二十年前那个 xTools 的思路：
+大多数改名工具把你变成一个正则表达式工程师。跨向更名器走的是另一条路：
 
 **把"改名字"当成一条可以反复走的流水线。**
 
@@ -151,7 +151,7 @@ ncreamer -r 'template=<META:artist> - <META:title><.EXT>' -r 'seq=1,2' 音乐/
 ncreamer -apply -r pinyin 某目录/
 
 # 后悔了
-reamer undo -journal .ncreamer-journal.json
+ncreamer undo -journal .ncreamer-journal.json
 ```
 
 输出的样子：
@@ -213,17 +213,28 @@ ncreamer -r 'if:*.mp3>>pinyin' 某目录/    # 只有 mp3 转拼音，其他文�
 
 ### AI 命名
 
-任意 OpenAI 兼容接口都行，用环境变量配置（GUI 里也可以在设置中填，优先级更高）：
+**这是本地小模型最擅长的活，也是这个功能存在的理由。**
+
+看文件名的机器只能猜；看内容的机器才叫得出名字。7B、9B 这一档的本地模型做不了写代码那种硬活,但"读一段文字、起一个标题"恰恰是它们做得好、而且不需要大模型的事:
+
+- **PDF** —— 读文本层,标题页、摘要、页脚落款都能看到,不用你手动抄进文件名;
+- **EPUB** —— 读版权页和书名页,作者、出版社、版次都出来了;
+- **压缩包** —— 读内部文件列表,一堆 `IMG_0342.JPG` 也能认出是"2024 春 京都行";
+- **纯文本 / Markdown** —— 直接读前若干字;
+- **图片** —— 看 EXIF,拍摄时间、机型、尺寸,不用再对着文件夹猜。
+
+**隐私优先,连得上才连。** AI 那一步可以指向任意 OpenAI 兼容接口,包括你自己机器上跑的 Ollama / llama.cpp / LM Studio:
 
 ```bash
-export NCREAMER_AI_BASE=https://api.deepseek.com/v1
-export NCREAMER_AI_KEY=sk-...
-export NCREAMER_AI_MODEL=deepseek-chat
-
+# 全本地,一个字节都不出网
+export NCREAMER_AI_BASE=http://127.0.0.1:11434/v1
+export NCREAMER_AI_MODEL=qwen2.5:7b
 ncreamer -r 'template=<AI:根据内容起一个简短描述性文件名>_<SEQ><.EXT>' -r sanitize 笔记/
 ```
 
-它会读文件内容（文本、PDF 的文本层等）再生成名字。**这一步要联网、要花钱，所以只在你点"预览"或运行命令时发生一次**，之后结果会缓存，反复改别的参数不会重复请求。
+用远程 API 也行(GUI 设置里填,优先级高于环境变量),但**默认设计是把你家硬盘上的东西留在家里的机器上**——文件内容只在你开启那一刻发一次,结果缓存下来,反复改别的参数不会重复请求、也不会重复上传。
+
+> 这一步是唯一会联网的步骤,所以只有你显式点"预览"或运行命令时才会发生一次。
 
 ### CSV 清单：改乱了也能找回来
 
@@ -258,18 +269,6 @@ ncreamer -p presets/book-meta.json 书库/
 
 ---
 
-## 几条设计上的取舍
-
-写下来，免得以后自己忘了为什么这么做。
-
-- **默认 dry-run**：`-apply` 之前一个字节都不会动。改名器离用户的数据太近了，多一次确认不算麻烦。
-- **非法字符改全角而不是删掉**：`AC/DC` 删掉斜杠变成 `ACDC`，信息就没了；变成 `AC／DC` 还认得出来。
-- **冲突在预览阶段就标出来**：两个文件改成同一个名字、目标已经被占用——这些在执行前逐个文件标红，而不是执行到一半才发现。
-- **只改大小写不做"目标已存在"报错**：Windows/macOS 的文件系统不区分大小写，`the union.mp3` 改成 `THE UNION.mp3` 目标是同一个文件。这种情况用 `os.SameFile` 认出来，执行时走临时名两步改名，回滚也照样有效。
-- **纯 Go、无 cgo**：一个二进制文件，交叉编译不求人，老机器上也不会缺 DLL。
-
----
-
 ## 构建
 
 ```powershell
@@ -301,18 +300,15 @@ cd gui && go test -run TestE2E -v .        # 真实文件端到端(需要 testfi
 ## 路线图
 
 - 更多元数据：MKV、EXIF
-- 音频标签写入（xTools 还能写标签，这里暂只读）
 - 设置页改进：AI 配置按已配置/未配置折叠、主色实时预览条
 
 ## 致谢
 
-- 设计思路来自二十年前的 **xTools 批量更名器**——多步管道、元变量、谨慎预览，这些巧思都值得留下来；
 - 界面基于 [mygo](https://github.com/egoist/mygo)，纯 Go 无 cgo 的桌面框架；
 - 拼音 [go-pinyin](https://github.com/mozillazg/go-pinyin)，繁简 [OpenCC](https://github.com/longbridgeapp/opencc)，图标 [Flowbite](https://flowbite.com)(MIT)。
 
 ## 许可证
 
-<!-- 待定:发布前把下面一行换成实际选择(MIT / Apache-2.0 / 其它),并补上 LICENSE 文件。
-     GitHub 只有在仓库里有 LICENSE 文件时才会在页面上显示许可证徽标。 -->
+[MIT](LICENSE)。
 
-尚未选定。在确定之前,代码按"保留所有权利"处理;确定后会补上 `LICENSE` 文件并更新本节。
+用这个软件改名是你自己的事：改名操作只发生在本机磁盘上，不会向任何服务器回报，也没有遥测。
