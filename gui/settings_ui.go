@@ -64,6 +64,9 @@ func (a *app) settingsDialog(c *ui.Context) {
 						row("API Key", func() {
 							ui.TextInput(c, &a.settings.AI.Key).Placeholder("sk-…(留空用环境变量 NCREAMER_AI_KEY)").Fill()
 						})
+						row("等待秒数", func() {
+							ui.TextInput(c, &a.aiTimeoutText).Placeholder("300(默认;本地慢模型可调大)").Fill()
+						})
 					})
 					card("文件", func() {
 						row("操作日志", func() {
@@ -128,6 +131,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 					a.settingsOpen = false
 				}
 				if ui.PrimaryButton(c, "保存").Radius(16).Clicked() {
+					a.commitAITimeout()
 					if a.seedFollow {
 						a.settings.Theme.Seed = ""
 					} else {

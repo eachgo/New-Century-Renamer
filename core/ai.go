@@ -50,10 +50,26 @@ func aiConfig() (base, key, model string, ok bool) {
 
 // aiTimeout is how long to wait for one model reply. Local 7B~9B models can
 // take minutes when the snippet is a long PDF, so the default is deliberately
-// generous. Override with NCREAMER_AI_TIMEOUT (seconds).
+// generous. Override with NCREAMER_AI_TIMEOUT (seconds) or SetAITimeout.
 const defaultAITimeout = 300 * time.Second
 
+// aiTimeoutOverride is set by the GUI settings dialog (seconds); 0 means unset.
+var aiTimeoutOverride int
+
+// SetAITimeout lets the GUI override the wait time without env vars.
+// Zero or negative restores the default/env behavior.
+func SetAITimeout(seconds int) {
+	if seconds > 0 {
+		aiTimeoutOverride = seconds
+	} else {
+		aiTimeoutOverride = 0
+	}
+}
+
 func aiTimeout() time.Duration {
+	if aiTimeoutOverride > 0 {
+		return time.Duration(aiTimeoutOverride) * time.Second
+	}
 	if s := os.Getenv("NCREAMER_AI_TIMEOUT"); s != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && n > 0 {
 			return time.Duration(n) * time.Second

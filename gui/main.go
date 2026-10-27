@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,13 +37,14 @@ type app struct {
 	applied  bool // true after 执行/回滚, until steps or files change
 	lastSpec string
 
-	settings     Settings
-	settingsOpen bool
-	extColors    map[string]ui.Color // per-extension chip colors (main-thread)
-	seedFollow   bool                // theme seed follows the desktop accent
-	seedPick     ui.Color            // theme seed when not following
-	confirmClear bool                // 清空列表 needs a second click
-	saveErr      string              // settings dialog save error, shown in-dialog
+	settings      Settings
+	settingsOpen  bool
+	extColors     map[string]ui.Color // per-extension chip colors (main-thread)
+	seedFollow    bool                // theme seed follows the desktop accent
+	seedPick      ui.Color            // theme seed when not following
+	confirmClear  bool                // 清空列表 needs a second click
+	saveErr       string              // settings dialog save error, shown in-dialog
+	aiTimeoutText string              // 设置里"等待秒数"输入框的文本缓冲
 
 	steps    []guiRule // ordered task steps
 	stepSel  int       // selected step, -1 = none
@@ -1057,5 +1059,22 @@ func (a *app) syncSeedUI() {
 		a.seedPick = c
 	} else {
 		a.seedPick = ui.Hex(fallbackSeed)
+	}
+	// 等待秒数:0 表示用默认(300),输入框留空即显示默认提示
+	if a.settings.AI.Timeout > 0 {
+		a.aiTimeoutText = strconv.Itoa(a.settings.AI.Timeout)
+	} else {
+		a.aiTimeoutText = ""
+	}
+}
+
+// commitAITimeout parses the "等待秒数" text buffer back into the settings.
+// 空串 / 非数字 / <=0 一律视为"用默认",即清成 0。
+func (a *app) commitAITimeout() {
+	s := strings.TrimSpace(a.aiTimeoutText)
+	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+		a.settings.AI.Timeout = n
+	} else {
+		a.settings.AI.Timeout = 0
 	}
 }

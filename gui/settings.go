@@ -16,6 +16,9 @@ type Settings struct {
 		Base  string `json:"base,omitempty"`
 		Key   string `json:"key,omitempty"`
 		Model string `json:"model,omitempty"`
+		// Timeout 是等待模型回复的秒数;0 表示用默认(300 秒)。
+		// 本地慢模型读完长 PDF 常要一两分钟,可在此调大。
+		Timeout int `json:"timeout,omitempty"`
 	} `json:"ai"`
 	Journal string `json:"journal,omitempty"`
 	Theme   struct {
@@ -63,6 +66,7 @@ func SaveSettings(s Settings) error {
 func (a *app) ApplySettings() {
 	a.assignExtColors(a.currentTheme())
 	core.SetAIConfig(a.settings.AI.Base, a.settings.AI.Key, a.settings.AI.Model)
+	core.SetAITimeout(a.settings.AI.Timeout)
 }
 
 // ExportSettingsTo writes the settings as JSON to an arbitrary path.
