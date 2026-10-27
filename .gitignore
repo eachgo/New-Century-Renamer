@@ -1,7 +1,10 @@
 # 构建产物
 reamer.exe
+reamer-gui.exe
 gui/reamer-gui.exe
+gui/gui.exe
 gui/build/
+dist/
 
 # 运行时状态(可能含 API Key)
 reamer-settings.json
@@ -13,6 +16,13 @@ reamer-list.csv
 demo/
 csvtest/
 
+# 测试素材:约 200MB 的音频/PDF/EPUB,不入库。
+# 端到端测试(gui/e2e_test.go)在此目录缺失时自动 skip。
+testfile/
+
+# 调试截图
+dbg*.png
+
 # 原始 xTools 软件(三方,参考用,不入库)
 xTools.exe
 xToolsRs.dll
@@ -21,20 +31,15 @@ pncrt.dll
 rmme3260.dll
 rmto3260.dll
 xTools.chm
+WhatsNew.txt
 Language/
 Add-ons/
 chm/
 
 # 书籍(扫描版/版权文件)
 *.epub
-写给大家看的设计书_威廉姆斯_美.epub
-Dont_Make_Me_Think,_Revisited_A_Commo.epub
 
 # 杂项
 *.log
 Thumbs.db
-*.exe
 *.exe~
-dbg*.png
-
-dist/

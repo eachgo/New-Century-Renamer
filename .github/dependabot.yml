@@ -1,0 +1,29 @@
+# 依赖更新交给 Dependabot。Go 生态的更新大多安全,但 mygo 属于
+# 图形层,升级要在三平台 CI 上过一遍再合并。
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      go-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /gui
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      gui-deps:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

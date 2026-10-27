@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # 老版本 Go 会经 GOTOOLCHAIN=auto 自动下载 gui/go.mod 要求的工具链
+  GOTOOLCHAIN: auto
+
+jobs:
+  build:
+    name: 构建与测试 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            gui/go.sum
+
+      - name: 格式检查
+        if: runner.os == 'Linux'
+        run: |
+          unformatted="$(gofmt -l . 2>/dev/null | grep -v '^gui/' || true)"
+          if [ -n "$unformatted" ]; then
+            echo "以下文件未 gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet (core + cli)
+        run: go vet ./...
+
+      - name: 测试 core
+        run: go test ./... -count=1
+
+      - name: 构建 CLI
+        run: go build ./cmd/reamer
+
+      # GUI 依赖 mygo(纯 Go 无 cgo),三平台都能编译;
+      # 但只有 Windows 产物是给用户双击用的,其余平台仅作编译回归。
+      - name: 构建 GUI
+        working-directory: gui
+        run: go build .
+
+      # 端到端测试(TestE2E*)要读 testfile/ 里的真实音频/PDF,
+      # 那个目录体积约 200MB,不入库,因此这里跳过;本地有素材时会照常跑。
+      - name: 测试 GUI(无头)
+        working-directory: gui
+        run: go test . -count=1 -skip '^TestE2E'

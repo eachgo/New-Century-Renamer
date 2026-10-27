@@ -1,0 +1,21 @@
+# 这些路径的改动不会触发 CI:文档、预设、截图、动作配置本身。
+# 注意:.github/workflows/ 下的改动仍然会跑(需要验证 workflow 本身没坏)。
+'**/*.md':
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.md']
+
+'gui':
+  - changed-files:
+      - any-glob-to-any-file: ['gui/**']
+
+'core':
+  - changed-files:
+      - any-glob-to-any-file: ['core/**']
+
+'build':
+  - changed-files:
+      - any-glob-to-any-file: ['build.ps1', '.github/workflows/**', 'Makefile']
+
+'dependencies':
+  - changed-files:
+      - any-glob-to-any-file: ['go.mod', 'go.sum', 'gui/go.mod', 'gui/go.sum']

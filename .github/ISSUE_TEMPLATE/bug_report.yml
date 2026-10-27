@@ -1,0 +1,93 @@
+name: 问题报告
+description: 报告一个 bug 或提出改进建议
+labels: [triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        改名器**直接动用户的文件**,所以一个能复现的最小例子比什么都重要。
+        请尽量填全,尤其是"期望"和"实际"两栏。
+
+  - type: dropdown
+    id: channel
+    attributes:
+      label: 你用的是
+      options:
+        - GUI(界面)
+        - CLI(命令行)
+        - 两者都有
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: GUI 在设置里,CLI 用 `reamer -v`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options:
+        - Windows amd64
+        - Windows arm64
+        - Linux amd64
+        - Linux arm64
+        - macOS arm64
+        - 自己编译的
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 期望的结果,和实际的结果
+      placeholder: |
+        期望:……
+        实际:……
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: CLI 请附上完整命令;GUI 请说明点了哪些步骤、参数是什么
+      placeholder: |
+        1. reamer -r 'template=<META:artist> - <META:title><.EXT>' 某目录/
+        2. ……
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: 涉及的文件名
+      description: |
+        改成错误之前长什么样。如果文件名本身涉密,替换成同等长度的假名即可——
+        字符数、全角半角、特殊符号这些细节往往正是问题所在。
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 失败时把文件卡片上的红色原因、或命令行输出贴上来;截图可直接拖进来
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我已经看过 README 和 `reamer`(无参数)的帮助输出
+        - label: 问题能用预览模式(不加 `-apply`)复现
