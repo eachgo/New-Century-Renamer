@@ -115,8 +115,12 @@ func ExpandVars(tpl string, ctx *Ctx, dir, name string) string {
 			}
 			return ToPinyin(inner)
 		case strings.HasPrefix(key, "AI:"):
+			// cache key 与 pipeline 预热时保持一致:路径 + \x00 + 指令正文
+			// (不含 "AI:" 前缀)。历史上这里用了 key(含前缀),与写入端不符,
+			// 导致 AI 变量永远回填不了、模板里留着原样的 <AI:…> 占位符。
+			instr := strings.TrimPrefix(key, "AI:")
 			if ctx.Vars != nil {
-				if v, ok := ctx.Vars(filepath.Join(dir, name) + "\x00" + key); ok {
+				if v, ok := ctx.Vars(filepath.Join(dir, name) + "\x00" + instr); ok {
 					return v
 				}
 			}

@@ -45,10 +45,12 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 			}
 		}
 		if needsAI {
-			// resolved lazily per variable inside ExpandVars via ctx.Vars;
-			// pre-walk templates here to warm the cache
+			// 预填 AI 结果缓存:key 必须与 ExpandVars 查询时用的表达式一致
+			// (filepath.Join(dir, name) + "\x00" + 指令正文),否则查不到、
+			// 模板里会残留原样的 <AI:…> 占位符。
+			self := filepath.Join(dir, name)
 			for _, instr := range aiInstructions(rules, name) {
-				key := f + "\x00" + instr
+				key := self + "\x00" + instr
 				if _, done := aiCache[key]; done {
 					continue
 				}

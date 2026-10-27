@@ -54,6 +54,7 @@ func usage() {
   -v             版本
 
 AI 配置(环境变量): NCREAMER_AI_BASE / NCREAMER_AI_KEY / NCREAMER_AI_MODEL
+                   NCREAMER_AI_TIMEOUT(秒, 默认 300; 本地慢模型可调大)
 `)
 }
 

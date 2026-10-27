@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -47,6 +48,20 @@ func aiConfig() (base, key, model string, ok bool) {
 	return base, key, model, key != ""
 }
 
+// aiTimeout is how long to wait for one model reply. Local 7B~9B models can
+// take minutes when the snippet is a long PDF, so the default is deliberately
+// generous. Override with NCREAMER_AI_TIMEOUT (seconds).
+const defaultAITimeout = 300 * time.Second
+
+func aiTimeout() time.Duration {
+	if s := os.Getenv("NCREAMER_AI_TIMEOUT"); s != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return defaultAITimeout
+}
+
 func aiGenerate(path, instruction string) (string, error) {
 	base, key, model, ok := aiConfig()
 	if !ok {
@@ -70,7 +85,7 @@ func aiGenerate(path, instruction string) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := &http.Client{Timeout: aiTimeout()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
