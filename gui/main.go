@@ -726,7 +726,13 @@ func (a *app) addPaths(paths []string) {
 	a.status = fmt.Sprintf("已添加,共 %d 个文件", len(a.files))
 	a.confirmClear = false
 	a.applied = false
-	a.preview()
+	// AI 步骤不能在这里自动预览:preview() 是同步的,一旦含 <AI:…> 就会在
+	// 主线程里联网阻塞几十秒,加入文件的瞬间 UI 卡死。AI 只走显式"预览"按钮。
+	// 这与 view() 里的实时预览判断保持一致;否则清空列表后再加文件会立刻
+	// 重新触发一轮查询并卡死。
+	if !a.hasAIStep() {
+		a.preview()
+	}
 	a.update() // addPaths runs off the view pass (dialogs, drops)
 }
 

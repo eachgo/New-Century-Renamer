@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 // RenameOp is the planned rename for one file plus any pipeline error.
@@ -21,8 +23,16 @@ type RenameOp struct {
 // per-file instead of aborting the batch (xTools' "check before apply").
 func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 	metaCache := map[string]map[string]string{}
-	aiCache := map[string]string{}
 	counters := map[string]int{} // shared across files: seq group numbering
+
+	// AI calls block on the network, often for seconds to minutes each. Doing
+	// them one file at a time inside the main loop made a batch of N files take
+	// N round-trips serially — the more files, the slower it felt. Prefetch all
+	// (file, instruction) pairs concurrently first, then the loop just reads
+	// the cache. The cache key must match ExpandVars' lookup: self + "\x00" +
+	// instruction (no "AI:" prefix), or the placeholder would never resolve.
+	aiCache, aiErrs := prefetchAI(rules, files)
+
 	for i, f := range files {
 		dir, name := filepath.Split(f)
 		dir = filepath.Clean(dir)
@@ -45,21 +55,16 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 			}
 		}
 		if needsAI {
-			// 预填 AI 结果缓存:key 必须与 ExpandVars 查询时用的表达式一致
-			// (filepath.Join(dir, name) + "\x00" + 指令正文),否则查不到、
-			// 模板里会残留原样的 <AI:…> 占位符。
-			self := filepath.Join(dir, name)
-			for _, instr := range aiInstructions(rules, name) {
-				key := self + "\x00" + instr
-				if _, done := aiCache[key]; done {
-					continue
-				}
-				v, err := aiGenerate(f, instr)
-				if err != nil {
-					errs = append(errs, fmt.Errorf("%s: AI: %w", f, err))
-					v = "" // leave placeholder; error reported
-				}
-				aiCache[key] = v
+			if aiErr := aiErrs[f]; aiErr != nil {
+				// Mark this file as failed so the preview shows it as a problem
+				// and apply skips it — never rename it to a literal "<AI:…>"
+				// placeholder or an empty fragment like a bare ".md".
+				op.Err = aiErr
+				op.NewName = name
+				op.ErrText = op.Err.Error()
+				errs = append(errs, aiErr)
+				plan = append(plan, op)
+				continue
 			}
 		}
 		for ri, rule := range rules {
@@ -85,6 +90,84 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 	}
 	preflight(plan)
 	return plan, errs
+}
+
+// aiConcurrency is how many model requests run at once during a batch. Local
+// servers usually handle a few in parallel; too many can thrash a small model,
+// so keep it modest and overridable.
+const defaultAIConcurrency = 4
+
+// prefetchAI runs every needed AI request for the whole batch concurrently and
+// returns the cache (key = self + "\x00" + instruction) plus per-file errors.
+// A file is keyed by its path in aiErrs so the main loop can mark it failed.
+func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs map[string]error) {
+	cache = map[string]string{}
+	aiErrs = map[string]error{}
+
+	type job struct {
+		file, instr, key string
+	}
+	var jobs []job
+	for _, f := range files {
+		dir, name := filepath.Split(f)
+		dir = filepath.Clean(dir)
+		if _, needsAI := analyze(rules, name); !needsAI {
+			continue
+		}
+		self := filepath.Join(dir, name)
+		for _, instr := range aiInstructions(rules, name) {
+			key := self + "\x00" + instr
+			if _, dup := cache[key]; dup {
+				continue
+			}
+			cache[key] = "" // reserve so a duplicate key isn't queued twice
+			jobs = append(jobs, job{file: f, instr: instr, key: key})
+		}
+	}
+	if len(jobs) == 0 {
+		return cache, aiErrs
+	}
+
+	conc := AIConcurrency()
+	if conc < 1 {
+		conc = 1
+	}
+	if conc > len(jobs) {
+		conc = len(jobs)
+	}
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, conc)
+	for _, j := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			v, err := aiGenerate(j.file, j.instr)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				aiErrs[j.file] = fmt.Errorf("%s: AI: %w", j.file, err)
+				delete(cache, j.key) // don't leave a false empty hit
+				return
+			}
+			cache[j.key] = v
+		}(j)
+	}
+	wg.Wait()
+	return cache, aiErrs
+}
+
+// AIConcurrency is the batch concurrency; override with NCREAMER_AI_CONCURRENCY.
+func AIConcurrency() int {
+	if s := os.Getenv("NCREAMER_AI_CONCURRENCY"); s != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultAIConcurrency
 }
 
 // applyRule runs one rule for one file, honoring the pipeline state: state

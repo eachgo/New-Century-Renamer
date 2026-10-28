@@ -127,7 +127,14 @@ func aiGenerate(path, instruction string) (string, error) {
 	s := strings.TrimSpace(out.Choices[0].Message.Content)
 	s = strings.ReplaceAll(s, "\n", "")
 	s = strings.ReplaceAll(s, "\"", "")
-	return sanitizeFragment(s), nil
+	s = sanitizeFragment(s)
+	if s == "" {
+		// An empty answer must be an error, not an empty fragment: silently
+		// returning "" would let the template collapse to just its extension
+		// (e.g. "<AI:…><.EXT>" -> ".md"), renaming the file to a bare ".md".
+		return "", fmt.Errorf("AI 返回空内容")
+	}
+	return s, nil
 }
 
 // contentSnippet reads a text-ish prefix of the file for the model.

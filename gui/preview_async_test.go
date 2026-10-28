@@ -101,3 +101,57 @@ func TestPreviewAsyncShowsSpinner(t *testing.T) {
 		t.Fatalf("预期 AI 起的名字含'慢慢来',实际 %q", got)
 	}
 }
+
+// TestAddFilesWithAIStepDoesNotAutoQuery reproduces the third reported bug:
+// after clicking the AI preview button (and even after clearing the list),
+// adding any file immediately kicked off another round of AI queries and
+// froze the UI. addPaths must not auto-preview when there is an AI step —
+// the AI call only runs from the explicit button.
+func TestAddFilesWithAIStepDoesNotAutoQuery(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		time.Sleep(800 * time.Millisecond) // a slow call that would freeze the UI if awaited
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": "名字"}}},
+		})
+	}))
+	defer srv.Close()
+
+	core.SetAIConfig(srv.URL, "test-key", "mock-model")
+	defer core.SetAIConfig("", "", "")
+
+	dir := t.TempDir()
+	p1 := filepath.Join(dir, "one.txt")
+	p2 := filepath.Join(dir, "two.txt")
+	os.WriteFile(p1, []byte("a"), 0o644)
+	os.WriteFile(p2, []byte("b"), 0o644)
+
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	r := step("ai")
+	r.tpl = "<AI:视内容起个名字><.EXT>"
+	a.steps = []guiRule{r}
+
+	// Adding a file with an AI step must return immediately and must NOT
+	// trigger any model request or block on the network.
+	start := time.Now()
+	a.addPaths([]string{p1})
+	if elapsed := time.Since(start); elapsed > 300*time.Millisecond {
+		t.Fatalf("添加文件时阻塞了 %v(含 AI 步骤不应自动预览)", elapsed)
+	}
+	if n := atomic.LoadInt32(&hits); n != 0 {
+		t.Fatalf("添加文件不应自动发起 AI 查询,实际请求了 %d 次", n)
+	}
+	if a.busy || a.busyAI {
+		t.Fatal("添加文件后不应处于忙碌状态")
+	}
+
+	// Simulate the reported sequence: clear the list, then add another file.
+	// Still must not start a query.
+	a.files = nil
+	a.addPaths([]string{p2})
+	time.Sleep(50 * time.Millisecond)
+	if n := atomic.LoadInt32(&hits); n != 0 {
+		t.Fatalf("清空后再加文件仍不应自动查询,实际 %d 次", n)
+	}
+}
