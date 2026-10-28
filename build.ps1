@@ -51,7 +51,7 @@ foreach ($t in $targets) {
     $goos, $goarch = $t -split '/'
     Write-Host "构建 $goos/$goarch"
     Build-Cli $goos $goarch
-    # mygo 的 Linux GUI 需要桌面环境(WebKitGTK/GTK),此脚本 Linux 只出 CLI
+    # mygo 的 Linux GUI 要连系统显示服务(X11/Wayland)+OpenGL,此脚本 Linux 只出 CLI
     if ($goos -ne "linux") { Build-Gui $goos $goarch }
 }
 

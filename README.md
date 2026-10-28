@@ -48,7 +48,7 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 - [x] **非法字符改全角**：`/ \ : * ? " < > |` 不会粗暴删掉（删掉就丢信息了），而是换成 `／＼：＊？＂＜＞｜`
 - [x] **CSV 清单即备份**：导出列表带每个文件的 sha256 指纹——文件名被改乱了，也能靠"内容没变"找回原名
 - [x] **一键回滚**：操作日志记录了每一次改名，`ncreamer undo` 整批退回去
-- [x] **纯 64 位 / ARM 的现代重制**：单个可执行文件，无安装器、无 cgo，交叉编译一份全平台通用（GUI 版借用系统自带的 WebView 运行时）
+- [x] **纯 64 位 / ARM 的现代重制**：单个可执行文件，无安装器、无 cgo，交叉编译一份全平台通用（GUI 是原生界面，由程序自己在 GPU 上绘制，不依赖任何浏览器内核）
 - [ ] 更多元数据格式：MKV、EXIF（见[路线图](#路线图)）
 - [ ] 音频标签写入（目前只读不写）
 
@@ -94,7 +94,7 @@ macOS 版 GUI（`ncreamer-gui-darwin-arm64`）同理，下载后 `chmod +x` 直�
 
 > macOS 上没签名没公证，首次打开会被 Gatekeeper 拦一下：右键点图标 → 打开，或者到"系统设置 → 隐私与安全性"里放行一次。
 
-Linux 只发布 CLI：GUI 依赖桌面环境里的 WebKitGTK，各发行版差异太大，不提供通用二进制（想用界面可以自己编译，见[构建](#构建)）。
+Linux 只发布 CLI：图形界面要连系统的显示服务（X11/Wayland）和 OpenGL，各发行版的桌面环境差异较大，暂不提供通用二进制（想用界面可以自己编译，见[构建](#构建)）。界面是程序自己在 GPU 上画的，不需要额外装浏览器内核。
 
 ### 从源码构建
 
@@ -311,7 +311,7 @@ cd gui && go test -run TestE2E -v .        # 真实文件端到端
 
 ## 致谢
 
-- 界面基于 [mygo](https://github.com/egoist/mygo)，纯 Go 无 cgo 的桌面框架；
+- 界面基于 [mygo](https://github.com/egoist/mygo)，纯 Go 无 cgo 的桌面框架——我们用它的原生 UI（自己绘制在 GPU 上，无 HTML/JS、不占用浏览器内核），所以启动快、内存开销小，也不必额外装浏览器运行时；
 - 拼音 [go-pinyin](https://github.com/mozillazg/go-pinyin)，繁简 [OpenCC](https://github.com/longbridgeapp/opencc)，图标 [Flowbite](https://flowbite.com)(MIT)。
 
 ## 许可证

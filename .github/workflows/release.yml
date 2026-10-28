@@ -72,7 +72,8 @@ jobs:
           for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/arm64; do
             goos="${t%%/*}"; goarch="${t##*/}"
             build_cli "$goos" "$goarch"
-            # mygo 的 Linux GUI 需要桌面环境(WebKitGTK/GTK),Linux 只出 CLI
+            # mygo 的 Linux GUI 要连系统显示服务(X11/Wayland)+OpenGL,各发行版
+            # 桌面差异大，Linux 只出 CLI
             [ "$goos" != "linux" ] && build_gui "$goos" "$goarch"
           done
 
