@@ -22,7 +22,7 @@ import (
 var version = "0.1.1"
 
 func usage() {
-	fmt.Print(`ncreamer ` + version + ` - 跨向更名器 New Century Renamer(继承 xTools 巧思的现代版)
+	fmt.Print(`ncreamer ` + version + ` - 跨向更名器 New Century Renamer
 
 用法:
   ncreamer [选项] 文件或目录...
@@ -186,10 +186,7 @@ func main() {
 		fatal(err)
 	}
 
-	plan, errs := core.RunPipeline(rules, files)
-	for _, e := range errs {
-		fmt.Fprintln(os.Stderr, "跳过:", e)
-	}
+	plan, _ := core.RunPipeline(rules, files)
 
 	// preview
 	changed := 0
@@ -206,7 +203,7 @@ func main() {
 			fmt.Printf("    错误: %v\n", op.Err)
 		}
 	}
-	fmt.Printf("%d 个文件, %d 个将更名, %d 个有问题\n", len(plan), countOK(plan), len(errs)+countErr(plan))
+	fmt.Printf("%d 个文件, %d 个将更名, %d 个有问题\n", len(plan), countOK(plan), countErr(plan))
 
 	if !apply {
 		fmt.Println("(预览模式, 加 -apply 执行)")

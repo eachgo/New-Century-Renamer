@@ -924,10 +924,10 @@ func (a *app) preview() {
 	for i := range a.files {
 		paths[i] = a.files[i].path
 	}
-	ops, errs := core.RunPipeline(rules, paths)
+	ops, _ := core.RunPipeline(rules, paths)
 	a.ops = ops
 	a.status = fmt.Sprintf("%d 个将更名", countChanges(ops))
-	if n := len(errs) + countErrs(ops); n > 0 {
+	if n := countErrs(ops); n > 0 {
 		a.status += fmt.Sprintf(",%d 个有问题", n)
 	}
 	if a.hasAIStep() && strings.Contains(strings.Join(a.stepSpecs(), ""), "<AI:") {
