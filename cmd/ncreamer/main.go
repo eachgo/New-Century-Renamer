@@ -19,7 +19,7 @@ import (
 )
 
 // version 为变量以便 build.ps1 用 -ldflags -X 注入
-var version = "0.1.0"
+var version = "0.1.1"
 
 func usage() {
 	fmt.Print(`ncreamer ` + version + ` - 跨向更名器 New Century Renamer(继承 xTools 巧思的现代版)

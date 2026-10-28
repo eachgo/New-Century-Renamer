@@ -24,7 +24,7 @@ body:
     attributes:
       label: 版本
       description: GUI 在设置里,CLI 用 `ncreamer -v`
-      placeholder: "0.1.0"
+      placeholder: "0.1.1"
     validations:
       required: true
 

@@ -8,7 +8,7 @@ on:
       version:
         description: "版本号(不含 v,仅手动触发时使用)"
         required: true
-        default: "0.1.0"
+        default: "0.1.1"
 
 permissions:
   contents: write
