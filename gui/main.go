@@ -29,14 +29,15 @@ type fileInfo struct {
 // app is the state the window shows: three panes — catalog, task steps,
 // file preview.
 type app struct {
-	win      *mygo.Window
-	files    []fileInfo
-	ops      []core.RenameOp // preview or apply result, aligned with files
-	status   string
-	busy     bool
-	busyAI   bool // busy because an AI (network) call is in flight — show spinner
-	applied  bool // true after 执行/回滚, until steps or files change
-	lastSpec string
+	win       *mygo.Window
+	files     []fileInfo
+	ops       []core.RenameOp // preview or apply result, aligned with files
+	status    string
+	busy      bool
+	busyAI    bool      // busy because an AI (network) call is in flight — show spinner
+	busyStart time.Time // when the current busy op began (for the elapsed timer)
+	applied   bool      // true after 执行/回滚, until steps or files change
+	lastSpec  string
 
 	settings          Settings
 	settingsOpen      bool
@@ -536,6 +537,11 @@ func (a *app) filesView(c *ui.Context) {
 					if a.busyAI {
 						label = "正在联网命名,模型思考中…"
 					}
+					if !a.busyStart.IsZero() {
+						if sec := int(time.Since(a.busyStart).Seconds()); sec >= 1 {
+							label = fmt.Sprintf("%s 已等待 %d 秒", label, sec)
+						}
+					}
 					ui.Text(c, label).TextColor(t.TextMuted)
 				})
 			} else if a.status != "" {
@@ -880,9 +886,26 @@ func (a *app) stepSpecs() []string {
 func (a *app) previewAsync() {
 	a.busy = true
 	a.busyAI = true
+	a.busyStart = time.Now()
 	a.status = "正在联网命名,模型思考中…"
 	a.update()
+	// Tick the UI once a second so the wait shows live elapsed seconds instead of
+	// a frozen spinner. The user can tell it's working, not hung.
+	stop := make(chan struct{})
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				a.update()
+			}
+		}
+	}()
 	defer func() {
+		close(stop)
 		a.busy = false
 		a.busyAI = false
 		a.update()
@@ -969,9 +992,11 @@ func countErrs(ops []core.RenameOp) (n int) {
 
 func (a *app) apply() {
 	a.busy = true
+	a.busyStart = time.Now()
 	a.update()
 	err := core.ApplyPlan(a.ops, a.settings.Journal)
 	a.busy = false
+	a.busyStart = time.Time{}
 	a.applied = true
 	if err != nil {
 		a.status = "执行出错: " + err.Error()
@@ -995,9 +1020,11 @@ func (a *app) apply() {
 
 func (a *app) undo() {
 	a.busy = true
+	a.busyStart = time.Now()
 	a.update()
 	err := core.UndoJournal(a.settings.Journal)
 	a.busy = false
+	a.busyStart = time.Time{}
 	if err != nil {
 		a.status = "回滚失败: " + err.Error()
 	} else {

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // RenameOp is the planned rename for one file plus any pipeline error.
@@ -139,18 +140,33 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, conc)
+	// Circuit breaker: once the server proves it's down (fatal error), stop
+	// starting new requests. Without this a batch of N files waits on N doomed
+	// round-trips to the same dead gateway — which is exactly the "server 502
+	// but the app keeps waiting" symptom.
+	var aborted int32
 	for _, j := range jobs {
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(j job) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if atomic.LoadInt32(&aborted) != 0 {
+				mu.Lock()
+				aiErrs[j.file] = fmt.Errorf("%s: AI: 已跳过(服务器无响应,批量已中止)", j.file)
+				delete(cache, j.key)
+				mu.Unlock()
+				return
+			}
 			v, err := aiGenerate(j.file, j.instr)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
 				aiErrs[j.file] = fmt.Errorf("%s: AI: %w", j.file, err)
 				delete(cache, j.key) // don't leave a false empty hit
+				if isFatalAIError(err) {
+					atomic.StoreInt32(&aborted, 1)
+				}
 				return
 			}
 			cache[j.key] = v

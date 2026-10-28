@@ -2,10 +2,14 @@ package core
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -76,6 +80,73 @@ func aiTimeout() time.Duration {
 		}
 	}
 	return defaultAITimeout
+}
+
+// aiHTTPClient is deliberately simple: one overall timeout, set by the user
+// (等待秒数). We do not split it into dial/TLS/header stages — a local model
+// can legitimately take the whole budget before it answers, and adding a
+// shorter "gateway" cutoff only risks killing slow-but-alive models. Rejection
+// errors (503/429/token exhausted/auth) are handled by failing fast in the
+// pipeline (see isFatalAIError), not by a shorter timeout here.
+func aiHTTPClient() *http.Client {
+	return &http.Client{Timeout: aiTimeout()}
+}
+
+// describeAIError turns the opaque transport errors into something a user can
+// act on: a header/overall timeout reads as "网关无响应/超时" rather than a
+// bare "context deadline exceeded".
+func describeAIError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var nerr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout()) {
+		return fmt.Errorf("AI 接口超时(服务器无响应): %w", err)
+	}
+	return err
+}
+
+// isFatalAIError reports whether an AI error means the request should stop the
+// whole task at once — a rejection from the server (gateway 5xx, 429 rate limit,
+// 401/403 auth, "token/quota exhausted", or a transport failure/timeout) — as
+// opposed to a per-file problem (empty answer, bad content) that only affects
+// that one file. Fatal errors trip a batch-wide circuit breaker so a dead or
+// rejecting server ends the task immediately instead of once per file.
+func isFatalAIError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var nerr net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout()) {
+		return true
+	}
+	var uerr *url.Error
+	if errors.As(err, &uerr) {
+		return true // transport-level failure: refused, reset, DNS, TLS, EOF…
+	}
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	// Timeout phrasing (covers errors not wrapping context.DeadlineExceeded).
+	if strings.Contains(msg, "超时") || strings.Contains(low, "deadline exceeded") ||
+		strings.Contains(low, "timed out") || strings.Contains(low, "timeout awaiting") {
+		return true
+	}
+	// Rejection-class HTTP statuses: gateway/server errors (5xx), rate limit
+	// (429), and auth (401/403). Any of these means waiting on the other files
+	// is pointless — stop the task now.
+	for _, code := range []string{" 500", " 502", " 503", " 504", " 429", " 401", " 403"} {
+		if strings.Contains(msg, code+":") {
+			return true
+		}
+	}
+	// Quota / token-exhausted wording that some servers return as 200-with-error
+	// or as a 4xx we don't otherwise recognise.
+	for _, kw := range []string{"quota", "insufficient", "token", "余额", "额度", "欠费", "未授权", "unauthorized"} {
+		if strings.Contains(low, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // aiConcurrencyOverride is set by the GUI settings dialog; 0 means unset.
@@ -151,10 +222,10 @@ func aiGenerate(path, instruction string) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client := &http.Client{Timeout: aiTimeout()}
+	client := aiHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", describeAIError(err)
 	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(resp.Body)

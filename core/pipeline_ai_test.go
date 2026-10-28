@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -202,5 +203,133 @@ func TestDefaultAIPromptOverride(t *testing.T) {
 	}
 	if !strings.Contains(sys, "不要引号") {
 		t.Fatalf("系统提示必须保留硬约束(不要引号等),实际 %q", sys)
+	}
+}
+
+// The reverse of the concurrency test: when the server proves it's down (502),
+// the batch must stop hammering it. Without a circuit breaker, N files = N
+// doomed round-trips to the same dead gateway — the "server 502 but the app
+// keeps waiting" symptom. Here 20 files must produce only a handful of hits.
+func TestAIFatalErrorTripsCircuitBreaker(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write([]byte(`{"error":{"message":"Bad gateway"}}`))
+	}))
+	defer srv.Close()
+	setupAI(t, srv)
+
+	dir := t.TempDir()
+	const n = 20
+	var files []string
+	for i := 0; i < n; i++ {
+		f := filepath.Join(dir, "f"+string(rune('a'+i))+".txt")
+		os.WriteFile(f, []byte("x"), 0o644)
+		files = append(files, f)
+	}
+
+	SetAIConcurrency(1) // one lane, so the breaker can skip the rest
+	defer SetAIConcurrency(0)
+
+	rules := []Rule{templateRule("<AI:命名><.EXT>")}
+	plan, errs := RunPipeline(rules, files)
+
+	if len(plan) != n {
+		t.Fatalf("期望 %d 条计划,实际 %d", n, len(plan))
+	}
+	for _, op := range plan {
+		if op.Err == nil {
+			t.Fatalf("文件 %s 应标为失败", op.OldName)
+		}
+		if op.NewName != op.OldName {
+			t.Fatalf("失败文件应保留原名 %q,实际 %q", op.OldName, op.NewName)
+		}
+	}
+	if len(errs) == 0 {
+		t.Fatal("应有错误返回")
+	}
+	got := atomic.LoadInt32(&hits)
+	if got > 3 {
+		t.Fatalf("502 应触发熔断,最多再试几次;实际向死服务器请求了 %d 次(共 %d 文件)", got, n)
+	}
+	t.Logf("circuit breaker: %d requests for %d files", got, n)
+}
+
+// A non-fatal error (one bad/empty answer) must NOT trip the breaker — the
+// other files should still be tried.
+func TestAIEmptyAnswerDoesNotTripBreaker(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		var req struct {
+			Messages []struct{ Content string } `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		name := ""
+		if len(req.Messages) > 1 {
+			for _, line := range strings.Split(req.Messages[1].Content, "\n") {
+				if strings.HasPrefix(line, "文件名: ") {
+					name = strings.TrimPrefix(line, "文件名: ")
+				}
+			}
+		}
+		content := "好名字_" + strings.TrimSuffix(name, ".txt")
+		if strings.HasPrefix(name, "bad") {
+			content = "" // empty reply for one file only
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": content}}},
+		})
+	}))
+	defer srv.Close()
+	setupAI(t, srv)
+
+	dir := t.TempDir()
+	var files []string
+	for _, nm := range []string{"bad1.txt", "good1.txt", "good2.txt", "good3.txt"} {
+		f := filepath.Join(dir, nm)
+		os.WriteFile(f, []byte("x"), 0o644)
+		files = append(files, f)
+	}
+	SetAIConcurrency(1)
+	defer SetAIConcurrency(0)
+
+	rules := []Rule{templateRule("<AI:命名><.EXT>")}
+	plan, _ := RunPipeline(rules, files)
+	if got := atomic.LoadInt32(&hits); got != int32(len(files)) {
+		t.Fatalf("空回复不应触发熔断,应请求全部 %d 个文件,实际 %d", len(files), got)
+	}
+	failed, ok := 0, 0
+	for _, op := range plan {
+		if op.Err != nil {
+			failed++
+		} else if op.NewName != op.OldName {
+			ok++
+		}
+	}
+	if failed != 1 || ok != 3 {
+		t.Fatalf("期望 1 失败 3 成功,实际 failed=%d ok=%d", failed, ok)
+	}
+}
+
+// isFatalAIError classification sanity.
+func TestIsFatalAIError(t *testing.T) {
+	cases := []struct {
+		msg   string
+		fatal bool
+	}{
+		{"AI 接口 502: bad gateway", true},
+		{"AI 接口 503: unavailable", true},
+		{"AI 接口 504: timeout", true},
+		{"AI 接口 429: rate limited", true},
+		{"AI 接口超时(服务器无响应): context deadline exceeded", true},
+		{"AI 返回空内容", false},
+		{"AI 接口 400: bad request", false},
+	}
+	for _, c := range cases {
+		if got := isFatalAIError(fmt.Errorf("%s", c.msg)); got != c.fatal {
+			t.Errorf("%q: 期望 fatal=%v 实际 %v", c.msg, c.fatal, got)
+		}
 	}
 }
