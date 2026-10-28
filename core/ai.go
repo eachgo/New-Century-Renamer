@@ -78,6 +78,56 @@ func aiTimeout() time.Duration {
 	return defaultAITimeout
 }
 
+// aiConcurrencyOverride is set by the GUI settings dialog; 0 means unset.
+var aiConcurrencyOverride int
+
+// SetAIConcurrency lets the GUI pick how many model requests run in parallel
+// without env vars. 0 restores env/default behavior. Cloud APIs rate-limit
+// aggressively, so callers often want 1; a local model may be fastest at 1~2
+// because it serializes generation anyway.
+func SetAIConcurrency(n int) {
+	if n > 0 {
+		aiConcurrencyOverride = n
+	} else {
+		aiConcurrencyOverride = 0
+	}
+}
+
+// defaultAIPrompt is the built-in instruction used when the user has not saved
+// their own. The GUI settings dialog can persist a replacement.
+const defaultAIPrompt = "根据文件内容起一个简短的名字"
+
+// aiPromptOverride is the user-saved default prompt (GUI settings); empty
+// means use the built-in default.
+var aiPromptOverride string
+
+// SetDefaultAIPrompt saves the user's preferred prompt for new "AI 按内容命名"
+// steps. Empty restores the built-in default.
+func SetDefaultAIPrompt(s string) {
+	aiPromptOverride = strings.TrimSpace(s)
+}
+
+// DefaultAIPrompt returns the instruction a fresh "AI 按内容命名" step should
+// carry: the user's saved prompt, or the built-in default.
+func DefaultAIPrompt() string {
+	if p := strings.TrimSpace(aiPromptOverride); p != "" {
+		return p
+	}
+	return defaultAIPrompt
+}
+
+// aiSystemPrompt builds the system message. The core contract (only output the
+// name fragment, no quotes/explanation/extension/newlines) is always kept; when
+// the user has saved a custom instruction it is appended as their preference so
+// the model still gets the hard constraints it must not break.
+func aiSystemPrompt() string {
+	base := "你是文件更名助手。根据用户给出的文件名、类型、内容片段和指示,只输出一个适合用作文件名的简短文本片段(不要引号、不要解释、不要文件扩展名、不要换行,保留关键信息,可用中文)。"
+	if p := strings.TrimSpace(aiPromptOverride); p != "" {
+		base += "用户另有要求,须优先遵守: " + p
+	}
+	return base
+}
+
 func aiGenerate(path, instruction string) (string, error) {
 	base, key, model, ok := aiConfig()
 	if !ok {
@@ -90,7 +140,7 @@ func aiGenerate(path, instruction string) (string, error) {
 		"model":       model,
 		"temperature": 0,
 		"messages": []map[string]string{
-			{"role": "system", "content": "你是文件更名助手。根据用户给出的文件名、类型、内容片段和指示,只输出一个适合用作文件名的简短文本片段(不要引号、不要解释、不要文件扩展名、不要换行,保留关键信息,可用中文)。"},
+			{"role": "system", "content": aiSystemPrompt()},
 			{"role": "user", "content": user},
 		},
 	})

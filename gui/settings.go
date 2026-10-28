@@ -19,6 +19,12 @@ type Settings struct {
 		// Timeout 是等待模型回复的秒数;0 表示用默认(300 秒)。
 		// 本地慢模型读完长 PDF 常要一两分钟,可在此调大。
 		Timeout int `json:"timeout,omitempty"`
+		// Concurrency 是批量请求 AI 时同时发出的路数;0 表示用默认(4 路)。
+		// 云端 API 常限流,填 1 稳妥;本地模型常是串行生成,填 1~2 也可能更快。
+		Concurrency int `json:"concurrency,omitempty"`
+		// Prompt 是用户保存的默认提示词,新建「AI 按内容命名」步骤时用它;
+		// 空表示用内置默认。
+		Prompt string `json:"prompt,omitempty"`
 	} `json:"ai"`
 	Journal string `json:"journal,omitempty"`
 	Theme   struct {
@@ -67,6 +73,8 @@ func (a *app) ApplySettings() {
 	a.assignExtColors(a.currentTheme())
 	core.SetAIConfig(a.settings.AI.Base, a.settings.AI.Key, a.settings.AI.Model)
 	core.SetAITimeout(a.settings.AI.Timeout)
+	core.SetAIConcurrency(a.settings.AI.Concurrency)
+	core.SetDefaultAIPrompt(a.settings.AI.Prompt)
 }
 
 // ExportSettingsTo writes the settings as JSON to an arbitrary path.

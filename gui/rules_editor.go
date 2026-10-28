@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+
+	"ncreamer/core"
 )
 
 // guiRule is one step in the task list. Palette entries create one with
@@ -222,7 +224,8 @@ var catalog = []opDef{
 	}},
 	{id: "ai", icon: "ai", group: "智能", label: "AI 按内容命名", desc: "调用 AI 接口读文件内容,按内容起名(需在设置里配置)", make: func() guiRule {
 		r := baseRule("template")
-		r.tpl = "<AI:根据文件内容起一个简短的名字><.EXT>"
+		// 用用户在设置里保存的默认提示词;没有就用内置默认。
+		r.tpl = "<AI:" + core.DefaultAIPrompt() + "><.EXT>"
 		return r
 	}},
 	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名,可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {

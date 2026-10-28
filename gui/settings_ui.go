@@ -31,10 +31,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 		}
 		dh := h - 48
 
-		// row is the repeated unit: fixed-width label, control fills
+		// row is the repeated unit: fixed-width label, control fills.
+		// StartAlign keeps the label at the top when the control is multi-line
+		// (e.g. the prompt TextArea) instead of floating it to the middle.
 		row := func(label string, ctl func()) {
-			ui.Row(c).Gap(12).Children(func() {
-				ui.Text(c, label).Width(labelW)
+			ui.Row(c).Gap(12).AlignItems(ui.Start).Children(func() {
+				ui.Text(c, label).Width(labelW).Padding(0, 6)
 				ctl()
 			})
 		}
@@ -66,6 +68,20 @@ func (a *app) settingsDialog(c *ui.Context) {
 						})
 						row("等待秒数", func() {
 							ui.TextInput(c, &a.aiTimeoutText).Placeholder("300(默认;本地慢模型可调大)").Fill()
+						})
+						row("并发路数", func() {
+							ui.Row(c).Gap(10).Children(func() {
+								ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4(默认)")
+								ui.Text(c, "云端 API 常限流填 1;本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+							})
+						})
+						row("默认提示词", func() {
+							ui.Column(c).Gap(4).Fill().Children(func() {
+								ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
+									Placeholder("留空用内置默认:根据文件内容起一个简短的名字")
+								ui.Text(c, "新建「AI 按内容命名」步骤时用它;只写要求,不必重复\"只输出文件名\"这类约束(程序会自动带上)。").
+									FontSize(11).TextColor(t.TextMuted)
+							})
 						})
 					})
 					card("文件", func() {
@@ -132,6 +148,8 @@ func (a *app) settingsDialog(c *ui.Context) {
 				}
 				if ui.PrimaryButton(c, "保存").Radius(16).Clicked() {
 					a.commitAITimeout()
+					a.commitAIConcurrency()
+					a.commitAIPrompt()
 					if a.seedFollow {
 						a.settings.Theme.Seed = ""
 					} else {

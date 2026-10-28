@@ -181,6 +181,9 @@ func TestSettingsRoundTrip(t *testing.T) {
 	s.AI.Base = "https://api.deepseek.com/v1"
 	s.AI.Model = "deepseek-chat"
 	s.AI.Key = "sk-test"
+	s.AI.Timeout = 600
+	s.AI.Concurrency = 1
+	s.AI.Prompt = "根据文件内容生成一个文件名,只输出文件名,不超过20个字"
 	s.Journal = "custom-journal.json"
 	p := filepath.Join(dir, "exported.json")
 	if err := ExportSettingsTo(p, s); err != nil {
@@ -193,6 +196,9 @@ func TestSettingsRoundTrip(t *testing.T) {
 	if got.AI.Base != s.AI.Base || got.AI.Key != s.AI.Key ||
 		got.AI.Model != s.AI.Model || got.Journal != s.Journal {
 		t.Fatalf("round trip mismatch: %+v", got)
+	}
+	if got.AI.Timeout != 600 || got.AI.Concurrency != 1 || got.AI.Prompt != s.AI.Prompt {
+		t.Fatalf("AI 设置(等待/并发/提示词)未往返: %+v", got.AI)
 	}
 }
 

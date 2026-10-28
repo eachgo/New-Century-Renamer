@@ -160,8 +160,13 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 	return cache, aiErrs
 }
 
-// AIConcurrency is the batch concurrency; override with NCREAMER_AI_CONCURRENCY.
+// AIConcurrency is the batch concurrency; the GUI override wins, then
+// NCREAMER_AI_CONCURRENCY, then the default. Cloud APIs rate-limit hard (use 1);
+// a local model often serializes anyway, so 1~2 may beat a wide fan-out.
 func AIConcurrency() int {
+	if aiConcurrencyOverride > 0 {
+		return aiConcurrencyOverride
+	}
 	if s := os.Getenv("NCREAMER_AI_CONCURRENCY"); s != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil && n > 0 {
 			return n

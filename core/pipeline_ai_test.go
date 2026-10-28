@@ -131,6 +131,10 @@ func TestAIBatchRunsConcurrently(t *testing.T) {
 	}
 
 	rules := []Rule{templateRule("<AI:命名><.EXT>")}
+	// Pin concurrency so the test measures fan-out regardless of ambient env or
+	// a previously-set override (a user may legitimately run single-lane).
+	SetAIConcurrency(4)
+	defer SetAIConcurrency(0)
 	start := time.Now()
 	plan, errs := RunPipeline(rules, files)
 	elapsed := time.Since(start)
@@ -163,5 +167,40 @@ func TestAIConcurrencyOverride(t *testing.T) {
 	t.Setenv("NCREAMER_AI_CONCURRENCY", "abc")
 	if got := AIConcurrency(); got != defaultAIConcurrency {
 		t.Fatalf("非法值应回落默认,实际 %d", got)
+	}
+}
+
+// The GUI override must win over the environment (settings dialog > env).
+func TestAIConcurrencyOverrideWinsOverEnv(t *testing.T) {
+	t.Setenv("NCREAMER_AI_CONCURRENCY", "7")
+	SetAIConcurrency(1)
+	defer SetAIConcurrency(0)
+	if got := AIConcurrency(); got != 1 {
+		t.Fatalf("GUI override 应优先于环境变量,期望 1,实际 %d", got)
+	}
+	SetAIConcurrency(0)
+	if got := AIConcurrency(); got != 7 {
+		t.Fatalf("清除 override 后应回落到环境变量 7,实际 %d", got)
+	}
+}
+
+// Saved default prompt: used by new steps, and folded into the system message
+// as the user's preference while keeping the hard output constraints.
+func TestDefaultAIPromptOverride(t *testing.T) {
+	defer SetDefaultAIPrompt("")
+	if got := DefaultAIPrompt(); got != defaultAIPrompt {
+		t.Fatalf("无 override 时应为内置默认 %q,实际 %q", defaultAIPrompt, got)
+	}
+	const custom = "只输出不解释,不超过20个字"
+	SetDefaultAIPrompt(custom)
+	if got := DefaultAIPrompt(); got != custom {
+		t.Fatalf("应返回保存的提示词,实际 %q", got)
+	}
+	sys := aiSystemPrompt()
+	if !strings.Contains(sys, custom) {
+		t.Fatalf("系统提示应包含用户要求,实际 %q", sys)
+	}
+	if !strings.Contains(sys, "不要引号") {
+		t.Fatalf("系统提示必须保留硬约束(不要引号等),实际 %q", sys)
 	}
 }

@@ -38,14 +38,16 @@ type app struct {
 	applied  bool // true after 执行/回滚, until steps or files change
 	lastSpec string
 
-	settings      Settings
-	settingsOpen  bool
-	extColors     map[string]ui.Color // per-extension chip colors (main-thread)
-	seedFollow    bool                // theme seed follows the desktop accent
-	seedPick      ui.Color            // theme seed when not following
-	confirmClear  bool                // 清空列表 needs a second click
-	saveErr       string              // settings dialog save error, shown in-dialog
-	aiTimeoutText string              // 设置里"等待秒数"输入框的文本缓冲
+	settings          Settings
+	settingsOpen      bool
+	extColors         map[string]ui.Color // per-extension chip colors (main-thread)
+	seedFollow        bool                // theme seed follows the desktop accent
+	seedPick          ui.Color            // theme seed when not following
+	confirmClear      bool                // 清空列表 needs a second click
+	saveErr           string              // settings dialog save error, shown in-dialog
+	aiTimeoutText     string              // 设置里"等待秒数"输入框的文本缓冲
+	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
+	aiPromptText      string              // 设置里"默认提示词"多行输入框的缓冲
 
 	steps    []guiRule // ordered task steps
 	stepSel  int       // selected step, -1 = none
@@ -1101,6 +1103,14 @@ func (a *app) syncSeedUI() {
 	} else {
 		a.aiTimeoutText = ""
 	}
+	// 并发路数:0 表示用默认(4 路),留空显示默认
+	if a.settings.AI.Concurrency > 0 {
+		a.aiConcurrencyText = strconv.Itoa(a.settings.AI.Concurrency)
+	} else {
+		a.aiConcurrencyText = ""
+	}
+	// 默认提示词:原样载入,留空表示内置默认
+	a.aiPromptText = a.settings.AI.Prompt
 }
 
 // commitAITimeout parses the "等待秒数" text buffer back into the settings.
@@ -1112,4 +1122,20 @@ func (a *app) commitAITimeout() {
 	} else {
 		a.settings.AI.Timeout = 0
 	}
+}
+
+// commitAIConcurrency parses the "并发路数" buffer. 空串 / 非数字 / <=0 视为默认。
+// 云端 API 限流时用户会填 1(单路);本地模型想多路也能填更大值。
+func (a *app) commitAIConcurrency() {
+	s := strings.TrimSpace(a.aiConcurrencyText)
+	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+		a.settings.AI.Concurrency = n
+	} else {
+		a.settings.AI.Concurrency = 0
+	}
+}
+
+// commitAIPrompt saves the "默认提示词" buffer, trimmed. 空串即恢复内置默认。
+func (a *app) commitAIPrompt() {
+	a.settings.AI.Prompt = strings.TrimSpace(a.aiPromptText)
 }
