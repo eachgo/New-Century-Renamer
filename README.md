@@ -2,6 +2,8 @@
 
 > 让你找回世纪初管理文件的感觉。
 
+[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/)
+
 ![界面截图](docs/screenshot.png)
 
 ---
@@ -42,14 +44,15 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 
 - [x] **批量更名**：拖进来多少文件都行，逐个文件显示原名 → 新名对照
 - [x] **多步规则管道**：十几条小规则自由串联，顺序即逻辑；可以筛选/排除一部分文件单独处理（`filter` / `unfilter`），也可以只改文件名或只改扩展名（`scope`）
-- [x] **读取文件自带的"名字"**：EPUB 的标题作者、MP3 的 ID3v2 标签、FLAC/OGG 的 Vorbis 注释、MP4/M4V/MOV 的 ilst、PDF 的 `/Title` `/Author`——文件名直接来自专辑和书的元数据
+- [x] **读取文件自带的"名字"**：EPUB 的标题作者、MP3 的 ID3v2 标签、FLAC/OGG 的 Vorbis 注释、MP4/M4V/MOV 的 ilst、MKV/WebM 的 Matroska 标题、PDF 的 `/Title` `/Author`——文件名直接来自专辑、影片和书的元数据
+- [x] **按 NFO 编号命名**：媒体文件夹里带着 `tvshow.nfo` / `movie.nfo` 时，按文件编号（`01`、`02` 或 `S01E05`）对到 NFO 里的那一集，用它的标题命名——元数据和编号的中间地带，编号对得上才敢改
 - [x] **AI 按内容命名**：一个 `<AI:根据内容起个名字>` 变量，接任意 OpenAI 兼容接口，让它读完正文再给文件起名
 - [x] **中文友好**：汉字转拼音、繁简互转（OpenCC）、假名转罗马音、全角半角处理
 - [x] **非法字符改全角**：`/ \ : * ? " < > |` 不会粗暴删掉（删掉就丢信息了），而是换成 `／＼：＊？＂＜＞｜`
 - [x] **CSV 清单即备份**：导出列表带每个文件的 sha256 指纹——文件名被改乱了，也能靠"内容没变"找回原名
 - [x] **一键回滚**：操作日志记录了每一次改名，`ncreamer undo` 整批退回去
 - [x] **纯 64 位 / ARM 的现代重制**：单个可执行文件，无安装器、无 cgo，交叉编译一份全平台通用（GUI 是原生界面，由程序自己在 GPU 上绘制，不依赖任何浏览器内核）
-- [ ] 更多元数据格式：MKV、EXIF（见[路线图](#路线图)）
+- [ ] 更多元数据格式：EXIF（见[路线图](#路线图)）
 - [ ] 音频标签写入（目前只读不写）
 
 ---
@@ -176,6 +179,7 @@ ncreamer undo -journal .ncreamer-journal.json
 | `template=T` | 用模板重建文件名，T 里可用变量 | `template=<META:artist> - <META:title><.EXT>` |
 | `replace=OLD,NEW[,regex]` | 替换；带 `regex` 时 OLD 是正则，NEW 可用 `$1`；参数里的 `,` 和 `\` 用 `\` 转义 | `replace=（,(` |
 | `seq=START[,WIDTH[,STEP]]` | 追加序号，按宽度补零；也支持键值写法 `seq=start:1,width:2,step:1`，另有 `base:letter`（字母编号）、`group:ext\|dir`（分组重新计数）、`tpl:……`（自定义拼法，其中 `<N>` 是序号文本） | `seq=1,2` → `01`、`02` |
+| `nfo[=T]` | **按同文件夹的 `.nfo` 编号命名**：用文件名开头的编号（`01`）或 `SxxExx` 去 NFO 里找对应那一集，取它的标题。T 可写 `<NFO:title>` `<NFO:showtitle>` `<NFO:year>` `<NFO:season>` `<NFO:episode>` 或组合变量 `<NFOName>`；省略 T 时默认 `剧名 - S01E01 - 标题`（电影为 `标题 (年份)`）。**编号在 NFO 里找不到就报错跳过，绝不猜** | `nfo` → `Severance - S01E01 - Good News About Hell.mkv` |
 | `pinyin` | 汉字转拼音，全角字母数字转半角 | `张三丰.txt` → `zhangsanfeng.txt` |
 | `sanitize` | Windows 保留字符转全角，去控制符/首尾空格/结尾点 | `a:b` → `a：b` |
 | `cc=s2t` / `cc=t2s` | 繁简互转（OpenCC 词典） | `蓝莲花` → `藍蓮花` |
@@ -206,7 +210,8 @@ ncreamer -r 'if:*.mp3>>pinyin' 某目录/    # 只有 mp3 转拼音，其他文�
 | `<CRC32>` | 文件内容 CRC32 |
 | `<SEQ>` | 当前文件在处理队列里的序号 |
 | `<Pinyin:NAME>` | 变量内容转拼音 |
-| `<META:title>`、`<META:author>`、`<META:album>`…… | 从 EPUB / MP3 / FLAC / OGG / MP4 / PDF 里读到的元数据 |
+| `<META:title>`、`<META:author>`、`<META:album>`…… | 从 EPUB / MP3 / FLAC / OGG / MP4 / MKV / PDF 里读到的元数据 |
+| `<NFO:title>`、`<NFO:showtitle>`、`<NFO:year>`、`<NFO:season>`、`<NFO:episode>`、`<NFOName>` | 仅供 `nfo` 规则：同文件夹 `.nfo` 里与当前文件编号对应那一集的标题/剧名/年份等 |
 | `<AI:指示>` | 调用 AI 按指示生成名字片段 |
 
 元数据全部为空时，模板会**保持原名**，不会产出 `" - .ext"` 这种残骸。
@@ -222,7 +227,7 @@ ncreamer -r 'if:*.mp3>>pinyin' 某目录/    # 只有 mp3 转拼音，其他文�
 - **压缩包** —— 读内部文件列表,一堆 `IMG_0342.JPG` 也能认出是"2024 春 京都行";包里带的小说明文件(`.txt` / `.nfo`)也会捎上一段;
 - **纯文本 / Markdown / 字幕** —— 直接读前若干字;
 - **图片** —— 读 EXIF:拍摄时间、机型,不用再对着文件夹猜;
-- **音视频 / 电子书** —— 顺带带上容器里的 title / artist / album / author。
+- **音视频 / 电子书** —— 顺带带上容器里的 title / artist / album / author；MKV/WebM 读 Matroska 的标题和封装工具（很多压制包标题里就写着发布组和分辨率）；同文件夹有 `.nfo` 时也会把 NFO 的剧名/标题捎给模型。
 
 读不出文字的场合(PDF 是扫描件、压缩包加过密)会老实说"没有可用文本",只给文件名和大小——**宁可少给,也不编**。
 
@@ -249,6 +254,28 @@ export NCREAMER_AI_CONCURRENCY=4   # 一次同时问几个;小模型跑不动就
 用远程 API 也行(GUI 设置里填,优先级高于环境变量),但**默认设计是把你家硬盘上的东西留在家里的机器上**——文件内容只在你开启那一刻发一次,结果缓存下来,反复改别的参数不会重复请求、也不会重复上传。
 
 > 这一步是唯一会联网的步骤,所以只有你显式点"预览"或运行命令时才会发生一次。
+
+### 按 NFO 编号命名：元数据和编号之间的那一步
+
+从碟片或整季压制里扒下来的文件夹，常常长这样：
+
+```
+01.mkv   02.mkv   03.mkv      ← 文件名里只有编号
+tvshow.nfo                    ← 剧名、年份，以及每一集的标题
+```
+
+这种文件光靠"读元数据"改不了名——MKV 容器里没写标题，`<META:title>` 是空的；但同文件夹的 `.nfo` 明明知道每一集叫什么。把它们连起来的，是文件名里的**编号**。
+
+`nfo` 规则就是这么做的：读同文件夹的 `.nfo`，用文件开头的编号（`01`）或 `SxxExx` 去找到对应那一集，用它的标题命名：
+
+```bash
+ncreamer -r 'nfo' 某剧目录/          # → Severance - S01E01 - Good News About Hell.mkv
+ncreamer -r 'nfo=<NFO:showtitle> 第<NFO:episode>集 - <NFO:title><.EXT>' 某剧目录/
+```
+
+它有个刻意的"死板"之处：**编号对不上就报错，绝不去猜。** 如果 NFO 里有分集标题、而某个文件的编号在 NFO 里找不到（比如 `09.mkv` 但 NFO 只到第 5 集），这个文件会被标成"有问题"并原样跳过——因为编号是这套流程唯一的锚点，一旦编号本身是错的，任何"聪明"的兜底都会把某一集的标题安到另一集头上。**编号准确，是这个功能的前提**。
+
+没有 NFO 的文件夹也能用 `<AI:…>` 结合 NFO 一起看：AI 那一步会把同文件夹 NFO 的剧名/标题一并交给模型。
 
 ### CSV 清单：改乱了也能找回来
 
@@ -311,7 +338,7 @@ cd gui && go test -run TestE2E -v .        # 真实文件端到端
 
 ## 路线图
 
-- 更多元数据：MKV
+- 更多元数据：EXIF 拍摄信息
 - 设置页改进：AI 配置按已配置/未配置折叠、主色实时预览条
 
 ## 致谢

@@ -70,6 +70,7 @@ var ruleKinds = []struct{ key, label string }{
 	{"truncate", "截断长度"},
 	{"ext", "改扩展名"},
 	{"seq", "追加序号"},
+	{"nfo", "按 NFO 编号命名"},
 	{"cc", "繁简转换"},
 	{"romaji", "假名转罗马音"},
 	{"filter", "筛选"},
@@ -217,6 +218,11 @@ var catalog = []opDef{
 		r.tpl = "<META:author> - <META:title><.EXT>"
 		return r
 	}},
+	{id: "meta.nfo", icon: "meta.nfo", group: "元数据", label: "按 NFO 编号命名", desc: "读同文件夹的 .nfo,按文件编号匹配该集的标题来命名(适合剧集/压制包)", make: func() guiRule {
+		r := baseRule("nfo")
+		r.tpl = ""
+		return r
+	}},
 	{id: "date.suffix", icon: "date.suffix", group: "日期", label: "文件名加日期", desc: "文件名后附加文件修改日期", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<NAME>_<DATE><.EXT>"
@@ -323,6 +329,11 @@ func (r *guiRule) spec() string {
 			spec += ",tpl:" + r.numTpl
 		}
 		return spec
+	case "nfo":
+		if strings.TrimSpace(r.tpl) == "" {
+			return "nfo"
+		}
+		return "nfo=" + r.tpl
 	}
 	return ""
 }
@@ -387,6 +398,11 @@ func (r *guiRule) summary() string {
 			desc += ",模板 " + r.numTpl
 		}
 		return desc
+	case "nfo":
+		if strings.TrimSpace(r.tpl) == "" {
+			return "按 .nfo 标题命名"
+		}
+		return r.tpl
 	}
 	return ""
 }
@@ -445,5 +461,9 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 			ui.NumberInput(c, &r.seqStep, -999, 999, 1).Width(70)
 		})
 		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>,空=追加").FillWidth() })
+	case "nfo":
+		pline("命名模板", func() {
+			ui.TextInput(c, &r.tpl).Placeholder("空=<剧名 - S01E01 - 标题>;可用 <NFO:title> <NFO:showtitle> <NFO:year> <NFO:episode>").FillWidth()
+		})
 	}
 }

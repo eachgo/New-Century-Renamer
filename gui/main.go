@@ -983,7 +983,7 @@ func countChanges(ops []core.RenameOp) (n int) {
 
 func countErrs(ops []core.RenameOp) (n int) {
 	for _, op := range ops {
-		if op.Err != nil {
+		if op.Err != nil && !core.IsSidecarFile(op.OldName) {
 			n++
 		}
 	}
@@ -1047,6 +1047,7 @@ func detectType(path string) string {
 	labels := map[string]string{
 		"epub": "EPUB 电子书", "pdf": "PDF 文档",
 		"mp4": "MP4 视频", "m4v": "MP4 视频", "mov": "MP4 视频", "m4a": "MP4 音频", "m4b": "MP4 有声书",
+		"mkv": "MKV 视频", "webm": "WebM 视频", "mka": "MKV 音频", "avi": "AVI 视频",
 		"mp3": "MP3 音频", "flac": "FLAC 音频", "ogg": "OGG 音频", "wma": "WMA 音频", "wav": "WAV 音频",
 		"jpg": "JPEG 图片", "jpeg": "JPEG 图片", "png": "PNG 图片", "gif": "GIF 图片", "webp": "WebP 图片", "bmp": "BMP 图片",
 		"txt": "文本", "md": "Markdown", "srt": "字幕", "ass": "字幕",

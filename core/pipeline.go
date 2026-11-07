@@ -273,6 +273,13 @@ func analyze(rules []Rule, _ string) (needsMeta, needsAI bool) {
 				needsAI = true
 			}
 		}
+		if nr, ok := r.(nfoRule); ok {
+			// nfoRule reads the folder's NFO itself, but if its template also
+			// asks for <META:…> we still need the container metadata.
+			if containsVarPrefix(nr.tpl, "META:") {
+				needsMeta = true
+			}
+		}
 		if rr, ok := r.(*replaceRule); ok {
 			if containsVarPrefix(rr.new, "META:") {
 				needsMeta = true

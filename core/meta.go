@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // ExtractMeta pulls metadata from modern containers — the successor of
@@ -32,6 +33,8 @@ func ExtractMeta(path string) map[string]string {
 		m = id3Meta(path)
 	case "ogg", "oga", "opus":
 		m = oggMeta(path)
+	case "mkv", "webm", "mka", "mks":
+		m = mkvMeta(path)
 	}
 	for k, v := range m {
 		if v != "" {
@@ -119,7 +122,12 @@ func epubMeta(path string) map[string]string {
 				}
 			}
 		}
-		out["title"], out["author"] = title, author
+		if title != "" {
+			out["title"] = title
+		}
+		if author != "" {
+			out["author"] = author
+		}
 		break
 	}
 	return out
@@ -135,11 +143,16 @@ func mp4Meta(path string) map[string]string {
 	}
 	title := mp4Atom(b, []string{"moov", "udta", "meta", "ilst"}, [4]byte{0xA9, 'n', 'a', 'm'})
 	artist := mp4Atom(b, []string{"moov", "udta", "meta", "ilst"}, [4]byte{0xA9, 'A', 'R', 'T'})
+	album := mp4Atom(b, []string{"moov", "udta", "meta", "ilst"}, [4]byte{0xA9, 'a', 'l', 'b'})
 	if v := mp4DataString(title); v != "" {
 		out["title"] = v
 	}
 	if v := mp4DataString(artist); v != "" {
 		out["artist"] = v
+		out["author"] = v // 与 EPUB/FLAC 的 author 同义,模板键统一
+	}
+	if v := mp4DataString(album); v != "" {
+		out["album"] = v
 	}
 	return out
 }
@@ -490,4 +503,250 @@ func oggMeta(path string) map[string]string {
 	}
 	parseVorbisComment(b[idx+7:], out)
 	return out
+}
+
+// ---- MKV / WebM: EBML (Matroska) ----
+//
+// Matroska nests size-prefixed EBML elements. We only need the title and
+// the muxing app out of the Segment > Info element — plus, when the file is
+// a whole downloaded film, the "title" tag often already carries
+// "Group.Name" (e.g. "FHD x264"), which is exactly what we want to rename by.
+// Shared by .mkv and .webm (same container, different CodecIDs).
+
+const (
+	ebmlID       = 0x1A45DFA3 // EBML header
+	segmentID    = 0x18538067 // Segment
+	seekHeadID   = 0x114D9B74
+	infoID       = 0x1549A966 // Segment > Info
+	tracksID     = 0x1654AE6B
+	chaptersID   = 0x1043A770
+	clusterID    = 0x1F43B675
+	tagsID       = 0x1254C367
+	titleID      = 0x7BA9 // Info > Title
+	muxAppID     = 0x4D80 // Info > MuxingApp
+	writingAppID = 0x5741 // Info > WritingApp
+	durationID   = 0x4489 // Info > Duration (float, in TimecodeScale units)
+	dateUTCID    = 0x4461 // Info > DateUTC
+	maxMKVInfo   = 4 << 20
+)
+
+// mkvMeta reads the title/muxer out of a Matroska file's Info element.
+func mkvMeta(path string) map[string]string {
+	out := map[string]string{}
+	b := headBytes(path, maxMKVInfo)
+	if len(b) < 4 || !isMKVHeader(b) {
+		return out
+	}
+	// Walk top-level elements until we reach Segment, then inside Segment
+	// walk children until Info. Everything before a Cluster is small.
+	off := 0
+	// Skip the EBML header, then read the Segment element header. Each
+	// element gets its own buffer: readEBMLHeader returns the ID as a plain
+	// int (e.g. 440786851 for 0x1A45DFA3), so comparing it to the const id
+	// works; but reusing `id` from the if-initialiser below is a footgun —
+	// keep the two steps separate and re-declare with `=`.
+	if eid, esize, ehdr, ok := readEBMLHeader(b, off); ok && eid == ebmlID {
+		off += ehdr + esize
+	}
+	id, size, hdr, ok := readEBMLHeader(b, off)
+	if !ok || id != segmentID {
+		return out
+	}
+	body := b[off+hdr:]
+	// Segment "size" may be unknown (all-ones); just scan the body we have.
+	_ = size
+	if m := mkvInfo(body); len(m) > 0 {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func isMKVHeader(b []byte) bool {
+	return len(b) >= 4 && b[0] == 0x1A && b[1] == 0x45 && b[2] == 0xDF && b[3] == 0xA3
+}
+
+// mkvInfo scans Segment children for Info and pulls Title/MuxingApp.
+func mkvInfo(seg []byte) map[string]string {
+	off := 0
+	for off < len(seg) {
+		id, size, hdr, ok := readEBMLHeader(seg, off)
+		if !ok {
+			break
+		}
+		body := off + hdr
+		if size < 0 || body+size > len(seg) {
+			// Unknown size (live/streamed mkv) or the element runs past the
+			// bytes we read: fall back to scanning this prefix for Info.
+			return mkvScanForInfo(seg[off:])
+		}
+		if id == infoID {
+			return mkvParseInfo(seg[body : body+size])
+		}
+		if id == clusterID {
+			break // media data starts; Info (if any) is before it
+		}
+		off = body + size
+	}
+	return map[string]string{}
+}
+
+// mkvScanForInfo is the fallback for files whose Segment size is unknown or
+// bigger than the window we read: walk child element headers and, the first
+// time we hit the Info ID, parse the bytes after it. Like a mini resync.
+func mkvScanForInfo(seg []byte) map[string]string {
+	off := 0
+	for off+2 < len(seg) {
+		id, size, hdr, ok := readEBMLHeader(seg, off)
+		if !ok {
+			off++
+			continue
+		}
+		body := off + hdr
+		if id == infoID {
+			end := len(seg)
+			if size >= 0 && body+size <= len(seg) {
+				end = body + size
+			}
+			return mkvParseInfo(seg[body:end])
+		}
+		if id == clusterID {
+			return map[string]string{}
+		}
+		if size < 0 || body+size > len(seg) {
+			off++
+			continue
+		}
+		off = body + size
+	}
+	return map[string]string{}
+}
+
+func mkvParseInfo(info []byte) map[string]string {
+	out := map[string]string{}
+	off := 0
+	for off < len(info) {
+		id, size, hdr, ok := readEBMLHeader(info, off)
+		if !ok {
+			break
+		}
+		body := off + hdr
+		if size < 0 || body+size > len(info) {
+			break
+		}
+		val := info[body : body+size]
+		switch id {
+		case titleID:
+			if s := mkvString(val); s != "" {
+				out["title"] = s
+			}
+		case muxAppID:
+			if s := mkvString(val); s != "" && out["muxer"] == "" {
+				out["muxer"] = s
+			}
+		case writingAppID:
+			if s := mkvString(val); s != "" {
+				out["app"] = s
+			}
+		case dateUTCID:
+			if s := mkvDate(val); s != "" {
+				out["date"] = s
+			}
+		}
+		off = body + size
+	}
+	return out
+}
+
+// readEBMLHeader reads one element ID and size at off. Returns the ID (as
+// an int, since EBML IDs are 1-4 bytes), the payload size, the header length
+// (ID + size fields), and ok. size = -1 means "unknown/until end".
+func readEBMLHeader(b []byte, off int) (id int, size, hdr int, ok bool) {
+	id, n, ok := readEBMLID(b, off)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	sz, m, ok := readEBMLSize(b, off+n)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	return id, sz, n + m, true
+}
+
+// readEBMLID decodes a variable-length EBML element ID (the leading bit
+// marks its length; the remaining bits plus the rest form the value).
+func readEBMLID(b []byte, off int) (id, n int, ok bool) {
+	if off >= len(b) {
+		return 0, 0, false
+	}
+	first := b[off]
+	if first == 0 {
+		return 0, 0, false
+	}
+	length := 1
+	for mask := byte(0x80); mask != 0 && first&mask == 0; mask >>= 1 {
+		length++
+	}
+	if length > 4 || off+length > len(b) {
+		return 0, 0, false
+	}
+	v := 0
+	for i := 0; i < length; i++ {
+		v = v<<8 | int(b[off+i])
+	}
+	return v, length, true
+}
+
+// readEBMLSize decodes a variable-length size (value bits after the marker
+// bit). All-ones means unknown size → -1.
+func readEBMLSize(b []byte, off int) (size, n int, ok bool) {
+	if off >= len(b) {
+		return 0, 0, false
+	}
+	first := b[off]
+	if first == 0 {
+		return 0, 0, false
+	}
+	length := 1
+	for mask := byte(0x80); mask != 0 && first&mask == 0; mask >>= 1 {
+		length++
+	}
+	if length > 8 || off+length > len(b) {
+		return 0, 0, false
+	}
+	// value = first byte with marker bit cleared, then remaining bytes
+	v := int(first) & (0xFF >> uint(length))
+	allOnes := v == (0xFF >> uint(length))
+	for i := 1; i < length; i++ {
+		v = v<<8 | int(b[off+i])
+		if b[off+i] != 0xFF {
+			allOnes = false
+		}
+	}
+	if allOnes {
+		return -1, length, true
+	}
+	return v, length, true
+}
+
+// mkvString trims trailing NULs from a UTF-8 EBML string.
+func mkvString(b []byte) string {
+	return strings.TrimRight(string(b), "\x00")
+}
+
+// mkvDate converts a Matroska DateUTC (nanoseconds since 2001-01-01 UTC) to
+// a YYYY-MM-DD string. Best-effort: only 8-byte signed ints are valid.
+func mkvDate(b []byte) string {
+	if len(b) != 8 {
+		return ""
+	}
+	ns := int64(binary.BigEndian.Uint64(b))
+	if ns == 0 {
+		return ""
+	}
+	// 2001-01-01 00:00:00 UTC in Unix nanos.
+	const epoch2001 = 978307200
+	unix := epoch2001 + ns/1e9
+	return time.Unix(unix, 0).UTC().Format("2006-01-02")
 }

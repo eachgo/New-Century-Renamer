@@ -284,12 +284,19 @@ func contentSnippet(path string) string {
 			parts = append(parts, epubText(path))
 		case "zip", "cbz", "jar", "apk", "docx", "xlsx", "pptx":
 			parts = append(parts, zipListing(path))
+		case "mkv", "webm", "mka", "mks":
+			parts = append(parts, mkvSummary(path))
 		case "tar", "gz", "tgz", "bz2", "xz", "7z", "rar":
 			parts = append(parts, "(压缩包, 无法解出目录: 仅凭文件名和大小推断)")
 		case "jpg", "jpeg", "tif", "tiff", "webp", "heic", "png":
 			parts = append(parts, exifSummary(path))
 		}
 	}
+
+	// A folder NFO sidecar often carries the real title when the container
+	// doesn't (numbered mkv rips). Add it before container metadata so the
+	// model sees both.
+	parts = addNFOSnippet(filepath.Dir(path), parts)
 
 	// Container metadata is useful on its own and cheap to add.
 	if m := ExtractMeta(path); len(m) > 0 {
@@ -363,4 +370,23 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(rs[:n])
+}
+
+// mkvSummary gives the model something to reason about for a video container
+// whose actual content (pixels) it can't see. Matroska often already stores a
+// descriptive title like "Blade.Runner.2049.2017.1080p.BluRay" — that plus
+// whatever metadata ExtractMeta pulled is enough to name by.
+func mkvSummary(path string) string {
+	m := mkvMeta(path)
+	var parts []string
+	if v := m["title"]; v != "" {
+		parts = append(parts, "Matroska 标题: "+v)
+	}
+	if v := m["muxer"]; v != "" {
+		parts = append(parts, "封装工具: "+v)
+	}
+	if len(parts) == 0 {
+		return "(视频容器, 无内嵌标题: 仅凭文件名推断)"
+	}
+	return strings.Join(parts, "; ")
 }

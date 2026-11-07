@@ -87,6 +87,11 @@ func ParseRules(specs []string) ([]Rule, error) {
 			r = romajiRule{}
 		case "scope":
 			r = scopeStep(argstr)
+		case "nfo":
+			// nfo[=<tpl>]: rename by the folder's .nfo, keyed on the file's
+			// leading number (or SxxExx). tpl may use <NFO:title> /
+			// <NFOName> / <NFO:showtitle> / <NFO:year> / <NFO:episode> …
+			r = nfoRule{tpl: argstr}
 		default:
 			return nil, fmt.Errorf("规则 %d: 未知规则 %q", i+1, name)
 		}

@@ -96,6 +96,14 @@ func TestStepSpecs(t *testing.T) {
 	if got := m.spec(); got != "template=<META:author> - <META:title><.EXT>" {
 		t.Errorf("meta spec = %q", got)
 	}
+	n := step("meta.nfo")
+	if got := n.spec(); got != "nfo" {
+		t.Errorf("nfo spec = %q", got)
+	}
+	n.tpl = "<NFO:title><.EXT>"
+	if got := n.spec(); got != "nfo=<NFO:title><.EXT>" {
+		t.Errorf("nfo tpl spec = %q", got)
+	}
 }
 
 func TestCatalogCoversAllGroups(t *testing.T) {

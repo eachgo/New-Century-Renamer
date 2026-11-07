@@ -43,6 +43,8 @@ func sniffMagic(path string) string {
 		return "JPEG"
 	case len(b) >= 2 && b[0] == 'B' && b[1] == 'M':
 		return "BMP"
+	case len(b) >= 4 && b[0] == 0x1A && b[1] == 0x45 && b[2] == 0xDF && b[3] == 0xA3:
+		return "MKV" // EBML / Matroska (mkv, webm, mka)
 	case len(b) >= 4 && b[0] == 'P' && b[1] == 'K':
 		return "ZIP"
 	case len(b) >= 4 && string(b[0:4]) == "GIF8":

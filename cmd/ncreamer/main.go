@@ -39,11 +39,14 @@ func usage() {
   truncate=MAXLEN       截断文件名(不含扩展名)到 MAXLEN 字符
   ext=NEWEXT            改扩展名(不含点, 空则删除扩展名)
   seq=START[,WIDTH[,STEP]]  追加序号
+  nfo[=T]       读同文件夹的 .nfo, 按文件开头的编号(01)或 SxxExx 取该集标题命名;
+                编号在 NFO 里找不到就报错跳过, 绝不猜。T 可用 <NFO:title> 等
 
 模板/替换可用变量:
   <NAME> <EXT> <.EXT> <DIR> <CRC32> <Pinyin:NAME> <SEQ>
-  <META:title|author|album|...>   来自 EPUB/MP4/PDF 的元数据
+  <META:title|author|album|...>   来自 EPUB/MP3/FLAC/OGG/MP4/MKV/PDF 的元数据
   <AI:指示>                       调用 OpenAI 兼容接口按指示生成名字片段
+  NFO 规则专用: <NFO:title> <NFO:showtitle> <NFO:year> <NFO:season> <NFO:episode> <NFOName>
 
 选项:
   -r rule        一条规则, 可重复
@@ -226,7 +229,7 @@ func countOK(plan []core.RenameOp) (n int) {
 
 func countErr(plan []core.RenameOp) (n int) {
 	for _, op := range plan {
-		if op.Err != nil {
+		if op.Err != nil && !core.IsSidecarFile(op.OldName) {
 			n++
 		}
 	}
