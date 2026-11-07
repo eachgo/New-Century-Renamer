@@ -24,6 +24,10 @@ type fileInfo struct {
 	modTime  time.Time
 	typ      string // by extension
 	realType string // sniffed from content; differs → warning chip
+	// group keys the file to a tree node when it was dragged in as part of a
+	// folder; the tree header shows the folder's name. Empty = a loose file
+	// added on its own (shown without a group header).
+	group string
 }
 
 // app is the state the window shows: three panes — catalog, task steps,
@@ -555,11 +559,60 @@ func (a *app) filesView(c *ui.Context) {
 			})
 		} else {
 			dt := a.currentTheme()
-			// 每个文件两行卡:上行 原名 → 新名(预览)对照,左原右新;
-			// 下行 原始数据胶囊,路径悬停显示绝对地址
-			ui.List(c, &a.table, len(a.files), func(i int) {
+			// 分组:以"文件夹拖入"为代表的文件归到以文件夹命名的树节点下,
+			// 单独拖入的文件没有分组,直接以文件卡出现(不加分组头)。
+			type row struct {
+				group string // non-empty: draw a folder header before files
+				file  int    // index into a.files; -1 = header-only row
+			}
+			var rows []row
+			// Stable row identity so list state (scroll/focus) follows items,
+			// not indices, when the grouping or file set changes.
+			a.table.Key = func(ri int) any {
+				if ri < len(rows) {
+					if rows[ri].file < 0 {
+						return "g:" + rows[ri].group
+					}
+					return "f:" + a.files[rows[ri].file].path
+				}
+				return ri
+			}
+			lastGroup := "NOSENTINEL-nogrp" // sentinel: never a real group name
+			for i := range a.files {
+				g := a.files[i].group
+				if g != lastGroup {
+					if g != "" {
+						rows = append(rows, row{group: g, file: -1})
+					}
+					lastGroup = g
+				}
+				rows = append(rows, row{group: "", file: i})
+			}
+			ui.List(c, &a.table, len(rows), func(ri int) {
+				r := rows[ri]
+				if r.file < 0 {
+					// 文件夹分组头:一个可折叠风格的标题行 + 文件数
+					n := 0
+					for j := range a.files {
+						if a.files[j].group == r.group {
+							n++
+						}
+					}
+					ui.Row(c).Fill().Gap(8).Padding(2, 4).Children(func() {
+						ui.Text(c, "📁 "+r.group).FontSize(13).TextColor(t.Text)
+						ui.Text(c, fmt.Sprintf("%d 个文件", n)).FontSize(11).TextColor(t.TextMuted)
+						ui.Spacer(c)
+					})
+					return
+				}
+				i := r.file
 				f := a.files[i]
-				ui.Row(c).Fill().Gap(8).Children(func() {
+				// 属于分组时缩进一点,视觉上从属于上面的文件夹头
+				var indent float32 = 0
+				if f.group != "" {
+					indent = 14
+				}
+				ui.Row(c).Fill().Gap(8).PaddingStart(indent).Children(func() {
 					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
 						Background(dt.cardBgFor(a.isDark()))
 					card.Children(func() {
@@ -703,7 +756,11 @@ func (a *app) addPaths(paths []string) {
 	for i := range a.files {
 		seen[a.files[i].path] = true
 	}
-	var expanded []string
+	// Each entry remembers which folder group it belongs to. A dropped
+	// folder contributes all its (loose) files under that folder's name; a
+	// dropped file is a group of its own (empty → no header).
+	type entry struct{ path, group string }
+	var expanded []entry
 	for _, p := range paths {
 		p = filepath.Clean(p)
 		if st, err := os.Stat(p); err == nil && st.IsDir() {
@@ -712,22 +769,26 @@ func (a *app) addPaths(paths []string) {
 			if err != nil {
 				continue
 			}
+			group := filepath.Base(p)
 			for _, e := range ents {
 				if !e.IsDir() {
-					expanded = append(expanded, filepath.Join(p, e.Name()))
+					expanded = append(expanded, entry{filepath.Join(p, e.Name()), group})
 				}
 			}
 			continue
 		}
-		expanded = append(expanded, p)
+		expanded = append(expanded, entry{p, ""})
 	}
-	for _, p := range expanded {
+	for _, en := range expanded {
+		p := en.path
 		if st, err := os.Stat(p); err != nil || st.IsDir() {
 			continue
 		}
 		if !seen[p] {
 			seen[p] = true
-			a.files = append(a.files, statFile(p))
+			fi := statFile(p)
+			fi.group = en.group
+			a.files = append(a.files, fi)
 		}
 	}
 	a.assignExtColors(a.currentTheme())
@@ -846,8 +907,12 @@ func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
 	a.assignExtColors(a.currentTheme())
 	a.ops = plan
 	a.files = a.files[:0]
+	// Imported rows lose their original folder grouping: group by directory
+	// so a multi-directory list still reads as a tree.
 	for _, op := range plan {
-		a.files = append(a.files, statFile(filepath.Join(op.Dir, op.OldName)))
+		fi := statFile(filepath.Join(op.Dir, op.OldName))
+		fi.group = filepath.Base(op.Dir)
+		a.files = append(a.files, fi)
 	}
 	a.applied = false
 	a.status = fmt.Sprintf("已导入 %d 行,%d 个将更名", len(plan), countChanges(plan))

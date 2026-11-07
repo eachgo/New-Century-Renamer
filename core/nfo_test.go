@@ -209,3 +209,60 @@ func TestNFODoesNotRenameSidecar(t *testing.T) {
 		}
 	}
 }
+
+func TestNFOSpecificFile(t *testing.T) {
+	dir := t.TempDir()
+	// The media files live in one folder; the NFO lives somewhere else
+	// (or is simply named not-.nfo), selected explicitly via file=.
+	other := t.TempDir()
+	nfoPath := filepath.Join(other, "series.info")
+	if err := os.WriteFile(nfoPath, []byte(`<tvshow><showtitle>Andor</showtitle>
+<episodedetails><season>1</season><episode>3</episode><title>Reckoning</title></episodedetails></tvshow>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, dir, map[string]string{"03.mkv": ""})
+
+	rules, err := ParseRules([]string{"nfo=file=" + nfoPath})
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	plan, _ := RunPipeline(rules, []string{filepath.Join(dir, "03.mkv")})
+	if len(plan) != 1 || plan[0].Err != nil {
+		t.Fatalf("unexpected: %+v", plan)
+	}
+	if got := plan[0].NewName; got != "Andor - S01E03 - Reckoning.mkv" {
+		t.Errorf("-> %q", got)
+	}
+}
+
+func TestNFOSpecificFileMissing(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"03.mkv": ""})
+	rules, _ := ParseRules([]string{"nfo=file=" + filepath.Join(dir, "nope.nfo")})
+	plan, _ := RunPipeline(rules, []string{filepath.Join(dir, "03.mkv")})
+	if len(plan) != 1 || plan[0].Err == nil {
+		t.Fatalf("expected error for missing explicit nfo, got %+v", plan)
+	}
+	if !strings.Contains(plan[0].Err.Error(), "指定的 NFO") {
+		t.Errorf("error not specific: %v", plan[0].Err)
+	}
+}
+
+func TestNFOTemplatePlusFile(t *testing.T) {
+	dir := t.TempDir()
+	nfoPath := filepath.Join(dir, "custom.nfo")
+	os.WriteFile(nfoPath, []byte(`<tvshow><showtitle>The Expanse</showtitle>
+<episodedetails><season>2</season><episode>1</episode><title>Safe</title></episodedetails></tvshow>`), 0o644)
+	writeFiles(t, dir, map[string]string{"01.mkv": ""})
+	rules, err := ParseRules([]string{"nfo=<NFO:showtitle> - <NFO:title><.EXT>,file=" + nfoPath})
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	plan, _ := RunPipeline(rules, []string{filepath.Join(dir, "01.mkv")})
+	if len(plan) != 1 || plan[0].Err != nil {
+		t.Fatalf("unexpected: %+v", plan)
+	}
+	if got := plan[0].NewName; got != "The Expanse - Safe.mkv" {
+		t.Errorf("-> %q", got)
+	}
+}

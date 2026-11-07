@@ -135,6 +135,7 @@ cd gui && go build .                        # GUI(纯 Go,无 cgo)
 
 几个不显眼但有用的地方：
 
+- **按文件夹拖入时，列表自动分组**：整个文件夹拖进来，这一批文件会收在以文件夹名命名的分组头下面；单独拖入的文件各占一行、不分组。一眼就能看出"这堆来自哪个文件夹"，跟资源管理器的树状视图一个意思；
 - **文件可以最先加，步骤也可以最先加**，顺序不设教条；
 - 步骤行可以 **Ctrl+点击多选**、拖动整组重排；标题行的"多选"按钮打开后每行出现圆点，触摸屏上也能点；
 - 参数有问题或目标冲突时，**红字原因直接写在文件卡片上**，不会只说一句"失败"；
@@ -179,7 +180,7 @@ ncreamer undo -journal .ncreamer-journal.json
 | `template=T` | 用模板重建文件名，T 里可用变量 | `template=<META:artist> - <META:title><.EXT>` |
 | `replace=OLD,NEW[,regex]` | 替换；带 `regex` 时 OLD 是正则，NEW 可用 `$1`；参数里的 `,` 和 `\` 用 `\` 转义 | `replace=（,(` |
 | `seq=START[,WIDTH[,STEP]]` | 追加序号，按宽度补零；也支持键值写法 `seq=start:1,width:2,step:1`，另有 `base:letter`（字母编号）、`group:ext\|dir`（分组重新计数）、`tpl:……`（自定义拼法，其中 `<N>` 是序号文本） | `seq=1,2` → `01`、`02` |
-| `nfo[=T]` | **按同文件夹的 `.nfo` 编号命名**：用文件名开头的编号（`01`）或 `SxxExx` 去 NFO 里找对应那一集，取它的标题。T 可写 `<NFO:title>` `<NFO:showtitle>` `<NFO:year>` `<NFO:season>` `<NFO:episode>` 或组合变量 `<NFOName>`；省略 T 时默认 `剧名 - S01E01 - 标题`（电影为 `标题 (年份)`）。**编号在 NFO 里找不到就报错跳过，绝不猜** | `nfo` → `Severance - S01E01 - Good News About Hell.mkv` |
+| `nfo[=T][,file=P]` | **按 `.nfo` 编号命名**：用文件名开头的编号（`01`）或 `SxxExx` 去 NFO 里找对应那一集，取它的标题。默认读同文件夹的 `.nfo`，加 `file=P` 可指定某个 NFO（含完整路径）。T 可写 `<NFO:title>` `<NFO:showtitle>` `<NFO:year>` `<NFO:season>` `<NFO:episode>` 或组合变量 `<NFOName>`；省略 T 时默认 `剧名 - S01E01 - 标题`（电影为 `标题 (年份)`）。**编号在 NFO 里找不到就报错跳过，绝不猜** | `nfo` → `Severance - S01E01 - Good News About Hell.mkv` |
 | `pinyin` | 汉字转拼音，全角字母数字转半角 | `张三丰.txt` → `zhangsanfeng.txt` |
 | `sanitize` | Windows 保留字符转全角，去控制符/首尾空格/结尾点 | `a:b` → `a：b` |
 | `cc=s2t` / `cc=t2s` | 繁简互转（OpenCC 词典） | `蓝莲花` → `藍蓮花` |
@@ -271,6 +272,12 @@ tvshow.nfo                    ← 剧名、年份，以及每一集的标题
 ```bash
 ncreamer -r 'nfo' 某剧目录/          # → Severance - S01E01 - Good News About Hell.mkv
 ncreamer -r 'nfo=<NFO:showtitle> 第<NFO:episode>集 - <NFO:title><.EXT>' 某剧目录/
+```
+
+默认读当前文件所在文件夹里的 `.nfo`；如果 NFO 在别处、或一个 NFO 要同时管多个文件夹，用 `file=` 指定它（完整路径，Windows 反斜杠照写）：
+
+```bash
+ncreamer -r 'nfo=file=D:\TV\Severance	vshow.nfo' 某目录/
 ```
 
 它有个刻意的"死板"之处：**编号对不上就报错，绝不去猜。** 如果 NFO 里有分集标题、而某个文件的编号在 NFO 里找不到（比如 `09.mkv` 但 NFO 只到第 5 集），这个文件会被标成"有问题"并原样跳过——因为编号是这套流程唯一的锚点，一旦编号本身是错的，任何"聪明"的兜底都会把某一集的标题安到另一集头上。**编号准确，是这个功能的前提**。

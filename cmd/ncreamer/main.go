@@ -39,8 +39,8 @@ func usage() {
   truncate=MAXLEN       截断文件名(不含扩展名)到 MAXLEN 字符
   ext=NEWEXT            改扩展名(不含点, 空则删除扩展名)
   seq=START[,WIDTH[,STEP]]  追加序号
-  nfo[=T]       读同文件夹的 .nfo, 按文件开头的编号(01)或 SxxExx 取该集标题命名;
-                编号在 NFO 里找不到就报错跳过, 绝不猜。T 可用 <NFO:title> 等
+  nfo[=T][,file=P]  读 .nfo, 按文件开头的编号(01)或 SxxExx 取该集标题命名;
+                默认读同文件夹, file=P 可指定某个 NFO; 编号找不到就报错跳过, 绝不猜
 
 模板/替换可用变量:
   <NAME> <EXT> <.EXT> <DIR> <CRC32> <Pinyin:NAME> <SEQ>

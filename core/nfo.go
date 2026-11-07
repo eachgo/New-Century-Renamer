@@ -310,6 +310,43 @@ func addNFOSnippet(dir string, parts []string) []string {
 	return parts
 }
 
+// newNFORule parses `nfo[=TEMPLATE][,file=PATH]`. A bare `file=…` (no tpl)
+// or a first positional arg that isn't a key:value leaves the template empty.
+// NB: splitArgs only unescapes commas/backslashes, so a Windows path like
+// C:\TV	vshow.nfo keeps its backslashes verbatim here.
+func newNFORule(argstr string) (Rule, error) {
+	r := nfoRule{}
+	if argstr == "" {
+		return r, nil
+	}
+	for _, a := range splitArgs(argstr) {
+		if v, ok := strings.CutPrefix(a, "file="); ok {
+			r.file = strings.TrimSpace(v)
+		} else {
+			// first non-key token is the template
+			if r.tpl == "" {
+				r.tpl = a
+			}
+		}
+	}
+	return r, nil
+}
+
+// loadNFOAt parses one specific NFO file (used when the rule names a
+// path explicitly rather than relying on the folder's own .nfo).
+func loadNFOAt(path string) *nfoInfo {
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) == 0 {
+		return nil
+	}
+	info := &nfoInfo{episodes: map[int]nfoEpisode{}}
+	parseNFO(b, info)
+	if info.title == "" && info.showtitle == "" && len(info.episodes) == 0 {
+		return nil
+	}
+	return info
+}
+
 // ---- the rule ----
 
 // nfoRule renames a media file by the title found in its folder's NFO,
@@ -318,16 +355,25 @@ func addNFOSnippet(dir string, parts []string) []string {
 // (which picks showtitle·SxxExx·title for episodes, or title+year otherwise).
 // If tpl is empty, <NFOName><.EXT> is assumed.
 type nfoRule struct {
-	tpl string
+	tpl  string
+	file string // specific NFO path; "" = use the folder's own .nfo
 }
 
 func (r nfoRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 	if IsSidecarFile(name) {
 		return name, nil // never rename the .nfo itself
 	}
-	info := loadNFO(dir)
-	if info == nil {
-		return name, fmt.Errorf("文件夹里没有 .nfo 文件,无法按编号命名")
+	var info *nfoInfo
+	if r.file != "" {
+		info = loadNFOAt(r.file)
+		if info == nil {
+			return name, fmt.Errorf("指定的 NFO 文件读不出内容: %s", r.file)
+		}
+	} else {
+		info = loadNFO(dir)
+		if info == nil {
+			return name, fmt.Errorf("文件夹里没有 .nfo 文件,无法按编号命名")
+		}
 	}
 	stem, _ := splitExt(name)
 	num, kind, ok := fileNumber(stem)

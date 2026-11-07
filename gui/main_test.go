@@ -97,12 +97,19 @@ func TestStepSpecs(t *testing.T) {
 		t.Errorf("meta spec = %q", got)
 	}
 	n := step("meta.nfo")
-	if got := n.spec(); got != "nfo" {
+	if got := n.spec(); got != "nfo=" {
 		t.Errorf("nfo spec = %q", got)
 	}
 	n.tpl = "<NFO:title><.EXT>"
 	if got := n.spec(); got != "nfo=<NFO:title><.EXT>" {
 		t.Errorf("nfo tpl spec = %q", got)
+	}
+	n.nfoFile = `C:\TV	vshow.nfo`
+	if got := n.spec(); !strings.Contains(got, "file=C:") {
+		t.Errorf("nfo with file spec = %q", got)
+	}
+	if _, err := core.ParseRules([]string{n.spec()}); err != nil {
+		t.Errorf("nfo file spec failed to parse: %v", err)
 	}
 }
 

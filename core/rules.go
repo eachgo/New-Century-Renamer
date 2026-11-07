@@ -88,10 +88,12 @@ func ParseRules(specs []string) ([]Rule, error) {
 		case "scope":
 			r = scopeStep(argstr)
 		case "nfo":
-			// nfo[=<tpl>]: rename by the folder's .nfo, keyed on the file's
-			// leading number (or SxxExx). tpl may use <NFO:title> /
-			// <NFOName> / <NFO:showtitle> / <NFO:year> / <NFO:episode> …
-			r = nfoRule{tpl: argstr}
+			// nfo[=TEMPLATE][file=<path>]: rename by an NFO, keyed on the
+			// file's leading number (or SxxExx). TEMPLATE may use
+			// <NFO:title> / <NFOName> / <NFO:showtitle> / <NFO:year> /
+			// <NFO:episode> …; file= points at a specific NFO instead of the
+			// folder's own.
+			r, err = newNFORule(argstr)
 		default:
 			return nil, fmt.Errorf("规则 %d: 未知规则 %q", i+1, name)
 		}

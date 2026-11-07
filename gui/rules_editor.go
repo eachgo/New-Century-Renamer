@@ -36,6 +36,8 @@ type guiRule struct {
 	seqStart, seqWidth, seqStep float64
 	numBase, numCase, numGroup  string // 数字/字母, 大写/小写, 不分组/按扩展名/按文件夹
 	numTpl                      string
+	// nfo: specific NFO file path (optional)
+	nfoFile string
 	// insert mode: front | end | pos
 	insMode string
 	// filter step
@@ -330,10 +332,19 @@ func (r *guiRule) spec() string {
 		}
 		return spec
 	case "nfo":
-		if strings.TrimSpace(r.tpl) == "" {
-			return "nfo"
+		// Build the arg as [template][,file=PATH]. Keep the template's own
+		// commas escaped so they survive the comma-separated spec form.
+		var arg string
+		if t := strings.TrimSpace(r.tpl); t != "" {
+			arg = escArg(r.tpl)
 		}
-		return "nfo=" + r.tpl
+		if f := strings.TrimSpace(r.nfoFile); f != "" {
+			if arg != "" {
+				arg += ","
+			}
+			arg += "file=" + escArg(f)
+		}
+		return "nfo=" + arg
 	}
 	return ""
 }
@@ -399,10 +410,14 @@ func (r *guiRule) summary() string {
 		}
 		return desc
 	case "nfo":
-		if strings.TrimSpace(r.tpl) == "" {
-			return "按 .nfo 标题命名"
+		base := "按 .nfo 标题命名"
+		if t := strings.TrimSpace(r.tpl); t != "" {
+			base = t
 		}
-		return r.tpl
+		if f := strings.TrimSpace(r.nfoFile); f != "" {
+			base += " (指定 NFO)"
+		}
+		return base
 	}
 	return ""
 }
@@ -464,6 +479,9 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 	case "nfo":
 		pline("命名模板", func() {
 			ui.TextInput(c, &r.tpl).Placeholder("空=<剧名 - S01E01 - 标题>;可用 <NFO:title> <NFO:showtitle> <NFO:year> <NFO:episode>").FillWidth()
+		})
+		pline("NFO 文件", func() {
+			ui.TextInput(c, &r.nfoFile).Placeholder("留空=同文件夹的 .nfo;或填某个 .nfo 的完整路径").FillWidth()
 		})
 	}
 }
