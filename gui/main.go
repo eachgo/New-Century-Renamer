@@ -120,7 +120,7 @@ func (a *app) view(c *ui.Context) {
 			func() {
 				ui.Split(c, &a.splitM,
 					func() { a.stepsView(c) },
-					func() { a.filesView(c) })
+					func() { a.filesView(c) }).Grow(1).FillWidth()
 			}).Grow(1).FillWidth()
 	})
 	a.settingsDialog(c)
