@@ -121,6 +121,24 @@ func (a *app) settingsDialog(c *ui.Context) {
 								p.Disabled(a.seedFollow)
 							})
 						}
+						row("配色预览", func() {
+							// 由主色自动生成的三栏"海拔"色板:不是纯灰,都带一点
+							// 主色倾向;亮/暗两套各有自己的三阶层次。
+							pt := themeFor(a.seedPick).panes(a.isDark())
+							swatch := func(name string, col ui.Color) {
+								ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+									b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
+									b.Border(1, t.Border)
+									ui.Text(c, name).FontSize(11).TextColor(t.TextMuted)
+								})
+							}
+							ui.Row(c).Gap(12).Wrap().Children(func() {
+								swatch("左栏", pt.left)
+								swatch("中栏", pt.mid)
+								swatch("右栏", pt.right)
+								swatch("卡片", pt.card)
+							})
+						})
 					})
 					card("设置文件", func() {
 						ui.Text(c, "设置保存在程序目录 "+settingsFile+",可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)

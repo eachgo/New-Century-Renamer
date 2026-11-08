@@ -138,7 +138,8 @@ func (a *app) catalogView(c *ui.Context) {
 	}
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
-	ui.Column(c).Fill().Children(func() {
+	// 左边栏:最"边缘"的一栏,底色最暗(Material 3 里越靠边越退后)。
+	ui.Column(c).Fill().Background(a.currentTheme().panes(a.isDark()).left).Children(func() {
 		ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
 		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
 			for _, g := range groups {
@@ -260,7 +261,10 @@ func (a *app) stepsView(c *ui.Context) {
 	if a.stepSel >= len(a.steps) {
 		a.stepSel = len(a.steps) - 1
 	}
-	ui.Column(c).Fill().Gap(8).Padding(8).Children(func() {
+	// 中间栏:核心工作区,底色最亮(暗色下比两侧亮一阶),再压一层极弱
+	// 投影让它像浮在两侧"底板"之上的卡片。
+	mid := a.currentTheme().panes(a.isDark()).mid
+	ui.Column(c).Fill().Gap(8).Padding(8).Background(mid).Shadow(0, 4, 12, 0, a.currentTheme().panes(a.isDark()).shadow).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
 			ui.Spacer(c)
@@ -496,7 +500,8 @@ func (a *app) swapSteps(i, j int) {
 
 func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().Gap(8).Padding(10).Children(func() {
+	// 右边栏:介于中栏与左栏之间,代表"结果"空间,与中栏的"操作"区分开。
+	ui.Column(c).Fill().Gap(8).Padding(10).Background(a.currentTheme().panes(a.isDark()).right).Children(func() {
 		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "文件").Bold().FontSize(13)
 			if ui.Button(c, "添加文件…").Radius(16).Clicked() {
@@ -614,7 +619,7 @@ func (a *app) filesView(c *ui.Context) {
 				}
 				ui.Row(c).Fill().Gap(8).PaddingStart(indent).Children(func() {
 					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
-						Background(dt.cardBgFor(a.isDark()))
+						Background(dt.panes(a.isDark()).card)
 					card.Children(func() {
 						oldName := filepath.Base(f.path)
 						newName := oldName

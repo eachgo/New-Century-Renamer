@@ -25,6 +25,23 @@ type derivedTheme struct {
 	rangeScopeName ui.Color
 	rangeScopeExt  ui.Color
 	groupColors    map[string]ui.Color // fixed color per catalog group
+
+	// 三栏"海拔"配色(Material 3 的 surface container 阶)。
+	// 亮色:越核心越亮——左栏最暗(后退),中栏最亮(浮起),右栏居中。
+	// 暗色:反过来——背景最暗,越核心越亮一点点,模拟光照高度。
+	// paneLeft/paneMid/paneRight 是各栏容器的底色;cardOnPane 是右栏
+	// 文件卡片在 paneRight 之上的浮起底色;outline 是极浅的分隔线;
+	// shadow 是给中栏加的一层极弱投影(亮色略深、暗色几乎不可见)。
+	lightPane paneTones
+	darkPane  paneTones
+}
+
+// paneTones is one appearance's three-pane elevation palette.
+type paneTones struct {
+	left, mid, right ui.Color // 左/中/右三栏容器底色
+	card             ui.Color // 右栏文件卡片(在 right 之上浮一层)
+	outline          ui.Color // 极浅分隔线(带一点主题色倾向,不是纯灰)
+	shadow           ui.Color // 中栏投影色(含 alpha)
 }
 
 // stepGroups is the fixed group order; each gets its own hue offset.
@@ -104,6 +121,28 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		hue := math.Mod(H+float64(i)*360/float64(len(stepGroups)), 360)
 		groupColors[g] = oklchColor(0.64, 0.125, hue)
 	}
+
+	// 三栏海拔配色。OKLCH 的 L 即感知明度,直接当 M3 的 tone/100 用。
+	// 亮色:左栏 tone≈0.93(后退)、中栏≈0.985(浮起)、右栏≈0.955(居中);
+	// 暗色:左栏最低≈0.11、中栏≈0.16、右栏≈0.135,再给卡片浮到≈0.20。
+	// chroma 都取极小的一点点主题色,避免纯灰发死。
+	ltPane := paneTones{
+		left:    oklchColor(0.930, cc*0.12, H),
+		mid:     oklchColor(0.988, cc*0.04, H),
+		right:   oklchColor(0.955, cc*0.09, H),
+		card:    oklchColor(0.992, cc*0.05, H),
+		outline: oklchColor(0.900, cc*0.16, H),
+		shadow:  ui.RGBA(0, 0, 0, 0.07), // ≈7% 黑,极弱
+	}
+	dtPane := paneTones{
+		left:    oklchColor(0.110, cc*0.20, H),
+		mid:     oklchColor(0.160, cc*0.22, H),
+		right:   oklchColor(0.135, cc*0.20, H),
+		card:    oklchColor(0.205, cc*0.18, H),
+		outline: oklchColor(0.300, cc*0.16, H),
+		shadow:  ui.RGBA(0, 0, 0, 0.35), // 暗色下几乎不可见,只给一点体积
+	}
+
 	return &derivedTheme{
 		light:  lt,
 		dark:   dt,
@@ -115,7 +154,17 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		rangeScopeName: oklchColor(0.62, 0.13, math.Mod(H+30, 360)),
 		rangeScopeExt:  oklchColor(0.62, 0.13, math.Mod(H+60, 360)),
 		groupColors:    groupColors,
+		lightPane:      ltPane,
+		darkPane:       dtPane,
 	}
+}
+
+// panes returns the three-pane elevation palette for the appearance.
+func (d *derivedTheme) panes(dark bool) paneTones {
+	if dark {
+		return d.darkPane
+	}
+	return d.lightPane
 }
 
 // groupColor is the fixed color of a catalog group (falls back to the seed).
