@@ -103,7 +103,9 @@ func (a *app) view(c *ui.Context) {
 		titleH = bar.Height
 	}
 	t := c.Theme()
-	ui.Column(c).Fill().Children(func() {
+	pt := a.currentTheme().panes(a.isDark())
+	// 基底:整个窗口先铺 base 色;顶栏、底栏、左栏、四周留白都在这个底色上。
+	ui.Column(c).Fill().Background(pt.base).Children(func() {
 		ui.Row(c).Height(titleH).Padding(0, float32(bar.Right), 0, float32(bar.Left)).DragWindow().
 			AlignItems(ui.Center).Children(func() {
 			brand := ui.Text(c, "New Century Renamer").Bold().FontSize(13).Padding(0, 8)
@@ -114,14 +116,16 @@ func (a *app) view(c *ui.Context) {
 			ui.Text(c, "批量更名").FontSize(11).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
 		})
 		// 只 Grow 不 Fill:Fill 会让 Split 想占满整列(含标题栏那几十像素),
-		// 于是内容画到标题栏底下。Grow(1) 只吃标题栏之外的剩余空间
+		// 于是内容画到标题栏底下。Grow(1) 只吃标题栏之外的剩余空间。
+		// Split 外面留一点内边距,让中/右两张圆角卡片浮在 base 底色上、
+		// 四周露出基底(和左栏同色),读起来就是"卡片浮在底板上"。
 		ui.Split(c, &a.splitL,
 			func() { a.catalogView(c) },
 			func() {
 				ui.Split(c, &a.splitM,
 					func() { a.stepsView(c) },
 					func() { a.filesView(c) }).Grow(1).FillWidth()
-			}).Grow(1).FillWidth()
+			}).Grow(1).FillWidth().Padding(8, 8, 8, 8)
 		// ③ 应用级底部状态栏:这里是"对整个软件"的操作与反馈,与右栏
 		// "对文件列表"的操作分开。左边是警示/状态文字(多少将更名、报错),
 		// 右边是主操作"执行更名"和"回滚上次"——执行是主按钮实心,回滚镂空。
@@ -185,8 +189,8 @@ func (a *app) catalogView(c *ui.Context) {
 	}
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
-	// 左边栏:最"边缘"的一栏,底色最暗(Material 3 里越靠边越退后)。
-	ui.Column(c).Fill().Background(a.currentTheme().panes(a.isDark()).left).Children(func() {
+	// 左边栏:与顶栏/底栏同属"基底"层,不画底色(继承窗口 base),只做内容。
+	ui.Column(c).Fill().Padding(4, 4).Children(func() {
 		ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
 		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
 			for _, g := range groups {
@@ -308,10 +312,11 @@ func (a *app) stepsView(c *ui.Context) {
 	if a.stepSel >= len(a.steps) {
 		a.stepSel = len(a.steps) - 1
 	}
-	// 中间栏:核心工作区,底色最亮(暗色下比两侧亮一阶),再压一层极弱
-	// 投影让它像浮在两侧"底板"之上的卡片。
-	mid := a.currentTheme().panes(a.isDark()).mid
-	ui.Column(c).Fill().Gap(8).Padding(8).Background(mid).Children(func() {
+	// 中间栏:核心工作区,浮得最高的一张白色圆角卡片(暗色下也比两侧亮一阶),
+	// 压在基底之上;给它圆角 + 一层柔投影,像一张单独浮起的纸。
+	pt := a.currentTheme().panes(a.isDark())
+	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.mid).
+		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
 			ui.Spacer(c)
@@ -547,8 +552,10 @@ func (a *app) swapSteps(i, j int) {
 
 func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
-	// 右边栏:介于中栏与左栏之间,代表"结果"空间,与中栏的"操作"区分开。
-	ui.Column(c).Fill().Gap(8).Padding(10).Background(a.currentTheme().panes(a.isDark()).right).Children(func() {
+	// 右边栏:结果空间,浮在基底之上的一张浅卡片(比中栏低一阶),也是圆角。
+	pt := a.currentTheme().panes(a.isDark())
+	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.right).
+		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
 		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
 		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {

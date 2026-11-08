@@ -38,10 +38,11 @@ type derivedTheme struct {
 
 // paneTones is one appearance's three-pane elevation palette.
 type paneTones struct {
-	left, mid, right ui.Color // 左/中/右三栏容器底色
+	base             ui.Color // 基底:顶栏/底栏/左栏/四周留白都是它
+	left, mid, right ui.Color // 左/中/右三栏容器底色(mid、right 是浮在 base 上的卡片)
 	card             ui.Color // 右栏文件卡片(在 right 之上浮一层)
 	outline          ui.Color // 极浅分隔线(带一点主题色倾向,不是纯灰)
-	shadow           ui.Color // 中栏投影色(含 alpha)
+	shadow           ui.Color // 浮起卡片的投影色(含 alpha)
 }
 
 // stepGroups is the fixed group order; each gets its own hue offset.
@@ -123,20 +124,23 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	}
 
 	// 三栏海拔配色。OKLCH 的 L 即感知明度,直接当 M3 的 tone/100 用。
-	// 亮色:左栏 tone≈0.93(后退)、中栏≈0.985(浮起)、右栏≈0.955(居中);
-	// 暗色:左栏最低≈0.11、中栏≈0.16、右栏≈0.135,再给卡片浮到≈0.20。
+	// 亮色:base 是"基底"(顶栏/底栏/左栏/四周留白都用它,最暖的一层);
+	// 中栏(steps)浮得最高、最白,tone≈0.99;右栏(files)次之,tone≈0.955。
+	// 暗色:base 最暗≈0.10、steps≈0.165、files≈0.135,再给文件卡片浮到≈0.205。
 	// chroma 都取极小的一点点主题色,避免纯灰发死。
 	ltPane := paneTones{
+		base:    oklchColor(0.930, cc*0.12, H),
 		left:    oklchColor(0.930, cc*0.12, H),
-		mid:     oklchColor(0.988, cc*0.04, H),
+		mid:     oklchColor(0.990, cc*0.03, H),
 		right:   oklchColor(0.955, cc*0.09, H),
-		card:    oklchColor(0.992, cc*0.05, H),
+		card:    oklchColor(0.995, cc*0.03, H),
 		outline: oklchColor(0.900, cc*0.16, H),
-		shadow:  ui.RGBA(0, 0, 0, 0.07), // ≈7% 黑,极弱
+		shadow:  ui.RGBA(0, 0, 0, 0.08), // ≈8% 黑,让浮起的卡片有一点体积
 	}
 	dtPane := paneTones{
-		left:    oklchColor(0.110, cc*0.20, H),
-		mid:     oklchColor(0.160, cc*0.22, H),
+		base:    oklchColor(0.105, cc*0.20, H),
+		left:    oklchColor(0.105, cc*0.20, H),
+		mid:     oklchColor(0.165, cc*0.22, H),
 		right:   oklchColor(0.135, cc*0.20, H),
 		card:    oklchColor(0.205, cc*0.18, H),
 		outline: oklchColor(0.300, cc*0.16, H),
