@@ -122,8 +122,55 @@ func (a *app) view(c *ui.Context) {
 					func() { a.stepsView(c) },
 					func() { a.filesView(c) }).Grow(1).FillWidth()
 			}).Grow(1).FillWidth()
+		// ③ 应用级底部状态栏:这里是"对整个软件"的操作与反馈,与右栏
+		// "对文件列表"的操作分开。左边是警示/状态文字(多少将更名、报错),
+		// 右边是主操作"执行更名"和"回滚上次"——执行是主按钮实心,回滚镂空。
+		a.statusBar(c)
 	})
 	a.settingsDialog(c)
+}
+
+// statusBar 是整个应用底部的固定状态栏(所有窗格之下,横贯全宽)。
+// 左侧状态/警示:多少将更名、几个有问题、正在等模型的秒数;右侧:主操作。
+func (a *app) statusBar(c *ui.Context) {
+	t := c.Theme()
+	// 顶部一条极细的分隔线,和上方内容区分开
+	ui.Box(c).FillWidth().Height(1).Background(t.Border)
+	ui.Row(c).FillWidth().Height(46).Padding(0, 12).Gap(10).AlignItems(ui.Center).
+		Background(a.currentTheme().panes(a.isDark()).left).Children(func() {
+		// ---- 左:状态 / 警示文字 ----
+		if a.busy {
+			ui.Spinner(c)
+			label := "处理中…"
+			if a.busyAI {
+				label = "正在联网命名,模型思考中…"
+			}
+			if !a.busyStart.IsZero() {
+				if sec := int(time.Since(a.busyStart).Seconds()); sec >= 1 {
+					label = fmt.Sprintf("%s 已等待 %d 秒", label, sec)
+				}
+			}
+			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
+		} else if a.status != "" {
+			ui.Text(c, a.status).FontSize(12).TextColor(a.statusColor(t)).SingleLine().Ellipsis("…")
+		} else {
+			ui.Text(c, "把文件拖进来开始,或点右边的“执行更名”").FontSize(12).TextColor(t.TextMuted)
+		}
+		ui.Spacer(c)
+		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
+		undoBtn := outlinedButton(c, "回滚上次", !a.busy && a.journalExists())
+		if undoBtn.Clicked() {
+			go a.undo()
+		}
+		applyEnabled := !a.busy && a.hasChanges()
+		if applyEnabled {
+			if ui.PrimaryButton(c, "执行更名").Radius(16).Clicked() {
+				go a.apply()
+			}
+		} else {
+			ui.PrimaryButton(c, "执行更名").Radius(16).Disabled(true)
+		}
+	})
 }
 
 // ---- left pane: grouped catalog of named operations ----
@@ -502,29 +549,40 @@ func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	// 右边栏:介于中栏与左栏之间,代表"结果"空间,与中栏的"操作"区分开。
 	ui.Column(c).Fill().Gap(8).Padding(10).Background(a.currentTheme().panes(a.isDark()).right).Children(func() {
+		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
+		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
 		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "文件").Bold().FontSize(13)
-			if ui.Button(c, "添加文件…").Radius(16).Clicked() {
+			addBtn := tonalButton(c, "添加文件…", true)
+			if addBtn.Clicked() {
 				go a.addFilesDialog()
 			}
-			if ui.Button(c, "导出CSV").Radius(16).Disabled(len(a.files) == 0).Clicked() {
+			expBtn := tonalButton(c, "导出CSV", len(a.files) > 0)
+			if expBtn.Clicked() {
 				go a.exportCSV()
 			}
 			if a.confirmClear {
-				if ui.Button(c, "确认清空?").Radius(16).Clicked() {
+				// 二次确认态:换成红色实心,明确告诉用户"再点就真删了"
+				confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+				if confirm.Hovered() {
+					confirm = confirm.Background(t.Danger.Alpha(0.85))
+				}
+				confirm.Children(func() { ui.Text(c, "确认清空?").SingleLine() })
+				if confirm.Clicked() {
 					a.files, a.ops, a.applied = nil, nil, false
 					a.confirmClear = false
 				}
 			} else {
-				if ui.Button(c, "清空列表").Radius(16).Disabled(len(a.files) == 0).Clicked() {
+				clrBtn := dangerButton(c, "清空列表", len(a.files) > 0)
+				if clrBtn.Clicked() {
 					a.confirmClear = true // 防错:两次点击才清空
 				}
 			}
 			ui.Text(c, fmt.Sprintf("%d 个文件", len(a.files))).TextColor(t.TextMuted)
 		})
-		ui.Row(c).Gap(8).Wrap().Children(func() {
-			// 预览只对 AI 步骤有意义(其余实时预览已自动),藏起来免得让人想"要不要点"
-			if a.hasAIStep() {
+		// ② AI 预览:也是"文件列表"上的操作(对清单里的文件联网起名),留在顶部
+		if a.hasAIStep() {
+			ui.Row(c).Gap(8).Wrap().Children(func() {
 				previewLabel := "预览(AI 联网命名)"
 				if a.busyAI {
 					previewLabel = "联网命名中…"
@@ -532,31 +590,8 @@ func (a *app) filesView(c *ui.Context) {
 				if ui.PrimaryButton(c, previewLabel).Radius(16).Disabled(a.busy || len(a.files) == 0).Clicked() {
 					go a.previewAsync()
 				}
-			}
-			if ui.Button(c, "执行更名").Radius(16).Disabled(a.busy || !a.hasChanges()).Clicked() {
-				go a.apply()
-			}
-			if ui.Button(c, "回滚上次").Radius(16).Disabled(a.busy || !a.journalExists()).Clicked() {
-				go a.undo()
-			}
-			if a.busy {
-				ui.Row(c).Gap(8).Children(func() {
-					ui.Spinner(c)
-					label := "处理中…"
-					if a.busyAI {
-						label = "正在联网命名,模型思考中…"
-					}
-					if !a.busyStart.IsZero() {
-						if sec := int(time.Since(a.busyStart).Seconds()); sec >= 1 {
-							label = fmt.Sprintf("%s 已等待 %d 秒", label, sec)
-						}
-					}
-					ui.Text(c, label).TextColor(t.TextMuted)
-				})
-			} else if a.status != "" {
-				ui.Text(c, a.status).TextColor(a.statusColor(t))
-			}
-		})
+			})
+		}
 		if len(a.files) == 0 {
 			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
 				ui.Text(c, "批量更名:左边挑处理步骤,这里放文件,改名会实时预览").FontSize(13).TextColor(t.Text)
@@ -564,54 +599,46 @@ func (a *app) filesView(c *ui.Context) {
 			})
 		} else {
 			dt := a.currentTheme()
-			// 分组:以"文件夹拖入"为代表的文件归到以文件夹命名的树节点下,
-			// 单独拖入的文件没有分组,直接以文件卡出现(不加分组头)。
-			type row struct {
-				group string // non-empty: draw a folder header before files
-				file  int    // index into a.files; -1 = header-only row
-			}
-			var rows []row
-			// Stable row identity so list state (scroll/focus) follows items,
-			// not indices, when the grouping or file set changes.
+			// 分组:文件夹拖入的文件按文件夹分组。用 List 内置的吸顶分组头
+			// (ListState.Header):滚动时当前分组的文件夹名固定在顶部,滚到下一个
+			// 分组时新的文件夹名把它顶上去——文件再多也知道"现在是哪个文件夹"。
+			// 这里每行就是一个文件;某文件若是其分组的第一个,则该行是分组头。
 			a.table.Key = func(ri int) any {
-				if ri < len(rows) {
-					if rows[ri].file < 0 {
-						return "g:" + rows[ri].group
-					}
-					return "f:" + a.files[rows[ri].file].path
+				if ri >= 0 && ri < len(a.files) {
+					return "f:" + a.files[ri].path
 				}
 				return ri
 			}
-			lastGroup := "NOSENTINEL-nogrp" // sentinel: never a real group name
+			isHeader := make([]bool, len(a.files))
 			for i := range a.files {
-				g := a.files[i].group
-				if g != lastGroup {
-					if g != "" {
-						rows = append(rows, row{group: g, file: -1})
-					}
-					lastGroup = g
+				if a.files[i].group != "" && (i == 0 || a.files[i-1].group != a.files[i].group) {
+					isHeader[i] = true
 				}
-				rows = append(rows, row{group: "", file: i})
 			}
-			ui.List(c, &a.table, len(rows), func(ri int) {
-				r := rows[ri]
-				if r.file < 0 {
-					// 文件夹分组头:一个可折叠风格的标题行 + 文件数
+			a.table.Header = func(ri int) bool {
+				return ri >= 0 && ri < len(isHeader) && isHeader[ri]
+			}
+			ui.List(c, &a.table, len(a.files), func(i int) {
+				f := a.files[i]
+				// 分组内的首个文件行:先画吸顶的文件夹头(📁 名称 + 文件数)
+				if isHeader[i] {
 					n := 0
 					for j := range a.files {
-						if a.files[j].group == r.group {
+						if a.files[j].group == f.group {
 							n++
 						}
 					}
-					ui.Row(c).Fill().Gap(8).Padding(2, 4).Children(func() {
-						ui.Text(c, "📁 "+r.group).FontSize(13).TextColor(t.Text)
+					// 吸顶头:实底(和右栏同色)盖住从下面滚过的文件卡,
+					// 加一条极淡底边线,读起来像"钉住"的标签条。
+					ui.Row(c).Fill().Gap(8).Padding(6, 6).
+						Background(dt.panes(a.isDark()).right).
+						Border(0, ui.Color{}).Children(func() {
+						ui.Text(c, "📁 "+f.group).FontSize(13).Bold().TextColor(t.Text)
 						ui.Text(c, fmt.Sprintf("%d 个文件", n)).FontSize(11).TextColor(t.TextMuted)
 						ui.Spacer(c)
 					})
 					return
 				}
-				i := r.file
-				f := a.files[i]
 				// 属于分组时缩进一点,视觉上从属于上面的文件夹头
 				var indent float32 = 0
 				if f.group != "" {
@@ -722,6 +749,58 @@ func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 		return "不变", t.TextMuted
 	}
 	return "将更名", t.Accent
+}
+
+// tonalButton 是"次要动作"的浅填充(Tonal)按钮:用主色的一层低透明底,
+// 文字用主色,视觉上比主按钮弱、比纯文字强。用于文件列表上的操作
+// (添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
+func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
+	t := c.Theme()
+	b := ui.ButtonBase(c).Radius(16).Padding(6, 14).TextColor(t.Accent).
+		Background(t.Accent.Alpha(0.12))
+	if !enabled {
+		b = b.TextColor(t.TextMuted).Background(t.SurfaceHover)
+	} else if b.Hovered() {
+		b = b.Background(t.Accent.Alpha(0.20))
+	}
+	b.Children(func() { ui.Text(c, label).SingleLine() })
+	return b
+}
+
+// outlinedButton 是"中性次要动作"的镂空按钮:只描边、不填底,永远不抢眼。
+// 用于回滚这类"撤销",它不是主路径,但又要能看见。
+func outlinedButton(c *ui.Context, label string, enabled bool) ui.Element {
+	t := c.Theme()
+	fg := t.Text
+	bg := ui.Color{}
+	if !enabled {
+		fg = t.TextMuted
+	}
+	b := ui.ButtonBase(c).Radius(16).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Border)
+	if enabled && b.Hovered() {
+		b = b.Background(t.SurfaceHover)
+	}
+	b.Children(func() { ui.Text(c, label).SingleLine() })
+	return b
+}
+
+// dangerButton 是"危险动作"按钮:清空列表这种不可逆操作,用错误色描边 +
+// 错误色文字,平时不填底(避免太扎眼),悬停时给一层淡淡的错误色底。
+func dangerButton(c *ui.Context, label string, enabled bool) ui.Element {
+	t := c.Theme()
+	fg := t.Danger
+	bg := ui.Color{}
+	if !enabled {
+		fg = t.TextMuted
+	}
+	b := ui.ButtonBase(c).Radius(16).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Danger.Alpha(0.5))
+	if !enabled {
+		b = b.Border(1, t.Border)
+	} else if b.Hovered() {
+		b = b.Background(t.Danger.Alpha(0.12))
+	}
+	b.Children(func() { ui.Text(c, label).SingleLine() })
+	return b
 }
 
 // filepathSplitName splits a bare file name into stem and ".ext".
