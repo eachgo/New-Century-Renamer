@@ -231,12 +231,10 @@ func (a *app) catalogView(c *ui.Context) {
 						}
 					})
 					if item.Hovered() || a.palSel == d.id {
-						// 悬停即说明:用户可以先弄明白再决定点不点
-						if d.act != "" {
-							a.palHint = d.desc
-						} else {
-							a.palHint = d.desc + "\n点击加入任务步骤,在“② 任务步骤”里调整参数与顺序"
-						}
+						// 悬停即说明:用户可以先弄明白再决定点不点。
+						// 说明只显示功能本身的一句话;“点击加入”的提示固定放在框底,
+						// 不拼进每条的说明里——否则长说明会撑成三四行溢出小格子。
+						a.palHint = d.desc
 					}
 					if item.Clicked() {
 						switch d.act {
@@ -258,8 +256,9 @@ func (a *app) catalogView(c *ui.Context) {
 				}
 			}
 		})
-		// 底部说明区:固定高度,内容变化不移动目录条目(否则点击会被位移打断)
-		ui.Column(c).Fill().Height(64).Padding(8, 10).Gap(4).Background(t.Background).Children(func() {
+		// 底部说明区:固定高度,内容变化不移动目录条目(否则点击会被位移打断)。
+		// 加 Clip():说明文字再长也只在自己这一格里换行/省略,绝不溢出到框外。
+		ui.Column(c).Fill().Height(64).Padding(8, 10).Gap(4).Background(t.Background).Clip().Children(func() {
 			if a.palHint != "" {
 				ui.Text(c, a.palHint).FontSize(12).TextColor(t.TextMuted)
 			} else {

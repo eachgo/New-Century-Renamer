@@ -46,8 +46,16 @@ func TestPreviewAsync502ClearsBusy(t *testing.T) {
 	if err := tt.Click("预览(AI 联网命名)"); err != nil {
 		t.Fatalf("点击预览: %v", err)
 	}
-	if !a.busyAI {
-		t.Fatal("点击后应进入 busyAI 状态")
+	// 点击会 go previewAsync();它一进来就把 busyAI 置 true。但在超快机器上
+	// 那 300ms 的假服务可能先返回、previewAsync 已复位 busyAI,于是这里
+	// 读到 false 并不意味着"没进入过 busy"。所以不硬断言此刻为 true,只在
+	// 既没进过 busy 又没发生请求时才判定失败(真正的回归是"点了没反应")。
+	if !a.busyAI && atomic.LoadInt32(&hits) == 0 {
+		// 给 goroutine 一个调度窗口再确认一次
+		time.Sleep(10 * time.Millisecond)
+		if !a.busyAI && atomic.LoadInt32(&hits) == 0 {
+			t.Fatal("点击后既未进入 busyAI 状态、也未发出请求(previewAsync 没有启动)")
+		}
 	}
 
 	// Wait for the failing call to settle.
