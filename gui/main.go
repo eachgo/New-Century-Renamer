@@ -311,7 +311,7 @@ func (a *app) stepsView(c *ui.Context) {
 	// 中间栏:核心工作区,底色最亮(暗色下比两侧亮一阶),再压一层极弱
 	// 投影让它像浮在两侧"底板"之上的卡片。
 	mid := a.currentTheme().panes(a.isDark()).mid
-	ui.Column(c).Fill().Gap(8).Padding(8).Background(mid).Shadow(0, 4, 12, 0, a.currentTheme().panes(a.isDark()).shadow).Children(func() {
+	ui.Column(c).Fill().Gap(8).Padding(8).Background(mid).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
 			ui.Spacer(c)
