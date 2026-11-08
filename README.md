@@ -2,7 +2,7 @@
 
 > 让你找回世纪初管理文件的感觉。
 
-[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/)
+[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/apps/new-century-renamer)
 
 ![界面截图](docs/screenshot.png)
 
