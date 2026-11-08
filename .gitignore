@@ -53,3 +53,6 @@ chm/
 *.log
 Thumbs.db
 *.exe~
+
+# 本地截图(临时渲染)
+final_*.png
