@@ -315,7 +315,7 @@ func (a *app) stepsView(c *ui.Context) {
 	// 中间栏:核心工作区,浮得最高的一张白色圆角卡片(暗色下也比两侧亮一阶),
 	// 压在基底之上;给它圆角 + 一层柔投影,像一张单独浮起的纸。
 	pt := a.currentTheme().panes(a.isDark())
-	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.mid).
+	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
@@ -554,7 +554,7 @@ func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	// 右边栏:结果空间,浮在基底之上的一张浅卡片(比中栏低一阶),也是圆角。
 	pt := a.currentTheme().panes(a.isDark())
-	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.right).
+	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.right).Clip().
 		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
 		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
