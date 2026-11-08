@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/);里程碑对应 git 标签。
 
-## [Unreleased]
+## [0.1.2] - 2026-11-08
 
 ### 新增
 - **主次按钮分级 + 底部状态栏 + 分组头吸顶**。按钮按"管的是文件列表还是整个软件"分家:
