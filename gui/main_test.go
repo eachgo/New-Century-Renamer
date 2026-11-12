@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
@@ -749,6 +750,73 @@ func TestSettingsCardsReachableAtAnyHeight(t *testing.T) {
 		if !visible("保存") {
 			t.Errorf("h=%d 滚到底后保存按钮不可见", h)
 		}
+	}
+}
+
+// firstInkRun 从 x0 起找第一段连续墨迹(允许字间空隙 gapMax 像素),返回其宽度。
+// 用来量"文字有没有被省略号吃掉"——被截断的文本 tt.Find 取不到,
+// 只能看像素。
+func firstInkRun(img *image.RGBA, x0, y0, y1, gapMax int) int {
+	colHas := func(x int) bool {
+		for y := y0; y < y1; y++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			if r>>8 < 140 && g>>8 < 140 && b>>8 < 140 {
+				return true
+			}
+		}
+		return false
+	}
+	start, end, gap := -1, -1, 0
+	for x := x0; x < img.Bounds().Dx(); x++ {
+		if colHas(x) {
+			if start < 0 {
+				start = x
+			}
+			end, gap = x, 0
+			continue
+		}
+		if start >= 0 {
+			gap++
+			if gap > gapMax {
+				break
+			}
+		}
+	}
+	if start < 0 {
+		return 0
+	}
+	return end - start + 1
+}
+
+// 操作名比参数值重要:窄窗口下该被省略的是参数胶囊,不是步骤名。
+// 以前 900 宽 + 长参数时"追加序号"被挤成"追…"、"AI 按内容命名"挤成"AI…",
+// 用户只能靠猜知道这一步是什么。修法是给操作名 Shrink(0)。
+func TestStepLabelSurvivesNarrowWindow(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	dir := t.TempDir()
+	for _, n := range []string{"a.mp3", "b.mp3", "c.mp3"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.addPaths([]string{dir})
+	a.steps = []guiRule{step("seq"), step("case.lower"), step("scope.name"), step("pinyin")}
+	a.stepSel = -1
+	a.preview()
+	tt := ui.NewTester(a.view, 900, 480)
+	for i := 0; i < 4; i++ {
+		tt.Frame()
+	}
+	r, ok := tt.Find("1.")
+	if !ok {
+		t.Fatal("找不到第一步的编号")
+	}
+	// 编号宽 22,操作名紧随其后
+	img := tt.Image()
+	w := firstInkRun(img, int(r.X+r.W)+4, int(r.Y), int(r.Y+r.H), 5)
+	// "追加序号"四个 12px 粗体汉字实测约 46px;被截成"追…"只剩约 21px
+	if w < 36 {
+		t.Fatalf("步骤名被挤成省略号了:墨迹只有 %dpx(完整约 46px)", w)
 	}
 }
 

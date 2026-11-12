@@ -389,7 +389,10 @@ func (a *app) stepsView(c *ui.Context) {
 						// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
 						if s.opFlow {
 							ui.Row(c).Fill().Gap(6).Children(func() {
-								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
+								// Shrink(0):操作名不参与压缩,要压缩就让后面的参数
+								// 胶囊去省略。以前没有它,"追加序号"会被挤成"追…"、
+								// "AI 按内容命名"挤成"AI…"——名字比参数重要。
+								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 								if v := s.summary(); v != "" {
 									// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
 									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
@@ -398,7 +401,7 @@ func (a *app) stepsView(c *ui.Context) {
 							})
 						} else {
 							ui.Row(c).Fill().Gap(6).Children(func() {
-								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
+								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 								if v := s.summary(); v != "" && v != s.opLabel {
 									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
 										Background(cat.Alpha(0.16)).TextColor(t.Text)
