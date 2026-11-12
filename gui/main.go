@@ -612,46 +612,43 @@ func (a *app) filesView(c *ui.Context) {
 			})
 		} else {
 			dt := a.currentTheme()
-			// 分组:文件夹拖入的文件按文件夹分组。用 List 内置的吸顶分组头
+			// 分组:文件夹拖入的文件按文件夹分组,用 List 内置的吸顶分组头
 			// (ListState.Header):滚动时当前分组的文件夹名固定在顶部,滚到下一个
 			// 分组时新的文件夹名把它顶上去——文件再多也知道"现在是哪个文件夹"。
-			// 这里每行就是一个文件;某文件若是其分组的第一个,则该行是分组头。
+			//
+			// 关键:分组头必须**独立成行**,不能兼任该组第一个文件那一行。
+			// mygo 的吸顶不是裁剪内容,而是把整行元素的 y 直接设成列表顶部
+			// (ui/list.go pinHeader);头和卡同行时,钉住这一行 = 钉住第一张卡,
+			// 它会永远浮在顶部压住后面滚上来的卡。所以行数 = 文件数 + 分组数。
+			rows := buildRows(a.files)
 			a.table.Key = func(ri int) any {
-				if ri >= 0 && ri < len(a.files) {
-					return "f:" + a.files[ri].path
+				if ri < 0 || ri >= len(rows) {
+					return ri
 				}
-				return ri
-			}
-			isHeader := make([]bool, len(a.files))
-			for i := range a.files {
-				if a.files[i].group != "" && (i == 0 || a.files[i-1].group != a.files[i].group) {
-					isHeader[i] = true
+				if rows[ri].header {
+					return "h:" + rows[ri].group
 				}
+				return "f:" + a.files[rows[ri].file].path
 			}
 			a.table.Header = func(ri int) bool {
-				return ri >= 0 && ri < len(isHeader) && isHeader[ri]
+				return ri >= 0 && ri < len(rows) && rows[ri].header
 			}
-			ui.List(c, &a.table, len(a.files), func(i int) {
-				f := a.files[i]
-				// 分组内的首个文件行:先画吸顶的文件夹头(📁 名称 + 文件数)
-				if isHeader[i] {
-					n := 0
-					for j := range a.files {
-						if a.files[j].group == f.group {
-							n++
-						}
-					}
+			ui.List(c, &a.table, len(rows), func(ri int) {
+				r := rows[ri]
+				// 分组头独立一行:吸顶的文件夹名 + 组内文件数
+				if r.header {
 					// 吸顶头:实底(和右栏同色)盖住从下面滚过的文件卡,
-					// 加一条极淡底边线,读起来像"钉住"的标签条。
+					// 读起来像"钉住"的标签条。
 					ui.Row(c).Fill().Gap(8).Padding(6, 6).
-						Background(dt.panes(a.isDark()).right).
-						Border(0, ui.Color{}).Children(func() {
-						ui.Text(c, "📁 "+f.group).FontSize(13).Bold().TextColor(t.Text)
-						ui.Text(c, fmt.Sprintf("%d 个文件", n)).FontSize(11).TextColor(t.TextMuted)
+						Background(dt.panes(a.isDark()).right).Children(func() {
+						ui.Text(c, "📁 "+r.group).FontSize(13).Bold().TextColor(t.Text)
+						ui.Text(c, fmt.Sprintf("%d 个文件", r.count)).FontSize(11).TextColor(t.TextMuted)
 						ui.Spacer(c)
 					})
 					return
 				}
+				i := r.file
+				f := a.files[i]
 				// 属于分组时缩进一点,视觉上从属于上面的文件夹头
 				var indent float32 = 0
 				if f.group != "" {
@@ -1033,6 +1030,35 @@ func statFile(p string) fileInfo {
 	fi.typ = detectType(p)
 	fi.realType = sniffMagic(p)
 	return fi
+}
+
+// listRow is one row of the file list. A group header is its own row, so a
+// group of n files takes n+1 rows; this is what keeps the sticky header from
+// covering the first file of its group.
+type listRow struct {
+	header bool
+	file   int    // index into a.files, valid when !header
+	group  string // group name, valid when header
+	count  int    // files in this group, valid when header
+}
+
+// buildRows expands a.files into header rows plus file rows.
+func buildRows(files []fileInfo) []listRow {
+	rows := make([]listRow, 0, len(files)+4)
+	for i := range files {
+		g := files[i].group
+		if g != "" && (i == 0 || files[i-1].group != g) {
+			n := 0
+			for j := range files {
+				if files[j].group == g {
+					n++
+				}
+			}
+			rows = append(rows, listRow{header: true, group: g, count: n})
+		}
+		rows = append(rows, listRow{file: i})
+	}
+	return rows
 }
 
 // statFileKeepGroup 与 statFile 相同,但保留原分组。

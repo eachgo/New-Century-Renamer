@@ -78,3 +78,50 @@ func TestPrimaryActionInBottomBar(t *testing.T) {
 		t.Errorf("回滚上次应在底部状态栏,实际 y=%.1f", undo.Y)
 	}
 }
+
+// 分组头必须独立成行:一个组 n 个文件占 n+1 行。
+// 以前头兼作该组第一行,那行文件卡永远不画——7 个文件只看到 5 行,
+// 底栏说"7 个将更名"而屏幕上少两行,用户没法逐行核对。
+func TestGroupHeaderDoesNotSwallowFirstFile(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	dir := t.TempDir()
+	var files []fileInfo
+	for _, g := range []string{"Album A", "Album B"} {
+		gd := filepath.Join(dir, g)
+		os.MkdirAll(gd, 0o755)
+		for i := 0; i < 3; i++ {
+			p := filepath.Join(gd, fmt.Sprintf("track%d", i+1)+".mp3")
+			os.WriteFile(p, []byte("x"), 0o644)
+			f := statFile(p)
+			f.group = g
+			files = append(files, f)
+		}
+	}
+	a.files = files
+	rows := buildRows(a.files)
+	if len(rows) != 8 { // 2 头 + 6 文件
+		t.Fatalf("行数 = %d, want 8 (2 个头 + 6 个文件)", len(rows))
+	}
+	heads, cards := 0, 0
+	for _, r := range rows {
+		if r.header {
+			heads++
+		} else {
+			cards++
+		}
+	}
+	if heads != 2 || cards != 6 {
+		t.Fatalf("头 %d 个、卡 %d 张, want 2 / 6", heads, cards)
+	}
+
+	// 渲染层面确认:每个组的第一个文件都真的画出来了
+	tt := ui.NewTester(a.view, 900, 600)
+	for i := 0; i < 4; i++ {
+		tt.Frame()
+	}
+	for _, want := range []string{"📁 Album A", "📁 Album B", "track1", "track2", "track3"} {
+		if _, ok := tt.Find(want); !ok {
+			t.Errorf("应能看到 %q", want)
+		}
+	}
+}
