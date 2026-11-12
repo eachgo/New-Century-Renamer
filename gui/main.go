@@ -51,6 +51,9 @@ type app struct {
 	seedFollow        bool                // theme seed follows the desktop accent
 	seedPick          ui.Color            // theme seed when not following
 	confirmClear      bool                // 清空列表 needs a second click
+	confirmAt         time.Time           // 二次确认的截止时间:挂太久自动收回
+	confirmDelStep    bool                // 删除步骤 needs a second click
+	confirmChosen     bool                // 删除所选 needs a second click
 	saveErr           string              // settings dialog save error, shown in-dialog
 	aiTimeoutText     string              // 设置里"等待秒数"输入框的文本缓冲
 	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
@@ -460,8 +463,19 @@ func (a *app) stepsView(c *ui.Context) {
 			ui.Divider(c)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, fmt.Sprintf("已选 %d 步", n)).Bold()
-				if ui.Button(c, "删除所选").Radius(16).Clicked() {
-					a.deleteChosen()
+				// 批量删除同样是"丢东西",和单步删除、清空列表共用一套语言
+				if a.confirmChosen && a.confirmStale() {
+					a.dropConfirm()
+				}
+				if a.confirmChosen {
+					confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+					confirm.Children(func() { ui.Text(c, "确认删除所选?").SingleLine() })
+					if confirm.Clicked() {
+						a.deleteChosen()
+						a.dropConfirm()
+					}
+				} else if dangerButton(c, "删除所选", true).Clicked() {
+					a.armConfirm("chosen")
 				}
 				if ui.Button(c, "全不选").Radius(16).Clicked() {
 					a.chosen.Clear()
@@ -484,9 +498,22 @@ func (a *app) stepsView(c *ui.Context) {
 				if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Clicked() {
 					a.swapSteps(a.stepSel, a.stepSel+1)
 				}
-				if ui.Button(c, "删除").Clicked() {
-					a.steps = append(a.steps[:a.stepSel], a.steps[a.stepSel+1:]...)
-					a.stepSel--
+				// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
+				// 错误色 + 二次确认 + 确认态三秒自动收回。以前它和"复制"同款,
+				// 一个像不可逆、一个像随手,用户分不出轻重。
+				if a.confirmDelStep && a.confirmStale() {
+					a.dropConfirm()
+				}
+				if a.confirmDelStep {
+					confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+					confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
+					if confirm.Clicked() {
+						a.steps = append(a.steps[:a.stepSel], a.steps[a.stepSel+1:]...)
+						a.stepSel--
+						a.dropConfirm()
+					}
+				} else if dangerButton(c, "删除", true).Clicked() {
+					a.armConfirm("step")
 				}
 				if ui.Button(c, "复制").Clicked() {
 					cp := *r
@@ -580,6 +607,9 @@ func (a *app) filesView(c *ui.Context) {
 			if expBtn.Clicked() {
 				go a.exportCSV()
 			}
+			if a.confirmClear && a.confirmStale() {
+				a.dropConfirm() // 挂太久:当用户改主意,收回确认态
+			}
 			if a.confirmClear {
 				// 二次确认态:换成红色实心,明确告诉用户"再点就真删了"
 				confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
@@ -589,12 +619,12 @@ func (a *app) filesView(c *ui.Context) {
 				confirm.Children(func() { ui.Text(c, "确认清空?").SingleLine() })
 				if confirm.Clicked() {
 					a.files, a.ops, a.applied = nil, nil, false
-					a.confirmClear = false
+					a.dropConfirm()
 				}
 			} else {
 				clrBtn := dangerButton(c, "清空列表", len(a.files) > 0)
 				if clrBtn.Clicked() {
-					a.confirmClear = true // 防错:两次点击才清空
+					a.armConfirm("clear") // 防错:两次点击才清空
 				}
 			}
 		})
@@ -1178,6 +1208,38 @@ func (a *app) batchSummary() string {
 		return ""
 	}
 	return fmt.Sprintf("%d 个文件", len(a.files))
+}
+
+// confirmStale reports whether a pending second-click confirmation has
+// outlived its window. 防错提示挂着不走,等于把"再点一下就删"的按钮
+// 永远留在屏幕上——三秒内没点就当用户改主意了。
+func (a *app) confirmStale() bool {
+	return !a.confirmAt.IsZero() && time.Since(a.confirmAt) > 3*time.Second
+}
+
+// armConfirm 记下确认窗口的起点,并收回另一个待确认的动作——
+// 同时挂着两个"再点一下就删"是没道理的状态。
+func (a *app) armConfirm(which string) {
+	a.confirmClear = which == "clear"
+	a.confirmDelStep = which == "step"
+	a.confirmChosen = which == "chosen"
+	a.confirmAt = time.Now()
+	// 界面只在有事件时重画。用户点完第一下就撒手,没有事件,
+	// confirmStale 永远没机会跑,确认态就一直挂着。所以自己排一次重画。
+	go func(at time.Time) {
+		time.Sleep(3*time.Second + 100*time.Millisecond)
+		if a.confirmAt.Equal(at) {
+			a.update()
+		}
+	}(a.confirmAt)
+}
+
+// dropConfirm 收回所有二次确认态。
+func (a *app) dropConfirm() {
+	a.confirmClear = false
+	a.confirmDelStep = false
+	a.confirmChosen = false
+	a.confirmAt = time.Time{}
 }
 
 // firstErrText returns the first real error message, skipping sidecar files

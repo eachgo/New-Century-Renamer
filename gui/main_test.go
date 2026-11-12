@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -532,8 +533,15 @@ func TestStepsMultiMode(t *testing.T) {
 		t.Error("多选面板未显示")
 	}
 	tt.Frame() // 物化当前帧,避免点击落在首帧构建中途
-	// batch delete
+	// batch delete:现在和"清空列表"一样要两次点击(都丢东西,同一套语言)
 	if err := tt.Click("删除所选"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.steps) != 4 {
+		t.Fatal("第一次点击就删了,应该只是进入确认态")
+	}
+	if err := tt.Click("确认删除所选?"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -885,5 +893,72 @@ func TestChipContrast(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// 删除动作统一 danger 语言:步骤删除与批量删除都要二次确认,且确认态
+// 会自己收回(挂太久等于把"再点一下就删"的按钮永远留在屏幕上)。
+func TestDeleteNeedsConfirmAndExpires(t *testing.T) {
+	a := &app{stepSel: 0, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin"), step("case.lower")}
+	for i := range a.steps {
+		a.stepUID++
+		a.steps[i].opUID = a.stepUID
+	}
+	tt := ui.NewTester(a.view, 1280, 800)
+	if err := tt.Click("删除"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.steps) != 2 {
+		t.Fatal("第一次点击就删了,应该只是进入确认态")
+	}
+	if !a.confirmDelStep {
+		t.Fatal("未进入确认态")
+	}
+	// 超时:三秒没点就当用户改主意
+	a.confirmAt = time.Now().Add(-4 * time.Second)
+	tt.Frame()
+	if a.confirmDelStep {
+		t.Fatal("确认态挂过三秒应自动收回")
+	}
+	if len(a.steps) != 2 {
+		t.Fatal("收回确认态不该删东西")
+	}
+	// 再走一遍,这次真的点确认
+	if err := tt.Click("删除"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if err := tt.Click("确认删除?"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.steps) != 1 || a.steps[0].opLabel != "全部转小写" {
+		t.Fatalf("确认删除失败: %d 步", len(a.steps))
+	}
+}
+
+// 同时只允许挂一个"再点一下就删":点清空会收回删除步骤的确认态。
+func TestOnlyOneConfirmAtATime(t *testing.T) {
+	a := &app{stepSel: 0, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin")}
+	a.stepUID++
+	a.steps[0].opUID = a.stepUID
+	a.files = []fileInfo{statFile(newTestFile(t, "a.txt"))}
+	tt := ui.NewTester(a.view, 1280, 800)
+	if err := tt.Click("删除"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.confirmDelStep {
+		t.Fatal("未进入删除确认")
+	}
+	if err := tt.Click("清空列表"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.confirmDelStep || !a.confirmClear {
+		t.Fatalf("两个确认态同时挂着: delStep=%v clear=%v", a.confirmDelStep, a.confirmClear)
 	}
 }
