@@ -706,6 +706,14 @@ func (a *app) filesView(c *ui.Context) {
 					nGroups++
 				}
 			}
+			// 列头:结果列离名字有几百像素,没有表头的话右边那列只是
+			// "一个小圆点加两个字",用户得自己猜那是结果。表头只在有文件时
+			// 出现——空列表时它只是一行噪音。
+			ui.Row(c).FillWidth().Gap(8).PaddingStart(10).Children(func() {
+				ui.Text(c, "原名 → 新名").FontSize(11).TextColor(t.TextMuted)
+				ui.Spacer(c)
+				ui.Text(c, "结果").FontSize(11).TextColor(t.TextMuted).Width(64).TextAlign(ui.End)
+			})
 			ui.List(c, &a.table, len(rows), func(ri int) {
 				r := rows[ri]
 				// 分组头独立一行:吸顶的文件夹名 + 组内文件数
