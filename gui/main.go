@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -700,12 +701,15 @@ func (a *app) filesView(c *ui.Context) {
 							path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
 								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
 							path.Tooltip(filepath.Dir(f.path))
-							// 真实类型:始终显示;与扩展名不符时红色警示
+							// 真实类型:与扩展名相符时中性显示;只有真不符才标红。
+							// EPUB/DOCX 的容器本来就是 ZIP,m4a/mov 本来就是 MP4,
+							// 按字符串判等会把整屏正常文件标红,假警报淹掉真警报。
 							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
 							if f.realType != "" {
-								if !strings.EqualFold(f.realType, extNoDot) {
-									ui.Text(c, "实际 "+f.realType).FontSize(11).Padding(1, 6).Radius(6).
-										Background(t.Danger.Alpha(0.15)).TextColor(t.Danger)
+								if !realMatchesExt(extNoDot, f.realType) {
+									ui.Text(c, "内容为 "+f.realType+" 容器").FontSize(11).Padding(1, 6).Radius(6).
+										Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).
+										Tooltip("扩展名是 ." + extNoDot + ",但文件内容像 " + f.realType)
 								} else {
 									rc := a.fileColor(dt, f.realType)
 									ui.Text(c, f.realType).FontSize(11).Padding(1, 6).Radius(6).
@@ -1031,6 +1035,16 @@ func statFile(p string) fileInfo {
 	return fi
 }
 
+// statFileKeepGroup 与 statFile 相同,但保留原分组。
+// 执行/回滚后重建 fileInfo 时如果丢掉 group,列表会进入"有的文件有组名、
+// 有的没有"的混合状态,而分组头判定是"组名非空且与上一行不同"——
+// 于是空组名与组名的交界处凭空多出一个组头,每个组头还会吞掉一行。
+func statFileKeepGroup(p, group string) fileInfo {
+	fi := statFile(p)
+	fi.group = group
+	return fi
+}
+
 // stepSpecs renders the task steps to CLI rule specs (with any filters).
 func (a *app) stepSpecs() []string {
 	var out []string
@@ -1114,12 +1128,13 @@ func (a *app) hasAIStep() bool {
 }
 
 // journalExists: 回滚只在真有日志可回滚时可用.
+// 只看文件在不在不够——上一次执行如果全失败,日志里是空列表,
+// 按钮却亮着,点下去一个文件也不动还报"已回滚"。
 func (a *app) journalExists() bool {
 	if a.settings.Journal == "" {
 		return false
 	}
-	_, err := os.Stat(a.settings.Journal)
-	return err == nil
+	return core.JournalCount(a.settings.Journal) > 0
 }
 
 // statusColor colors feedback: failures stand out, success reads calm.
@@ -1137,7 +1152,9 @@ func (a *app) statusColor(t *ui.Theme) ui.Color {
 
 func countChanges(ops []core.RenameOp) (n int) {
 	for _, op := range ops {
-		if op.Err == nil && op.OldName != op.NewName {
+		// 已经改过的不再算"将更名":否则执行完主按钮还亮着,
+		// 再点一次全部失败,用户会以为程序坏了。
+		if op.Err == nil && op.OldName != op.NewName && !op.Applied {
 			n++
 		}
 	}
@@ -1164,16 +1181,28 @@ func (a *app) apply() {
 	if err != nil {
 		a.status = "执行出错: " + err.Error()
 	} else {
-		ok := 0
+		ok, failed := 0, 0
 		for _, op := range a.ops {
-			if op.Applied {
+			switch {
+			case op.Applied:
 				ok++
+			case op.Err != nil:
+				failed++
 			}
 		}
-		a.status = fmt.Sprintf("成功 %d,失败 %d;可用“回滚上次”撤销", ok, len(a.ops)-ok)
+		// 只报告这一次真的发生了什么:"失败"不该把"名字没变化、无需处理"
+		// 的文件也算进去,那会让一次干净的批量看起来像出了很多错。
+		if ok == 0 {
+			a.status = fmt.Sprintf("没有文件被更名,失败 %d", failed)
+			if failed == 0 {
+				a.status = "没有文件需要更名"
+			}
+		} else {
+			a.status = fmt.Sprintf("成功 %d,失败 %d;可用“回滚上次”撤销", ok, failed)
+		}
 		for i := range a.files {
 			if i < len(a.ops) && a.ops[i].Applied {
-				a.files[i] = statFile(filepath.Join(a.ops[i].Dir, a.ops[i].NewName))
+				a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].NewName), a.files[i].group)
 			}
 		}
 		a.assignExtColors(a.currentTheme())
@@ -1189,12 +1218,29 @@ func (a *app) undo() {
 	a.busy = false
 	a.busyStart = time.Time{}
 	if err != nil {
+		// 尽力而为的回滚可能只退了一部分,状态里必须说清退了多少,
+		// 而不是一句"回滚失败"让用户以为文件没动过。
+		var ue *core.UndoError
+		if errors.As(err, &ue) && ue.Done > 0 {
+			a.status = "回滚部分完成: " + ue.Error()
+			for i := range a.files {
+				if i < len(a.ops) && a.ops[i].Applied {
+					a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
+					a.ops[i].Applied = false
+				}
+			}
+			a.assignExtColors(a.currentTheme())
+			a.update()
+			return
+		}
 		a.status = "回滚失败: " + err.Error()
 	} else {
 		a.status = "已回滚"
 		for i := range a.files {
 			if i < len(a.ops) && a.ops[i].Applied {
-				a.files[i] = statFile(filepath.Join(a.ops[i].Dir, a.ops[i].OldName))
+				a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
+				// 已回滚的项不再算"将更名",否则主按钮会在回滚后仍然亮着
+				a.ops[i].Applied = false
 			}
 		}
 		a.assignExtColors(a.currentTheme())

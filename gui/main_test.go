@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -649,5 +650,62 @@ func TestPanesNoNumbers(t *testing.T) {
 	}
 	if !tt.HasText("功能 · 点击加入步骤") {
 		t.Error("功能栏缺引导")
+	}
+}
+
+// 执行过的项不再算"将更名":否则主按钮执行完还亮着,再点一次全部失败,
+// 用户会以为程序坏了。
+func TestCountChangesSkipsApplied(t *testing.T) {
+	ops := []core.RenameOp{
+		{OldName: "a.txt", NewName: "b.txt", Applied: true},
+		{OldName: "c.txt", NewName: "d.txt"},
+		{OldName: "e.txt", NewName: "e.txt"},
+		{OldName: "f.txt", NewName: "g.txt", Err: errors.New("boom")},
+	}
+	if n := countChanges(ops); n != 1 {
+		t.Fatalf("countChanges = %d, want 1(只有 c.txt 还未执行)", n)
+	}
+}
+
+// 执行后重建文件信息必须保留分组,否则空组名与组名的交界处会凭空
+// 多出一个分组头,而分组头还会吞掉一行文件。
+func TestStatFileKeepGroup(t *testing.T) {
+	p := newTestFile(t, "01.flac")
+	fi := statFileKeepGroup(p, "Album A")
+	if fi.group != "Album A" {
+		t.Fatalf("group = %q, want Album A", fi.group)
+	}
+	if fi.typ == "" {
+		t.Error("其余字段应与 statFile 一致(typ 不该为空)")
+	}
+}
+
+// EPUB/DOCX 的容器是 ZIP,m4a/mov 是 MP4:这些都不是"扩展名在撒谎",
+// 不该标红。假警报一多,真警报就被淹掉了。
+func TestRealMatchesExt(t *testing.T) {
+	ok := [][2]string{
+		{"epub", "ZIP"}, {"docx", "ZIP"}, {"xlsx", "ZIP"}, {"apk", "ZIP"},
+		{"m4a", "MP4"}, {"mov", "MP4"}, {"mp4", "MP4"},
+		{"mkv", "MKV"}, {"webm", "MKV"},
+		{"ogg", "OGG"}, {"opus", "OGG"},
+		{"jpg", "JPEG"}, {"jpeg", "JPEG"},
+		{"mp3", "MP3"}, {"flac", "FLAC"}, {"pdf", "PDF"}, {"png", "PNG"},
+	}
+	for _, c := range ok {
+		if !realMatchesExt(c[0], c[1]) {
+			t.Errorf("%s 内容 %s 应视为相符", c[0], c[1])
+		}
+	}
+	bad := [][2]string{
+		{"mp3", "WebP"}, {"jpg", "ZIP"}, {"pdf", "MP4"}, {"epub", "MP3"},
+	}
+	for _, c := range bad {
+		if realMatchesExt(c[0], c[1]) {
+			t.Errorf("%s 内容 %s 是真不符,应报警", c[0], c[1])
+		}
+	}
+	// 嗅探不出内容(空文件/未知格式)时不报警
+	if !realMatchesExt("mp3", "") {
+		t.Error("嗅探不出内容时不该报警")
 	}
 }

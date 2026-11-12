@@ -377,6 +377,11 @@ func ApplyPlan(plan []RenameOp, journal string) error {
 		ops = append(ops, *op)
 		fmt.Printf("* %s => %s\n", old, op.NewName)
 	}
+	// 只有真的改了东西才写日志。全失败时照常写会覆盖上一批的回滚记录,
+	// 用户既被"成功 0 失败 7"之外什么也没发生安抚,又失去了唯一的退路。
+	if len(ops) == 0 {
+		return nil
+	}
 	return WriteJournal(journal, ops)
 }
 

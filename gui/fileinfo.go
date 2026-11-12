@@ -9,6 +9,45 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// containerExts 记录"这个扩展名本来就建立在某个容器之上"。
+// sniffMagic 只能看到容器层,EPUB/DOCX/XLSX/APK 全都是 ZIP,.m4a/.mov 全都
+// 是 MP4——按字符串判等会把整屏正常文件标成红色错误,假警报一多,
+// 真正"扩展名在撒谎"的那一个就被淹掉了。
+var containerExts = map[string][]string{
+	// ZIP 家族
+	"epub": {"zip"}, "docx": {"zip"}, "xlsx": {"zip"}, "pptx": {"zip"},
+	"odt": {"zip"}, "ods": {"zip"}, "odp": {"zip"}, "apk": {"zip"},
+	"jar": {"zip"}, "cbz": {"zip"},
+	// MP4 家族
+	"m4a": {"mp4"}, "m4b": {"mp4"}, "m4v": {"mp4"}, "mov": {"mp4"},
+	"mp4": {"mp4"}, "3gp": {"mp4"},
+	// Matroska 家族
+	"mkv": {"mkv"}, "webm": {"mkv"}, "mka": {"mkv"},
+	// Ogg 家族
+	"ogg": {"ogg"}, "oga": {"ogg"}, "opus": {"ogg"}, "spx": {"ogg"},
+	// 图片别名
+	"jpg": {"jpeg"}, "jpeg": {"jpeg"},
+}
+
+// realMatchesExt 判断嗅探到的真实类型与扩展名是否说得通。
+// 返回 true 表示"没问题,不必报警"。
+func realMatchesExt(ext, real string) bool {
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	real = strings.ToLower(real)
+	if real == "" || ext == "" {
+		return true
+	}
+	if ext == real {
+		return true
+	}
+	for _, ok := range containerExts[ext] {
+		if ok == real {
+			return true
+		}
+	}
+	return false
+}
+
 // sniffMagic identifies the real content type from the file's first bytes,
 // so a renamed-to-lie extension shows ("photo.mp3" that is really WebP).
 func sniffMagic(path string) string {
