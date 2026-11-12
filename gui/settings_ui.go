@@ -115,7 +115,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 					})
 					card("文件", func() {
 						row("操作日志", func() {
-							ui.TextInput(c, &a.settingsDraft.Journal).Placeholder(".ncreamer-journal.json").Fill()
+							ui.TextInput(c, &a.settingsDraft.Journal).Placeholder(defaultJournalPath()).Fill()
 						})
 					})
 					card("主题", func() {

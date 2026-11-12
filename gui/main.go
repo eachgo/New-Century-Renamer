@@ -55,6 +55,7 @@ type app struct {
 	confirmAt         time.Time           // 二次确认的截止时间:挂太久自动收回
 	confirmDelStep    bool                // 删除步骤 needs a second click
 	confirmChosen     bool                // 删除所选 needs a second click
+	confirmUndo       bool                // 回滚上次 needs a second click
 	saveErr           string              // settings dialog save error, shown in-dialog
 	aiTimeoutText     string              // 设置里"等待秒数"输入框的文本缓冲
 	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
@@ -173,9 +174,33 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		ui.Spacer(c)
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
-		undoBtn := outlinedButton(c, "回滚上次", !a.busy && a.journalExists()).Tooltip(shortcutTip("Ctrl+Z"))
-		if undoBtn.Clicked() {
-			go a.undo()
+		// "回滚上次"必须说清是"哪一次、几个文件"。只写三个字,用户不
+		// 知道自己即将撤销的是刚才那批,还是上周某个目录里的一批。
+		sum, canUndo := a.journalInfo()
+		if a.confirmUndo && a.confirmStale() {
+			a.dropConfirm()
+		}
+		if a.confirmUndo {
+			label := fmt.Sprintf("确认回滚 %d 个?", len(sum.Names))
+			confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+			if confirm.Hovered() {
+				confirm = confirm.Background(t.Danger.Alpha(0.85))
+			}
+			confirm.Children(func() { ui.Text(c, label).SingleLine() })
+			if confirm.Clicked() {
+				a.dropConfirm()
+				go a.undo()
+			}
+		} else {
+			undoLabel := "回滚上次"
+			if canUndo {
+				undoLabel = fmt.Sprintf("回滚上次(%d 个)", len(sum.Names))
+			}
+			undoBtn := outlinedButton(c, undoLabel, !a.busy && canUndo).Tooltip(a.undoTip(sum))
+			if undoBtn.Clicked() {
+				// 回滚会动磁盘,和"清空列表"一样属于"再点一下才真做"
+				a.armConfirm("undo")
+			}
 		}
 		applyEnabled := !a.busy && a.hasChanges()
 		if applyEnabled {
@@ -1267,7 +1292,13 @@ func (a *app) handleShortcuts(c *ui.Context) {
 		go a.apply()
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyZ) && !a.busy && a.journalExists() {
-		go a.undo()
+		// 与点按钮同一套语言:先挂确认态,再按一次才真回滚
+		if a.confirmUndo && !a.confirmStale() {
+			a.dropConfirm()
+			go a.undo()
+		} else {
+			a.armConfirm("undo")
+		}
 	}
 	if a.stepSel < 0 || a.stepSel >= len(a.steps) {
 		return
@@ -1319,6 +1350,7 @@ func (a *app) armConfirm(which string) {
 	a.confirmClear = which == "clear"
 	a.confirmDelStep = which == "step"
 	a.confirmChosen = which == "chosen"
+	a.confirmUndo = which == "undo"
 	a.confirmAt = time.Now()
 	// 界面只在有事件时重画。用户点完第一下就撒手,没有事件,
 	// confirmStale 永远没机会跑,确认态就一直挂着。所以自己排一次重画。
@@ -1335,6 +1367,7 @@ func (a *app) dropConfirm() {
 	a.confirmClear = false
 	a.confirmDelStep = false
 	a.confirmChosen = false
+	a.confirmUndo = false
 	a.confirmAt = time.Time{}
 }
 
@@ -1363,10 +1396,39 @@ func (a *app) hasAIStep() bool {
 // 只看文件在不在不够——上一次执行如果全失败,日志里是空列表,
 // 按钮却亮着,点下去一个文件也不动还报"已回滚"。
 func (a *app) journalExists() bool {
+	_, ok := a.journalInfo()
+	return ok
+}
+
+// journalInfo 读出日志里还能回滚的那一批:时间、几个文件、都是谁。
+// 界面上"回滚上次"要能说出这些,而不是三个字的哑按钮。
+func (a *app) journalInfo() (core.JournalSummary, bool) {
 	if a.settings.Journal == "" {
-		return false
+		return core.JournalSummary{}, false
 	}
-	return core.JournalCount(a.settings.Journal) > 0
+	return core.ReadJournalSummary(a.settings.Journal)
+}
+
+// undoTip 是"回滚上次"悬停时的说明:什么时候改的、前三个文件名。
+// 点之前就该知道要点掉什么。
+func (a *app) undoTip(sum core.JournalSummary) string {
+	tip := shortcutTip("Ctrl+Z")
+	if len(sum.Names) == 0 {
+		return tip + " · 没有可回滚的记录"
+	}
+	if !sum.Time.IsZero() {
+		tip = sum.Time.Format("01-02 15:04") + " 的更名 · " + tip
+	}
+	n := len(sum.Names)
+	shown := sum.Names
+	if len(shown) > 3 {
+		shown = shown[:3]
+	}
+	tip += "\n" + strings.Join(shown, "\n")
+	if n > len(shown) {
+		tip += fmt.Sprintf("\n…等 %d 个文件", n)
+	}
+	return tip
 }
 
 // statusColor colors feedback: failures stand out, success reads calm.

@@ -46,8 +46,20 @@ func settingsPath() string {
 	return filepath.Join(filepath.Dir(exe), settingsFile)
 }
 
+// defaultJournalPath 把回滚日志放到用户配置目录。
+// 以前是相对路径 .ncreamer-journal.json,跟着进程工作目录走:换个目录
+// 启动,"回滚上次"就变成不可用(或者更糟——回滚到别处记录里的文件)。
+func defaultJournalPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		// 拿不到配置目录就退到可执行文件旁边,至少是稳定的绝对路径
+		return filepath.Join(filepath.Dir(settingsPath()), "ncreamer-journal.json")
+	}
+	return filepath.Join(dir, "ncreamer", "journal.json")
+}
+
 func defaultSettings() Settings {
-	s := Settings{Journal: ".ncreamer-journal.json"}
+	s := Settings{Journal: defaultJournalPath()}
 	s.AI.Base = "https://api.openai.com/v1"
 	s.Theme.Mode = "跟随系统"
 	return s
