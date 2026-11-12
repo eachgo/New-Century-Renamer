@@ -260,6 +260,19 @@ func preflight(plan []RenameOp) {
 			op.ErrText = op.Err.Error()
 		}
 	}
+	// 新名字里出现路径分隔符意味着"改名"会变成"移动":文件会被静默搬进
+	// 子目录,而界面一直说这是改名。这是唯一会让文件改变位置的行为,
+	// 必须在预览阶段拦下,不能等执行完才发现文件不见了。
+	for i := range plan {
+		op := &plan[i]
+		if op.Err != nil || op.OldName == op.NewName {
+			continue
+		}
+		if strings.ContainsAny(op.NewName, `/\`) {
+			op.Err = fmt.Errorf("新名字里有路径分隔符,会把文件移动到别的目录;更名器只改名不移动文件")
+			op.ErrText = op.Err.Error()
+		}
+	}
 }
 
 func analyze(rules []Rule, _ string) (needsMeta, needsAI bool) {

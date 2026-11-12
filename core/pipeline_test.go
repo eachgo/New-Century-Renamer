@@ -666,3 +666,31 @@ func TestCaseOnlyRenameApplies(t *testing.T) {
 		t.Fatalf("回滚后原名不在: %v", err)
 	}
 }
+
+// 模板里写了路径分隔符时,"改名"会变成"移动":文件被静默搬进子目录,
+// 而界面一直说这是改名。必须在预览阶段就拦下来。
+func TestPreflightRejectsPathSeparator(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "原名.txt")
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan := runRules(t, []string{`template=子目录/新名<.EXT>`}, []string{p})
+	if plan[0].Err == nil {
+		t.Fatalf("含路径分隔符的新名字应当报错, got NewName=%q", plan[0].NewName)
+	}
+	if !strings.Contains(plan[0].Err.Error(), "路径分隔符") {
+		t.Errorf("错误文案应说明是路径分隔符: %v", plan[0].Err)
+	}
+	// 执行阶段必须跳过它,磁盘上不能多出目录
+	journal := filepath.Join(dir, "j.json")
+	if err := ApplyPlan(plan, journal); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "子目录")); err == nil {
+		t.Fatal("不该创建子目录")
+	}
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("原文件应原地不动: %v", err)
+	}
+}
