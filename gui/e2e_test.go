@@ -367,13 +367,13 @@ func TestFailureReasonVisible(t *testing.T) {
 	if !tt.HasText("失败") {
 		t.Fatal("未出现失败状态")
 	}
-	if !tt.HasText("⚠ ") {
-		texts := tt.Texts()
-		for _, s := range texts {
-			if strings.Contains(s, "相同") || strings.Contains(s, "覆盖") {
-				return // 原因以别的方式可见,也算通过
-			}
+	// 失败原因直接写在卡片里,不带 ⚠ 前缀:emoji 在不同字体下
+	// 形状/基线/颜色都不可控,界面里不用
+	texts := tt.Texts()
+	for _, s := range texts {
+		if strings.Contains(s, "相同") || strings.Contains(s, "覆盖") {
+			return
 		}
-		t.Fatalf("失败原因不可见, texts=%q", texts)
 	}
+	t.Fatalf("失败原因不可见, texts=%q", texts)
 }

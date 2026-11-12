@@ -31,12 +31,12 @@ func TestFolderHeaderSticksWhileScroll(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	if _, ok := tt.Find("📁 Album A"); !ok {
+	if _, ok := tt.Find("Album A"); !ok {
 		t.Fatal("初始应能看到第一个文件夹头 Album A")
 	}
 	// 记下列表顶部(工具栏下方)的 y,吸顶头应钉在这里附近
 	listTop := func() float32 {
-		if r, ok := tt.Find("📁 Album A"); ok {
+		if r, ok := tt.Find("Album A"); ok {
 			return r.Y
 		}
 		return 90
@@ -46,7 +46,7 @@ func TestFolderHeaderSticksWhileScroll(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	r, ok := tt.Find("📁 Album B")
+	r, ok := tt.Find("Album B")
 	if !ok {
 		t.Fatal("滚进 Album B 深处后,其文件夹头仍应固定在顶部可见")
 	}
@@ -119,7 +119,7 @@ func TestGroupHeaderDoesNotSwallowFirstFile(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	for _, want := range []string{"📁 Album A", "📁 Album B", "track1", "track2", "track3"} {
+	for _, want := range []string{"Album A", "Album B", "track1", "track2", "track3"} {
 		if _, ok := tt.Find(want); !ok {
 			t.Errorf("应能看到 %q", want)
 		}

@@ -115,7 +115,9 @@ func (a *app) view(c *ui.Context) {
 				brand.PaddingStart(float32(bar.Left) + 8)
 			}
 			ui.Spacer(c)
-			ui.Text(c, "批量更名").FontSize(11).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
+			// 右上角是用户扫视时第一个落脚点,放"这批有多少文件、几个会改名"
+			// 比放一个和窗口标题重复的名字有用。
+			ui.Text(c, a.batchSummary()).FontSize(11).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
 		})
 		// 只 Grow 不 Fill:Fill 会让 Split 想占满整列(含标题栏那几十像素),
 		// 于是内容画到标题栏底下。Grow(1) 只吃标题栏之外的剩余空间。
@@ -384,7 +386,7 @@ func (a *app) stepsView(c *ui.Context) {
 						numCol, labCol = t.Text, t.Text
 					}
 					ui.Row(c).Gap(6).Children(func() {
-						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22)
+						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22).TextAlign(ui.End)
 						// 全部步骤统一左对齐(设计书:不要在同一列表里混用对齐);
 						// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
 						if s.opFlow {
@@ -595,7 +597,6 @@ func (a *app) filesView(c *ui.Context) {
 					a.confirmClear = true // 防错:两次点击才清空
 				}
 			}
-			ui.Text(c, fmt.Sprintf("%d 个文件", len(a.files))).TextColor(t.TextMuted)
 		})
 		// ② AI 预览:也是"文件列表"上的操作(对清单里的文件联网起名),留在顶部
 		if a.hasAIStep() {
@@ -637,6 +638,14 @@ func (a *app) filesView(c *ui.Context) {
 			a.table.Header = func(ri int) bool {
 				return ri >= 0 && ri < len(rows) && rows[ri].header
 			}
+			// 只有一个分组时,标题栏右侧已经在说「N 个文件」,组头再说一遍
+			// 就是同一句话并排出现两次;多组时才需要每组各说各的。
+			nGroups := 0
+			for _, r := range rows {
+				if r.header {
+					nGroups++
+				}
+			}
 			ui.List(c, &a.table, len(rows), func(ri int) {
 				r := rows[ri]
 				// 分组头独立一行:吸顶的文件夹名 + 组内文件数
@@ -645,8 +654,10 @@ func (a *app) filesView(c *ui.Context) {
 					// 读起来像"钉住"的标签条。
 					ui.Row(c).Fill().Gap(8).Padding(6, 6).
 						Background(dt.panes(a.isDark()).right).Children(func() {
-						ui.Text(c, "📁 "+r.group).FontSize(13).Bold().TextColor(t.Text)
-						ui.Text(c, fmt.Sprintf("%d 个文件", r.count)).FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, r.group).FontSize(13).Bold().TextColor(t.Text)
+						if nGroups > 1 {
+							ui.Text(c, fmt.Sprintf("%d 个文件", r.count)).FontSize(11).TextColor(t.TextMuted)
+						}
 						ui.Spacer(c)
 					})
 					return
@@ -701,26 +712,28 @@ func (a *app) filesView(c *ui.Context) {
 							}
 							ui.Spacer(c)
 						})
-						// 下行:原始数据胶囊;路径悬停显示绝对地址
+						// 下行:原始数据胶囊。
+						// 一个文件行里说同一件事两次是噪音:扩展名胶囊已经写着
+						// 「mp3」,再挂一个「MP3 音频」只是把同样的信息换个说法;
+						// 文件夹名已经在上面的分组头里,每行再挂一遍路径胶囊
+						// 等于把「Awich - THE UNION」重复 4 次。所以:
+						// 路径只在没有分组头时出现,类型只在扩展名缺失时出现,
+						// 内容嗅探只在真不符时出现(相符是默认,不用报)。
 						ui.Row(c).Gap(6).Children(func() {
-							path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
-								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
-							path.Tooltip(filepath.Dir(f.path))
-							// 真实类型:与扩展名相符时中性显示;只有真不符才标红。
+							if f.group == "" {
+								path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
+									Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
+								path.Tooltip(filepath.Dir(f.path))
+							}
+							// 真实类型:与扩展名相符时不必说;只有真不符才标红。
 							// EPUB/DOCX 的容器本来就是 ZIP,m4a/mov 本来就是 MP4,
 							// 按字符串判等会把整屏正常文件标红,假警报淹掉真警报。
 							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
-							if f.realType != "" {
-								if !realMatchesExt(extNoDot, f.realType) {
-									ui.Text(c, "内容为 "+f.realType+" 容器").FontSize(11).Padding(1, 6).Radius(6).
-										Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).
-										Tooltip("扩展名是 ." + extNoDot + ",但文件内容像 " + f.realType)
-								} else {
-									rc := a.fileColor(dt, f.realType)
-									ui.Text(c, f.realType).FontSize(11).Padding(1, 6).Radius(6).
-										Background(rc.Alpha(0.18)).TextColor(t.Text)
-								}
-							} else if f.typ != "" && f.typ != "无扩展名" {
+							if f.realType != "" && !realMatchesExt(extNoDot, f.realType) {
+								ui.Text(c, "内容为 "+f.realType+" 容器").FontSize(11).Padding(1, 6).Radius(6).
+									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).
+									Tooltip("扩展名是 ." + extNoDot + ",但文件内容像 " + f.realType)
+							} else if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
 								ui.Text(c, f.typ).FontSize(11).Padding(1, 6).Radius(6).
 									Background(t.SurfaceHover).TextColor(t.TextMuted)
 							}
@@ -732,7 +745,7 @@ func (a *app) filesView(c *ui.Context) {
 						})
 						// 失败原因直接写在卡片里:只写"失败"等于不说
 						if i < len(a.ops) && a.ops[i].Err != nil {
-							ui.Text(c, "⚠ "+a.ops[i].Err.Error()).FontSize(11).TextColor(t.Danger).SingleLine().Ellipsis("…")
+							ui.Text(c, a.ops[i].Err.Error()).FontSize(11).TextColor(t.Danger).SingleLine().Ellipsis("…")
 						}
 					})
 					// 右缘结果:成功/失败/将更名/不变
@@ -750,7 +763,7 @@ func (a *app) filesView(c *ui.Context) {
 						})
 					}
 				})
-			}).Gap(6).Grow(1)
+			}).Gap(10).Grow(1)
 		}
 	})
 }
@@ -1155,6 +1168,17 @@ func (a *app) preview() {
 }
 
 func (a *app) hasChanges() bool { return countChanges(a.ops) > 0 }
+
+// batchSummary 只回答一个问题:这批一共有多少文件。
+// 计数以前说三遍(右栏工具栏「N 个文件」+ 每个分组头「N 个文件」+
+// 底栏「N 个将更名」),而"几个会改名"在底栏又说了一遍。现在分工是:
+// 标题栏右侧=总数,分组头=每组数,底栏=将更名/有问题——各说一次。
+func (a *app) batchSummary() string {
+	if len(a.files) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d 个文件", len(a.files))
+}
 
 // firstErrText returns the first real error message, skipping sidecar files
 // (cover.jpg next to an mp3 is not the user's problem).
