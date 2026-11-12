@@ -260,8 +260,18 @@ func TestDerivedThemeQuality(t *testing.T) {
 			if r := contrastRatio(th.Text, th.Background); r < 4.5 {
 				t.Errorf("%s seed %s: text contrast %.2f < 4.5", name, hex, r)
 			}
-			if r := contrastRatio(th.TextMuted, th.Background); r < 2.5 {
-				t.Errorf("%s seed %s: muted contrast %.2f < 2.5", name, hex, r)
+			// 次要文字承载路径、日期、大小、分组计数——是信息,不是装饰,
+			// 所以按正文标准 4.5 要求。且必须量它真实所处的每一层底色:
+			// 最差的从来不是 Background,而是左栏。
+			dark := name == "dark"
+			p := dt.panes(dark)
+			for pane, bg := range map[string]ui.Color{
+				"base": p.base, "left": p.left, "mid": p.mid,
+				"right": p.right, "card": p.card,
+			} {
+				if r := contrastRatio(th.TextMuted, bg); r < 4.5 {
+					t.Errorf("%s seed %s: muted contrast on %s %.2f < 4.5", name, hex, pane, r)
+				}
 			}
 		}
 	}
@@ -536,7 +546,8 @@ func TestMultiSelectEntry(t *testing.T) {
 // 三栏不编号:用户的工作流是"先有文件",编号会误导;只需说清
 // "功能会加入步骤"这一条关系
 
-// 左栏说明区不给设计语言做注释;默认文案应为行动指引
+// 左栏说明区不给设计语言做注释;默认文案应为行动指引,
+// 且不能要求用户"悬停"——键盘/触摸用户做不到,那样只剩一个空框。
 func TestCatalogHintIsActionable(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1280, 800)
@@ -544,7 +555,10 @@ func TestCatalogHintIsActionable(t *testing.T) {
 	if tt.HasText("左对齐 = 改名步骤 · 居中 = 流程控制/工具") {
 		t.Fatal("设计语言说明仍在")
 	}
-	if !tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
+	if tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
+		t.Fatal("默认文案要求悬停,键盘/触摸用户拿不到说明")
+	}
+	if !tt.HasText("点一个功能,它就加入中栏;步骤从上到下依次执行") {
 		t.Error("缺少行动指引")
 	}
 }

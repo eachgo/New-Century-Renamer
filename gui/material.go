@@ -88,7 +88,10 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	lt.SurfacePressed = tone(0.930, 0.18)
 	lt.Border = tone(0.920, 0.16)
 	lt.Text = tone(0.24, 0.30)
-	lt.TextMuted = tone(0.62, 0.20)
+	// 次要文字承载路径、日期、大小、分组计数——是信息不是装饰,必须读得出来。
+	// L 0.62 时在左栏底色上只有 2.94:1(远低于 WCAG 4.5);0.50 让四种底色
+	// (左/中/右栏/卡片)全部 ≥4.8,同时仍明显浅于正文(L 0.24),层级还在。
+	lt.TextMuted = tone(0.50, 0.20)
 	accAt(lt, accL, cc, H)
 	lt.AccentText = ui.RGB(255, 255, 255)
 	lt.Selection = tone(0.925, 0.35)

@@ -158,7 +158,9 @@ func (a *app) statusBar(c *ui.Context) {
 		} else if a.status != "" {
 			ui.Text(c, a.status).FontSize(12).TextColor(a.statusColor(t)).SingleLine().Ellipsis("…")
 		} else {
-			ui.Text(c, "把文件拖进来开始,或点右边的“执行更名”").FontSize(12).TextColor(t.TextMuted)
+			// 空态只陈述事实,不指挥用户点某个按钮——此刻"执行更名"是禁用的,
+			// 让文案指向它等于把人引到一堵墙上。
+			ui.Text(c, "拖入文件开始").FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Spacer(c)
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
@@ -237,6 +239,7 @@ func (a *app) catalogView(c *ui.Context) {
 						a.palHint = d.desc
 					}
 					if item.Clicked() {
+						a.palHint = d.desc // 点过之后说明留在框里,不用再悬停一次
 						switch d.act {
 						case "import-csv":
 							go a.importCSV()
@@ -258,11 +261,13 @@ func (a *app) catalogView(c *ui.Context) {
 		})
 		// 底部说明区:固定高度,内容变化不移动目录条目(否则点击会被位移打断)。
 		// 加 Clip():说明文字再长也只在自己这一格里换行/省略,绝不溢出到框外。
+		// 默认文案不写"把鼠标停在…"——键盘和触摸用户做不到这件事,
+		// 那样等于给他们一个永远空着的框加一句指令。这里直接说清因果。
 		ui.Column(c).Fill().Height(64).Padding(8, 10).Gap(4).Background(t.Background).Clip().Children(func() {
 			if a.palHint != "" {
 				ui.Text(c, a.palHint).FontSize(12).TextColor(t.TextMuted)
 			} else {
-				ui.Text(c, "把鼠标停在功能上,这里会说明它做什么").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "点一个功能,它就加入中栏;步骤从上到下依次执行").FontSize(12).TextColor(t.TextMuted)
 			}
 		})
 	})
@@ -385,7 +390,8 @@ func (a *app) stepsView(c *ui.Context) {
 							ui.Row(c).Fill().Gap(6).Children(func() {
 								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
 								if v := s.summary(); v != "" {
-									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).Ellipsis("…").
+									// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
+									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
 										Background(cat.Alpha(0.16)).TextColor(t.Text)
 								}
 							})
@@ -393,7 +399,7 @@ func (a *app) stepsView(c *ui.Context) {
 							ui.Row(c).Fill().Gap(6).Children(func() {
 								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine()
 								if v := s.summary(); v != "" && v != s.opLabel {
-									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).Ellipsis("…").
+									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
 										Background(cat.Alpha(0.16)).TextColor(t.Text)
 								}
 							})
@@ -669,8 +675,10 @@ func (a *app) filesView(c *ui.Context) {
 						// 名字组 = [胶囊文件名] . [胶囊扩展名],点是两胶囊之间
 						// 的独立文本;原名中性胶囊组,预览类型色胶囊组
 						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
+							// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
+							// 四行,把 54px 的卡片撑到 95px,整列节奏全乱
 							ui.Text(c, stem).FontSize(13).Padding(2, 10).Radius(8).
-								Background(stemBg).MaxWidth(170).Ellipsis("…")
+								Background(stemBg).MaxWidth(170).SingleLine().Ellipsis("…")
 							if ext != "" {
 								ui.Text(c, ".").FontSize(13).TextColor(t.TextMuted)
 								ui.Text(c, strings.TrimPrefix(ext, ".")).FontSize(13).Padding(2, 10).Radius(8).
@@ -690,7 +698,7 @@ func (a *app) filesView(c *ui.Context) {
 						// 下行:原始数据胶囊;路径悬停显示绝对地址
 						ui.Row(c).Gap(6).Children(func() {
 							path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(11).Padding(1, 6).Radius(6).
-								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).Ellipsis("…")
+								Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
 							path.Tooltip(filepath.Dir(f.path))
 							// 真实类型:始终显示;与扩展名不符时红色警示
 							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
