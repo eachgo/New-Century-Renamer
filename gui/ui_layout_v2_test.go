@@ -125,3 +125,50 @@ func TestGroupHeaderDoesNotSwallowFirstFile(t *testing.T) {
 		}
 	}
 }
+
+// 执行后与回滚后都必须保持"7 个文件 2 个头"——不能因为重建 fileInfo
+// 丢掉 group 而让列表进入混合状态(部分有组名、部分空),那样 isHeader
+// 的 ""→"A" 交界处会凭空多出组头,每个头又吞掉一行。
+func TestGroupSurvivesApplyAndUndo(t *testing.T) {
+	a := &app{stepSel: -1, settings: defaultSettings()}
+	dir := t.TempDir()
+	var files []fileInfo
+	for _, g := range []string{"Album A", "Album B"} {
+		gd := filepath.Join(dir, g)
+		os.MkdirAll(gd, 0o755)
+		for i := 0; i < 3; i++ {
+			p := filepath.Join(gd, fmt.Sprintf("t%d.txt", i+1))
+			os.WriteFile(p, []byte("x"), 0o644)
+			f := statFile(p)
+			f.group = g
+			files = append(files, f)
+		}
+	}
+	a.files = files
+	a.settings.Journal = filepath.Join(dir, "journal.json")
+	a.steps = []guiRule{step("case.lower")}
+	a.stepSel = 0
+	a.preview()
+
+	if got := len(buildRows(a.files)); got != 8 {
+		t.Fatalf("执行前 %d 行, want 8", got)
+	}
+	a.apply()
+	if got := len(buildRows(a.files)); got != 8 {
+		t.Fatalf("执行后 %d 行, want 8(丢 group 会变成 6 行 4 头)", got)
+	}
+	for i := range a.files {
+		if a.files[i].group == "" {
+			t.Errorf("执行后第 %d 个文件丢了 group", i)
+		}
+	}
+	a.undo()
+	if got := len(buildRows(a.files)); got != 8 {
+		t.Fatalf("回滚后 %d 行, want 8", got)
+	}
+	for i := range a.files {
+		if a.files[i].group == "" {
+			t.Errorf("回滚后第 %d 个文件丢了 group", i)
+		}
+	}
+}
