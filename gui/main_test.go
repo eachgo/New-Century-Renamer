@@ -709,3 +709,45 @@ func TestRealMatchesExt(t *testing.T) {
 		t.Error("嗅探不出内容时不该报警")
 	}
 }
+
+// 设置对话框的每一张卡都必须能被滚到。
+// 以前这里写死 MaxHeight(dh-190),1280×720 下「主题」「设置文件」两张卡
+// 高度为 0——被裁掉了,而且没有任何滚动提示,用户以为功能不存在。
+func TestSettingsCardsReachableAtAnyHeight(t *testing.T) {
+	for _, h := range []int{480, 600, 720, 800} {
+		a := &app{stepSel: -1, settings: defaultSettings()}
+		tt := ui.NewTester(a.view, 1280, h)
+		a.openSettings()
+		for i := 0; i < 4; i++ {
+			tt.Frame()
+		}
+		// 可见 = 高度 > 0 且在窗口内。滚出视口的卡高度会是 0(被裁),
+		// 所以分两次看:开头看前两张,滚到底看后两张。
+		visible := func(want string) bool {
+			r, ok := tt.Find(want)
+			return ok && r.H > 0 && r.Y >= 0 && r.Y <= float32(h)
+		}
+		scrollToBottom := func() {
+			for k := 0; k < 24; k++ {
+				tt.Move(640, float32(h)/2)
+				tt.Scroll(640, float32(h)/2, 0, 120)
+				tt.Frame()
+			}
+		}
+		for _, want := range []string{"AI 接口(OpenAI 兼容)", "文件"} {
+			if !visible(want) {
+				t.Errorf("h=%d 开头看不到卡片 %q", h, want)
+			}
+		}
+		scrollToBottom()
+		for _, want := range []string{"主题", "设置文件"} {
+			if !visible(want) {
+				t.Errorf("h=%d 滚到底也看不到卡片 %q", h, want)
+			}
+		}
+		// 按钮不该跟着滚走
+		if !visible("保存") {
+			t.Errorf("h=%d 滚到底后保存按钮不可见", h)
+		}
+	}
+}

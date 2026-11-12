@@ -79,9 +79,11 @@ func (a *app) settingsDialog(c *ui.Context) {
 			Background(t.Surface).Shadow(0, 12, 32, 0, ui.RGBA(0x10, 0x30, 0x1F, 0.10)).Children(func() {
 			ui.Text(c, "设置").Bold().FontSize(18)
 
-			// the form hugs its content on tall windows (no stretched
-			// empty space) and scrolls on short ones; buttons stay visible
-			ui.Scroll(c).MaxHeight(dh - 190).Children(func() {
+			// 表单在宽裕的窗口里贴着内容(不留被拉伸的空白),在矮窗口里滚动,
+			// 按钮始终可见。这里必须用 Grow(1) 而不是写死 dh-190:硬编码在
+			// 1280×720 下会把「主题」「设置文件」两张卡整个裁掉,而且裁得
+			// 一点痕迹都没有——用户以为功能不存在。
+			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).Gap(12).Padding(2, 4).Children(func() {
 					card("AI 接口(OpenAI 兼容)", func() {
 						row("接口地址", func() {
