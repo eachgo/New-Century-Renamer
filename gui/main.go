@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -90,6 +91,7 @@ func (a *app) view(c *ui.Context) {
 	} else if a.settingsOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.closeSettings(false)
 	}
+	a.handleShortcuts(c)
 	// live preview on any change (AI steps need the explicit button)
 	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
 		if !strings.Contains(spec, "<AI:") {
@@ -171,13 +173,13 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		ui.Spacer(c)
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
-		undoBtn := outlinedButton(c, "回滚上次", !a.busy && a.journalExists())
+		undoBtn := outlinedButton(c, "回滚上次", !a.busy && a.journalExists()).Tooltip(shortcutTip("Ctrl+Z"))
 		if undoBtn.Clicked() {
 			go a.undo()
 		}
 		applyEnabled := !a.busy && a.hasChanges()
 		if applyEnabled {
-			if ui.PrimaryButton(c, "执行更名").Radius(16).Clicked() {
+			if ui.PrimaryButton(c, "执行更名").Radius(16).Tooltip(shortcutTip("Ctrl+Enter")).Clicked() {
 				go a.apply()
 			}
 		} else {
@@ -492,10 +494,10 @@ func (a *app) stepsView(c *ui.Context) {
 			}
 			r.paramsEditor(c, t)
 			ui.Row(c).Gap(8).Children(func() {
-				if ui.Button(c, "上移").Disabled(a.stepSel == 0).Clicked() {
+				if ui.Button(c, "上移").Disabled(a.stepSel == 0).Tooltip(shortcutTip("Alt+↑")).Clicked() {
 					a.swapSteps(a.stepSel-1, a.stepSel)
 				}
-				if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Clicked() {
+				if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Tooltip(shortcutTip("Alt+↓")).Clicked() {
 					a.swapSteps(a.stepSel, a.stepSel+1)
 				}
 				// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
@@ -508,19 +510,14 @@ func (a *app) stepsView(c *ui.Context) {
 					confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 					confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
 					if confirm.Clicked() {
-						a.steps = append(a.steps[:a.stepSel], a.steps[a.stepSel+1:]...)
-						a.stepSel--
+						a.deleteStep(a.stepSel)
 						a.dropConfirm()
 					}
-				} else if dangerButton(c, "删除", true).Clicked() {
+				} else if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
 					a.armConfirm("step")
 				}
-				if ui.Button(c, "复制").Clicked() {
-					cp := *r
-					a.stepUID++
-					cp.opUID = a.stepUID
-					a.steps = append(a.steps, cp)
-					a.stepSel = len(a.steps) - 1
+				if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
+					a.duplicateStep(a.stepSel)
 				}
 			})
 		}
@@ -579,12 +576,45 @@ func (a *app) deleteChosen() {
 	a.status = fmt.Sprintf("已删除 %d 个步骤", n)
 }
 
+// swapSteps 交换第 i 步与第 j 步。
+// 选中必须跟着"那一步"走,而不是跟着"那个位置":把第 2 步上移之后
+// 还停在第 2 行,用户再点一次"上移"动的就是原来第 1 步了。
 func (a *app) swapSteps(i, j int) {
 	if i < 0 || j < 0 || i >= len(a.steps) || j >= len(a.steps) {
 		return
 	}
 	a.steps[i], a.steps[j] = a.steps[j], a.steps[i]
-	a.stepSel = j
+	switch a.stepSel {
+	case i:
+		a.stepSel = j
+	case j:
+		a.stepSel = i
+	}
+}
+
+// deleteStep 删掉第 i 步。鼠标的「确认删除?」和键盘的第二次 Delete
+// 走同一条路——两条路径各写一遍,迟早会长歪。
+func (a *app) deleteStep(i int) {
+	if i < 0 || i >= len(a.steps) {
+		return
+	}
+	a.steps = append(a.steps[:i], a.steps[i+1:]...)
+	if a.stepSel >= len(a.steps) {
+		a.stepSel = len(a.steps) - 1
+	}
+}
+
+// duplicateStep 复制第 i 步到列表末尾并选中它。
+// 鼠标的「复制」和 Ctrl+D 走同一条路——两条路径各写一遍,迟早会长歪。
+func (a *app) duplicateStep(i int) {
+	if i < 0 || i >= len(a.steps) {
+		return
+	}
+	cp := a.steps[i]
+	a.stepUID++
+	cp.opUID = a.stepUID
+	a.steps = append(a.steps, cp)
+	a.stepSel = len(a.steps) - 1
 }
 
 // ---- right pane: file table with drop zone ----
@@ -599,7 +629,7 @@ func (a *app) filesView(c *ui.Context) {
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
 		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "文件").Bold().FontSize(13)
-			addBtn := tonalButton(c, "添加文件…", true)
+			addBtn := tonalButton(c, "添加文件…", true).Tooltip(shortcutTip("Ctrl+O"))
 			if addBtn.Clicked() {
 				go a.addFilesDialog()
 			}
@@ -867,6 +897,16 @@ func dangerButton(c *ui.Context, label string, enabled bool) ui.Element {
 	}
 	b.Children(func() { ui.Text(c, label).SingleLine() })
 	return b
+}
+
+// shortcutTip 把快捷键写成界面上看得见的样子。
+// 快捷键不写在界面上,用户找不到就等于不存在;而 Mac 的修饰键是 ⌘ 不是
+// Ctrl,写死 "Ctrl+O" 会让 Mac 用户去按一个不存在的组合。
+func shortcutTip(combo string) string {
+	if runtime.GOOS == "darwin" {
+		return strings.ReplaceAll(strings.ReplaceAll(combo, "Ctrl+", "⌘"), "Alt+", "⌥")
+	}
+	return combo
 }
 
 // filepathSplitName splits a bare file name into stem and ".ext".
@@ -1195,6 +1235,54 @@ func (a *app) preview() {
 	// no update() here: preview usually runs inside the view pass (live
 	// preview), and updating mid-pass rebuilds the tree and loses scroll
 	// positions; async callers update on their own
+}
+
+// handleShortcuts 是窗口级快捷键:不管焦点落在哪都响应,除非焦点所在的
+// 输入框先把它吃掉了(比如在参数框里按 Ctrl+Z 是撤销输入,不是回滚文件)。
+//
+// 为什么必须每帧都问一遍:mygo 的快捷键注册表每帧交换一次
+// (runtime.go 的 `rt.regs, rt.nextRegs = rt.nextRegs, rt.regs`),
+// 只在某一帧问过的键,下一帧就不认了。所以这里在 view() 开头无条件调用。
+//
+// 用 ui.Cmd 而不是 ui.Ctrl:macOS 上 Cmd 就是 Super,其它平台是 Ctrl,
+// 硬写 Ctrl 会让 Mac 用户按不出来。
+func (a *app) handleShortcuts(c *ui.Context) {
+	// 对话框/面板开着时不接管:它们有自己的 Esc 与默认按钮,
+	// 底下这层要是还响应 Ctrl+O,就成了"看不见的窗口在后台动作"。
+	if a.settingsOpen || a.pickOpen || a.pickMode {
+		return
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyO) && !a.busy {
+		go a.addFilesDialog()
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyEnter) && !a.busy && a.hasChanges() {
+		go a.apply()
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyZ) && !a.busy && a.journalExists() {
+		go a.undo()
+	}
+	if a.stepSel < 0 || a.stepSel >= len(a.steps) {
+		return
+	}
+	if c.Shortcut(0, ui.KeyDelete) {
+		// 与鼠标点「删除」走同一条路:先挂确认态,三秒不点自动收回。
+		// 已经挂着确认态时再按一次 Delete 就是"确认",不必去够鼠标。
+		if a.confirmDelStep && !a.confirmStale() {
+			a.deleteStep(a.stepSel)
+			a.dropConfirm()
+		} else {
+			a.armConfirm("step")
+		}
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyD) {
+		a.duplicateStep(a.stepSel)
+	}
+	if c.Shortcut(ui.Alt, ui.KeyUp) {
+		a.swapSteps(a.stepSel-1, a.stepSel)
+	}
+	if c.Shortcut(ui.Alt, ui.KeyDown) {
+		a.swapSteps(a.stepSel, a.stepSel+1)
+	}
 }
 
 func (a *app) hasChanges() bool { return countChanges(a.ops) > 0 }
