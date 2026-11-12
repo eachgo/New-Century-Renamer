@@ -50,12 +50,17 @@ func TestSeqAndTemplate(t *testing.T) {
 		os.WriteFile(p, []byte("hello "+n), 0o644)
 		files = append(files, p)
 	}
-	plan := runRules(t, []string{"template=文档_<SEQ:2>-<NAME>.txt"}, files)
-	// note: <SEQ:2> isn't a var; only <SEQ> is — expect placeholder kept
-	if plan[0].NewName != "文档_<SEQ:2>-a.txt" {
-		t.Fatalf("got %q", plan[0].NewName)
+	// <SEQ:2> 不是变量(只有 <SEQ> 是),补零要用 seq 规则。以前它会被原样
+	// 留在文件名里,用户完全看不出哪里写错了;现在报错并指出是哪个变量。
+	badRules, err := ParseRules([]string{"template=文档_<SEQ:2>-<NAME>.txt"})
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
 	}
-	plan = runRules(t, []string{"template=文档_<SEQ>-<NAME>.txt"}, files)
+	badPlan, _ := RunPipeline(badRules, files)
+	if badPlan[0].Err == nil || !strings.Contains(badPlan[0].Err.Error(), "<SEQ:2>") {
+		t.Fatalf("未知变量应报错并指出名字, got err=%v new=%q", badPlan[0].Err, badPlan[0].NewName)
+	}
+	plan := runRules(t, []string{"template=文档_<SEQ>-<NAME>.txt"}, files)
 	if plan[2].NewName != "文档_3-c.txt" {
 		t.Fatalf("seq: got %q", plan[2].NewName)
 	}
@@ -693,4 +698,48 @@ func TestPreflightRejectsPathSeparator(t *testing.T) {
 	if _, err := os.Stat(p); err != nil {
 		t.Fatalf("原文件应原地不动: %v", err)
 	}
+}
+
+// "模板写错"和"文件没有元数据"必须走两个出口:
+// 前者是错误(要红字说明原因),后者是正常跳过(静默)。
+// 混成一个出口时界面只说"0 个将更名",用户以为程序坏了却找不到原因。
+func TestTemplateTypoVsNoMetadata(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "readme.txt")
+	if err := os.WriteFile(p, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// ① 模板写错:<META:> 少了键名 → 必须报错
+	plan := runRulesNoFail(t, []string{"template=<META:>-<NAME><.EXT>"}, []string{p})
+	if plan[0].Err == nil || !strings.Contains(plan[0].Err.Error(), "<META:>") {
+		t.Fatalf("空 META 键应报错, got %v", plan[0].Err)
+	}
+
+	// ② 不认识的变量 → 必须报错并指名
+	plan = runRulesNoFail(t, []string{"template=<NAME><.EXTX>"}, []string{p})
+	if plan[0].Err == nil || !strings.Contains(plan[0].Err.Error(), "<.EXTX>") {
+		t.Fatalf("未知变量应报错, got %v", plan[0].Err)
+	}
+
+	// ③ 文件没有元数据(txt 没有 ID3/EPUB 元数据) → 正常跳过,不报错
+	plan = runRulesNoFail(t, []string{"template=<META:title>-<NAME><.EXT>"}, []string{p})
+	if plan[0].Err != nil {
+		t.Fatalf("无元数据不该报错, got %v", plan[0].Err)
+	}
+	if plan[0].NewName != "readme.txt" {
+		t.Fatalf("无元数据应保留原名, got %q", plan[0].NewName)
+	}
+}
+
+// runRulesNoFail is runRules without failing the test on per-file errors:
+// the test is about which errors appear.
+func runRulesNoFail(t *testing.T, specs []string, files []string) []RenameOp {
+	t.Helper()
+	rules, err := ParseRules(specs)
+	if err != nil {
+		t.Fatalf("ParseRules: %v", err)
+	}
+	plan, _ := RunPipeline(rules, files)
+	return plan
 }

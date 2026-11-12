@@ -1106,6 +1106,11 @@ func (a *app) preview() {
 	a.status = fmt.Sprintf("%d 个将更名", countChanges(ops))
 	if n := countErrs(ops); n > 0 {
 		a.status += fmt.Sprintf(",%d 个有问题", n)
+		// 把第一个原因也说出来。只说"有问题"时用户要自己一行行找红字,
+		// 而模板写错这类问题是所有文件同一个原因,说一次就够了。
+		if msg := firstErrText(ops); msg != "" {
+			a.status += ":" + msg
+		}
 	}
 	if a.hasAIStep() && strings.Contains(strings.Join(a.stepSpecs(), ""), "<AI:") {
 		a.status += " ·含 AI 步骤,点“预览”联网获取命名"
@@ -1116,6 +1121,17 @@ func (a *app) preview() {
 }
 
 func (a *app) hasChanges() bool { return countChanges(a.ops) > 0 }
+
+// firstErrText returns the first real error message, skipping sidecar files
+// (cover.jpg next to an mp3 is not the user's problem).
+func firstErrText(ops []core.RenameOp) string {
+	for _, op := range ops {
+		if op.Err != nil && !core.IsSidecarFile(op.OldName) {
+			return op.Err.Error()
+		}
+	}
+	return ""
+}
 
 // hasAIStep reports whether any step needs the network (<AI:...>).
 func (a *app) hasAIStep() bool {

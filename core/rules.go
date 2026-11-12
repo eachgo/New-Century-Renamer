@@ -201,6 +201,12 @@ type templateRule string
 
 func (t templateRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 	tpl := string(t)
+	// 模板写错(比如 <META:> 少写了键名)和"文件没有元数据"是两件事,
+	// 必须走两个出口:前者是错误,后者是正常跳过。混在一起时界面只会说
+	// "0 个将更名",用户以为程序坏了却找不到原因——变化视盲的教科书案例。
+	if bad := badMetaRefs(tpl); len(bad) > 0 {
+		return name, fmt.Errorf("模板里的变量写错了: %s", strings.Join(bad, "、"))
+	}
 	// 模板里用到的 META 变量若全部为空(文件没有元数据),跳过该文件:
 	// 否则 "作者 - 标题" 会退化成 " - ",把所有无元数据的文件改名成同一个
 	if refs := metaRefs(tpl); len(refs) > 0 {
@@ -216,10 +222,61 @@ func (t templateRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 		}
 	}
 	out := ExpandVars(tpl, ctx, dir, name)
+	// 展开之后还留着 <…> 形状的,是不认识的变量名。不报错的话它会原样
+	// 进到文件名里(或者被后面 sanitize 悄悄删掉),用户完全看不出哪里错了。
+	if unknown := unknownVars(out); len(unknown) > 0 {
+		return name, fmt.Errorf("模板里有不认识的变量: %s", strings.Join(unknown, "、"))
+	}
 	if strings.TrimSpace(out) == "" || strings.TrimSpace(splitExtStem(out)) == "" {
 		return name, nil
 	}
 	return out, nil
+}
+
+// badMetaRefs lists <META:...> references with an empty or blank key, which
+// are always typos rather than "this file happens to have no metadata".
+func badMetaRefs(tpl string) []string {
+	var out []string
+	for _, k := range metaRefs(tpl) {
+		if strings.TrimSpace(k) == "" {
+			out = append(out, "<META:>")
+		}
+	}
+	return out
+}
+
+// unknownVars returns <…> tokens still present after expansion. A resolved
+// template has none; anything left over names a variable the program doesn't
+// know. Pure digits inside angle brackets are left alone (they can legitimately
+// appear in a filename, e.g. "track<3>").
+func unknownVars(s string) []string {
+	var out []string
+	rest := s
+	for {
+		i := strings.IndexByte(rest, '<')
+		if i < 0 {
+			return out
+		}
+		j := strings.IndexByte(rest[i:], '>')
+		if j < 0 {
+			return out
+		}
+		tok := rest[i : i+j+1]
+		inner := strings.TrimSpace(tok[1 : len(tok)-1])
+		if inner != "" && !isDigits(inner) {
+			out = append(out, tok)
+		}
+		rest = rest[i+j+1:]
+	}
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // metaRefs lists the <META:...> keys a template refers to.
