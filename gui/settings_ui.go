@@ -9,6 +9,33 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// openSettings starts editing on a copy of the current settings. Every widget
+// in the dialog writes to the draft, so「取消」/Esc just drop it — the table
+// no longer has two behaviours where some fields revert and some don't.
+// Theme mode and seed read through liveSettings() so changing them still
+// previews live while the dialog is open.
+func (a *app) openSettings() {
+	a.settingsDraft = a.settings
+	a.saveErr = ""
+	a.pickOpen = false
+	a.syncSeedUI()
+	a.settingsOpen = true
+}
+
+// closeSettings ends the dialog. commit=true adopts the draft (only after a
+// successful save); false throws it away, leaving a.settings untouched.
+func (a *app) closeSettings(commit bool) {
+	if commit {
+		a.settings = a.settingsDraft
+		a.ApplySettings()
+	} else {
+		a.settingsDraft = a.settings
+	}
+	a.syncSeedUI()
+	a.pickOpen = false
+	a.settingsOpen = false
+}
+
 // settingsDialog is the settings modal: AI endpoint, journal file, theme,
 // and import/export of the whole settings as JSON — extensible from here.
 //
@@ -58,13 +85,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 				ui.Column(c).Gap(12).Padding(2, 4).Children(func() {
 					card("AI 接口(OpenAI 兼容)", func() {
 						row("接口地址", func() {
-							ui.TextInput(c, &a.settings.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
+							ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
 						})
 						row("模型", func() {
-							ui.TextInput(c, &a.settings.AI.Model).Placeholder("deepseek-chat").Fill()
+							ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
 						})
 						row("API Key", func() {
-							ui.TextInput(c, &a.settings.AI.Key).Placeholder("sk-…(留空用环境变量 NCREAMER_AI_KEY)").Fill()
+							ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…(留空用环境变量 NCREAMER_AI_KEY)").Fill()
 						})
 						row("等待秒数", func() {
 							ui.TextInput(c, &a.aiTimeoutText).Placeholder("300(默认;本地慢模型可调大)").Fill()
@@ -86,12 +113,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 					})
 					card("文件", func() {
 						row("操作日志", func() {
-							ui.TextInput(c, &a.settings.Journal).Placeholder(".ncreamer-journal.json").Fill()
+							ui.TextInput(c, &a.settingsDraft.Journal).Placeholder(".ncreamer-journal.json").Fill()
 						})
 					})
 					card("主题", func() {
 						row("外观模式", func() {
-							ui.Select(c, &a.settings.Theme.Mode, []string{"跟随系统", "浅色", "深色"}).Width(160)
+							ui.Select(c, &a.settingsDraft.Theme.Mode, []string{"跟随系统", "浅色", "深色"}).Width(160)
 						})
 						row("主色来源", func() {
 							ui.Row(c).Gap(8).Children(func() {
@@ -162,26 +189,25 @@ func (a *app) settingsDialog(c *ui.Context) {
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Spacer(c)
 				if ui.Button(c, "取消").Radius(16).Clicked() {
-					a.settingsOpen = false
+					a.closeSettings(false)
 				}
 				if ui.PrimaryButton(c, "保存").Radius(16).Clicked() {
 					a.commitAITimeout()
 					a.commitAIConcurrency()
 					a.commitAIPrompt()
 					if a.seedFollow {
-						a.settings.Theme.Seed = ""
+						a.settingsDraft.Theme.Seed = ""
 					} else {
-						a.settings.Theme.Seed = colorHex(a.seedPick)
+						a.settingsDraft.Theme.Seed = colorHex(a.seedPick)
 					}
-					if err := SaveSettings(a.settings); err != nil {
+					if err := SaveSettings(a.settingsDraft); err != nil {
 						// keep the dialog open: the error must be where the
 						// user is looking, not on the covered window behind
 						a.saveErr = "保存失败: " + err.Error()
 					} else {
 						a.status = "设置已保存(" + settingsPath() + ")"
 						a.saveErr = ""
-						a.ApplySettings()
-						a.settingsOpen = false
+						a.closeSettings(true)
 					}
 				}
 			})

@@ -46,6 +46,7 @@ type app struct {
 
 	settings          Settings
 	settingsOpen      bool
+	settingsDraft     Settings            // 设置对话框里正在编辑的副本;取消即丢弃
 	extColors         map[string]ui.Color // per-extension chip colors (main-thread)
 	seedFollow        bool                // theme seed follows the desktop accent
 	seedPick          ui.Color            // theme seed when not following
@@ -84,7 +85,7 @@ func (a *app) view(c *ui.Context) {
 		a.pickMode = false
 		a.chosen.Clear()
 	} else if a.settingsOpen && c.Shortcut(0, ui.KeyEscape) {
-		a.settingsOpen = false
+		a.closeSettings(false)
 	}
 	// live preview on any change (AI steps need the explicit button)
 	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
@@ -245,8 +246,7 @@ func (a *app) catalogView(c *ui.Context) {
 						case "import-csv":
 							go a.importCSV()
 						case "settings":
-							a.syncSeedUI()
-							a.settingsOpen = true
+							a.openSettings()
 						default:
 							r := d.make()
 							r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
@@ -1326,53 +1326,56 @@ func main() {
 
 // syncSeedUI mirrors the settings' seed into the dialog widgets.
 func (a *app) syncSeedUI() {
-	a.seedFollow = a.settings.Theme.Seed == ""
+	s := a.liveSettings()
+	a.seedFollow = s.Theme.Seed == ""
 	if !a.seedFollow {
-		a.seedPick = ui.Hex(a.settings.Theme.Seed)
+		a.seedPick = ui.Hex(s.Theme.Seed)
 	} else if c, ok := systemAccent(); ok {
 		a.seedPick = c
 	} else {
 		a.seedPick = ui.Hex(fallbackSeed)
 	}
 	// 等待秒数:0 表示用默认(300),输入框留空即显示默认提示
-	if a.settings.AI.Timeout > 0 {
-		a.aiTimeoutText = strconv.Itoa(a.settings.AI.Timeout)
+	if s.AI.Timeout > 0 {
+		a.aiTimeoutText = strconv.Itoa(s.AI.Timeout)
 	} else {
 		a.aiTimeoutText = ""
 	}
 	// 并发路数:0 表示用默认(4 路),留空显示默认
-	if a.settings.AI.Concurrency > 0 {
-		a.aiConcurrencyText = strconv.Itoa(a.settings.AI.Concurrency)
+	if s.AI.Concurrency > 0 {
+		a.aiConcurrencyText = strconv.Itoa(s.AI.Concurrency)
 	} else {
 		a.aiConcurrencyText = ""
 	}
 	// 默认提示词:原样载入,留空表示内置默认
-	a.aiPromptText = a.settings.AI.Prompt
+	a.aiPromptText = s.AI.Prompt
 }
 
 // commitAITimeout parses the "等待秒数" text buffer back into the settings.
 // 空串 / 非数字 / <=0 一律视为"用默认",即清成 0。
 func (a *app) commitAITimeout() {
-	s := strings.TrimSpace(a.aiTimeoutText)
-	if n, err := strconv.Atoi(s); err == nil && n > 0 {
-		a.settings.AI.Timeout = n
+	s := a.liveSettings()
+	buf := strings.TrimSpace(a.aiTimeoutText)
+	if n, err := strconv.Atoi(buf); err == nil && n > 0 {
+		s.AI.Timeout = n
 	} else {
-		a.settings.AI.Timeout = 0
+		s.AI.Timeout = 0
 	}
 }
 
 // commitAIConcurrency parses the "并发路数" buffer. 空串 / 非数字 / <=0 视为默认。
 // 云端 API 限流时用户会填 1(单路);本地模型想多路也能填更大值。
 func (a *app) commitAIConcurrency() {
-	s := strings.TrimSpace(a.aiConcurrencyText)
-	if n, err := strconv.Atoi(s); err == nil && n > 0 {
-		a.settings.AI.Concurrency = n
+	dst := a.liveSettings()
+	buf := strings.TrimSpace(a.aiConcurrencyText)
+	if n, err := strconv.Atoi(buf); err == nil && n > 0 {
+		dst.AI.Concurrency = n
 	} else {
-		a.settings.AI.Concurrency = 0
+		dst.AI.Concurrency = 0
 	}
 }
 
 // commitAIPrompt saves the "默认提示词" buffer, trimmed. 空串即恢复内置默认。
 func (a *app) commitAIPrompt() {
-	a.settings.AI.Prompt = strings.TrimSpace(a.aiPromptText)
+	a.liveSettings().AI.Prompt = strings.TrimSpace(a.aiPromptText)
 }

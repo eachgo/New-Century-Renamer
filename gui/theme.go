@@ -12,11 +12,21 @@ import (
 // material.go for the palette derivation.
 const fallbackSeed = "#2F7A52" // Mono deep green
 
+// liveSettings is the settings the UI currently reflects. While the settings
+// dialog is open that is the *draft*, so theme changes preview immediately
+// and「取消」just throws the draft away — no separate revert bookkeeping.
+func (a *app) liveSettings() *Settings {
+	if a.settingsOpen {
+		return &a.settingsDraft
+	}
+	return &a.settings
+}
+
 // currentTheme resolves seed + mode into the frame's theme.
 func (a *app) currentTheme() *derivedTheme { return themeFor(a.currentSeed()) }
 
 func (a *app) isDark() bool {
-	switch a.settings.Theme.Mode {
+	switch a.liveSettings().Theme.Mode {
 	case "浅色":
 		return false
 	case "深色":
@@ -26,8 +36,8 @@ func (a *app) isDark() bool {
 }
 
 func (a *app) currentSeed() ui.Color {
-	if a.settings.Theme.Seed != "" {
-		return ui.Hex(a.settings.Theme.Seed)
+	if s := a.liveSettings().Theme.Seed; s != "" {
+		return ui.Hex(s)
 	}
 	if c, ok := systemAccent(); ok {
 		return c
