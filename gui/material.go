@@ -86,7 +86,10 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	lt.Surface = tone(0.995, 0.04)
 	lt.SurfaceHover = tone(0.955, 0.16)
 	lt.SurfacePressed = tone(0.930, 0.18)
-	lt.Border = tone(0.920, 0.16)
+	// 控件边界。0.920 时按钮描边/输入框边框对底色只有 1.03–1.24:1,
+	// 等于"没有边界"——用户看不出哪里可以点。0.72 抬到 2.0–2.4,
+	// 仍然很轻,但轮廓立得住;装饰用的分隔线另走 paneTones.outline。
+	lt.Border = tone(0.720, 0.16)
 	lt.Text = tone(0.24, 0.30)
 	// 次要文字承载路径、日期、大小、分组计数——是信息不是装饰,必须读得出来。
 	// L 0.62 时在左栏底色上只有 2.94:1(远低于 WCAG 4.5);0.50 让四种底色
@@ -98,7 +101,8 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	lt.Focus = oklchColor(accL, cc, H)
 	lt.Inverse = tone(0.28, 0.85)
 	lt.InverseText = ui.RGB(255, 255, 255)
-	lt.Scrollbar = tone(0.870, 0.20)
+	// 滚动条只有 1.43:1,几乎看不见;0.72 让它读得出来又不抢眼
+	lt.Scrollbar = tone(0.720, 0.20)
 	lt.Radius = 10
 	lt.Spacing = 5
 
@@ -107,7 +111,9 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt.Surface = tone(0.215, 0.24)
 	dt.SurfaceHover = tone(0.265, 0.24)
 	dt.SurfacePressed = tone(0.305, 0.24)
-	dt.Border = tone(0.325, 0.22)
+	// 0.325 时控件边界只有 1.46:1,等于没有边界;0.56 抬到 3.9(对 base),
+	// 卡片上也有 2.9,暗色下按钮轮廓才立得住
+	dt.Border = tone(0.560, 0.22)
 	dt.Text = tone(0.945, 0.10)
 	dt.TextMuted = tone(0.700, 0.12)
 	accAt(dt, clamp(L, 0.72, 0.82), cc, H)
@@ -116,7 +122,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt.Focus = oklchColor(clamp(L, 0.72, 0.82), cc, H)
 	dt.Inverse = tone(0.93, 0.10)
 	dt.InverseText = tone(0.24, 0.30)
-	dt.Scrollbar = tone(0.400, 0.20)
+	dt.Scrollbar = tone(0.560, 0.20)
 	dt.Radius = 10
 	dt.Spacing = 5
 
@@ -140,13 +146,17 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		outline: oklchColor(0.900, cc*0.16, H),
 		shadow:  ui.RGBA(0, 0, 0, 0.08), // ≈8% 黑,让浮起的卡片有一点体积
 	}
+	// 暗色 base 原来 L=0.105,实测渲出来 #000400——几乎纯黑,违反
+	// PUI p.77「Avoid pure black」,而且三栏之间只有 1.03–1.12 的层次,
+	// 根本读不出"谁浮在谁上面"。整体抬到 0.20/0.23/0.255/0.30,
+	// 层次仍是 base < right < mid < card,只是不再贴着黑。
 	dtPane := paneTones{
-		base:    oklchColor(0.105, cc*0.20, H),
-		left:    oklchColor(0.105, cc*0.20, H),
-		mid:     oklchColor(0.165, cc*0.22, H),
-		right:   oklchColor(0.135, cc*0.20, H),
-		card:    oklchColor(0.205, cc*0.18, H),
-		outline: oklchColor(0.300, cc*0.16, H),
+		base:    oklchColor(0.200, cc*0.20, H),
+		left:    oklchColor(0.200, cc*0.20, H),
+		mid:     oklchColor(0.255, cc*0.22, H),
+		right:   oklchColor(0.230, cc*0.20, H),
+		card:    oklchColor(0.300, cc*0.18, H),
+		outline: oklchColor(0.400, cc*0.16, H),
 		shadow:  ui.RGBA(0, 0, 0, 0.35), // 暗色下几乎不可见,只给一点体积
 	}
 

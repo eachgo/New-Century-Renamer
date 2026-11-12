@@ -290,6 +290,50 @@ func TestDerivedThemeQuality(t *testing.T) {
 	}
 }
 
+// 控件边界必须看得见:按钮描边、输入框边框、滚动条都靠它。
+// 实测改前亮色 1.03–1.24、暗色 1.46,等于没有边界——用户看不出哪里
+// 可以点。这里按 1.8 兜底(装饰用的分隔线另走 paneTones.outline,
+// 故意保持极淡,不参与这条断言)。
+func TestControlBoundaryVisible(t *testing.T) {
+	for _, hex := range []string{"#2F7A52", "#F2703C", "#3140A8"} {
+		dt := themeFor(ui.Hex(hex))
+		for _, dark := range []bool{false, true} {
+			th := dt.light
+			if dark {
+				th = dt.dark
+			}
+			p := dt.panes(dark)
+			for pane, bg := range map[string]ui.Color{
+				"base": p.base, "left": p.left, "mid": p.mid,
+				"right": p.right, "card": p.card,
+			} {
+				if r := contrastRatio(th.Border, bg); r < 1.8 {
+					t.Errorf("%s dark=%v: border on %s %.2f < 1.8", hex, dark, pane, r)
+				}
+			}
+			if r := contrastRatio(th.Scrollbar, p.right); r < 1.8 {
+				t.Errorf("%s dark=%v: scrollbar on right %.2f < 1.8", hex, dark, r)
+			}
+		}
+	}
+}
+
+// 暗色三栏不能贴着纯黑:base 曾经渲成 #000400,三栏层次只有 1.03–1.12。
+func TestDarkPanesNotPureBlack(t *testing.T) {
+	dt := themeFor(ui.Hex("#2F7A52"))
+	p := dt.panes(true)
+	if _, _, l := colorToOklch(p.base); l < 0.17 {
+		t.Errorf("dark base lightness %.3f < 0.17, almost pure black", l)
+	}
+	// 层次仍要读得出来:中栏比基底亮,卡片又比右栏亮
+	if contrastRatio(p.base, p.mid) < 1.10 {
+		t.Errorf("dark base↔mid %.2f, panes indistinguishable", contrastRatio(p.base, p.mid))
+	}
+	if contrastRatio(p.right, p.card) < 1.15 {
+		t.Errorf("dark right↔card %.2f, cards indistinguishable", contrastRatio(p.right, p.card))
+	}
+}
+
 // OKLCH round trip: parse a color, keep its hue.
 func TestOklchHue(t *testing.T) {
 	_, _, h := colorToOklch(ui.Hex("#F2703C")) // orange
