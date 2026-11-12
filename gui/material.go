@@ -174,6 +174,33 @@ func (d *derivedTheme) panes(dark bool) paneTones {
 	return d.lightPane
 }
 
+// chipTones 把一个类别色转成"可读的胶囊底色/字色"这一对。
+//
+// 直接拿类别色当底色、白字压上去,实测 11 个分组只有 3.13–3.59、36 个
+// 扩展名只有 3.10–3.60,全部低于 4.5。而且十几个饱和色块挤在同一行里,
+// 谁都不突出——颜色本该用来区分,结果变成了噪声。
+//
+// 改成同一个色相的"浅底深字"(暗色反之):底色只留一点点色相,字色压深,
+// 对比度 6.1 以上,类别仍然一眼可分,整行却安静下来。
+func chipTones(col ui.Color, dark bool) (bg, fg ui.Color) {
+	_, _, h := colorToOklch(col)
+	if dark {
+		return oklchColor(0.300, 0.060, h), oklchColor(0.880, 0.100, h)
+	}
+	return oklchColor(0.930, 0.050, h), oklchColor(0.420, 0.120, h)
+}
+
+// chipTonesEmph 是 chipTones 的强调版:同一个色相,底色再深一档。
+// 用于"这就是结果"的胶囊(改名后的扩展名),让它比周围的原名胶囊重一点,
+// 但不靠饱和色块去抢注意力。
+func chipTonesEmph(col ui.Color, dark bool) (bg, fg ui.Color) {
+	_, _, h := colorToOklch(col)
+	if dark {
+		return oklchColor(0.380, 0.075, h), oklchColor(0.930, 0.090, h)
+	}
+	return oklchColor(0.880, 0.075, h), oklchColor(0.360, 0.130, h)
+}
+
 // groupColor is the fixed color of a catalog group (falls back to the seed).
 func (d *derivedTheme) groupColor(group string) ui.Color {
 	if c, ok := d.groupColors[group]; ok {

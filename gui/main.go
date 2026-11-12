@@ -406,14 +406,15 @@ func (a *app) stepsView(c *ui.Context) {
 							})
 						}
 						// 胶囊区:固定宽度单独管理,行内不再被挤
+						catBg, catFg := chipTones(cat, a.isDark())
 						ui.Row(c).Width(84).Gap(4).Children(func() {
 							ui.Spacer(c)
 							// 连续同类别:胶囊退化为同色圆点,换组才显示文字
 							if i > 0 && a.steps[i-1].opGroup == s.opGroup {
-								ui.Box(c).Size(9, 9).Background(cat)
+								ui.Box(c).Size(9, 9).Background(catFg)
 							} else {
 								ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
-									Background(cat).TextColor(ui.RGB(255, 255, 255))
+									Background(catBg).TextColor(catFg)
 							}
 						})
 						// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
@@ -688,8 +689,12 @@ func (a *app) filesView(c *ui.Context) {
 							nameChips(oStem, oExt, oCol.Alpha(0.10), oCol.Alpha(0.30), t.Text)
 							if changed {
 								ui.Text(c, "→").TextColor(t.TextMuted)
-								// 预览:胶囊文件名 . 胶囊扩展名(新类型色,实)
-								nameChips(nStem, nExt, nCol.Alpha(0.18), nCol, ui.RGB(255, 255, 255))
+								// 预览:胶囊文件名 . 胶囊扩展名(新类型色,实)。
+								// 以前这里用饱和色底 + 白字,实测只有 3.1–3.6,
+								// 和上面那排类别胶囊是同一个毛病;改成同色相浅底深字,
+								// 比原名胶囊重一档即可——要的是"能读出来",不是"很显眼"。
+								nExtBg, nExtFg := chipTonesEmph(nCol, a.isDark())
+								nameChips(nStem, nExt, nCol.Alpha(0.18), nExtBg, nExtFg)
 							}
 							ui.Spacer(c)
 						})
