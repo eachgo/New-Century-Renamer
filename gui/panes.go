@@ -13,10 +13,17 @@ import "github.com/egoist/mygo/ui"
 // 这里改成留缝：三栏本来就是浮在 base 底色上的圆角卡片（见 view() 的
 // 注释），中间露出 base 本身就完成了分隔，还能顺便呼吸。缝的宽度与
 // 卡片四周的内边距同一个值，所以三栏的节奏是统一的。
+//
+// 内边距只在最外层加一次：嵌套调用（中/右栏那一层）传 pad=0，否则
+// 第二层又缩进 8px，中/右栏的卡片顶边会比左栏低 8px——三栏就不再
+// 站在同一条水平线上了。
 func (a *app) splitPanes(c *ui.Context, size *float32, first, second func()) {
+	a.splitPanesInset(c, size, 8, first, second)
+}
+
+func (a *app) splitPanesInset(c *ui.Context, size *float32, pad float32, first, second func()) {
 	t := c.Theme()
 	w, _ := c.Size()
-	pad := float32(8)
 	// 缝宽与内边距同值：拖拽热区只有 1 DIP 时几乎点不中，这里给足
 	// 10 DIP，视觉上仍是"一条空缝"。
 	gripW := float32(10)

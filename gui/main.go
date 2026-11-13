@@ -201,7 +201,9 @@ func (a *app) view(c *ui.Context) {
 		a.splitPanes(c, &a.splitL,
 			func() { a.catalogView(c) },
 			func() {
-				a.splitPanes(c, &a.splitM,
+				// pad=0:内边距已经由外层加过,这一层再缩进就会让中/右
+				// 两栏的卡片顶边比左栏低 8px,三栏不在同一条水平线上。
+				a.splitPanesInset(c, &a.splitM, 0,
 					func() { a.stepsView(c) },
 					func() { a.filesView(c) })
 			})
@@ -404,13 +406,27 @@ func (a *app) catalogView(c *ui.Context) {
 	}
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
-	// 左边栏:与顶栏/底栏同属"基底"层,不画底色(继承窗口 base),只做内容。
-	ui.Column(c).Fill().Padding(4, 4).Children(func() {
-		ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
-		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth().Padding(6, 8)
+	//
+	// 左栏以前是"文档语法":内容直接铺在窗口底色上,没有容器;而中/右两栏
+	// 是"卡片语法":圆角 + 投影 + 一阶更亮的底。同一屏里两套容器语言,读者
+	// 要重新学一遍"这块区域的边界在哪"。视觉报告的讽刺点就在这——它建议
+	// 靠"颜色层级"区分区块,不是再加竖线去对齐(那只会多一条要眼睛解析的线)。
+	// 所以左栏也套一层同样的卡片:两侧同色(0.955)、中间最亮(0.990),
+	// 一眼看出"中间是工作区、两侧是辅助"。
+	pt := a.currentTheme().panes(a.isDark())
+	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.right).Clip().
+		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
+		// 栏头与中/右栏同构:一行 Row,标题靠左,不再用 Padding 去凑基线。
+		// 栏头统一 MinHeight(34) + 垂直居中:三栏的标题就落在同一条基线上。
+		// 不固定高度是因为右栏的工具栏在窄窗口下会折行,折了就该长高。
+		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13)
+			ui.Spacer(c)
+		})
+		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth()
 		// 用 TrackScroll 记住滚动位置:底缘那行"↓ 下面还有"要据此决定
 		// 显不显示,不能靠猜。
-		ui.Scroll(c).Fill().Padding(4, 6).TrackScroll(&a.palScroll).Bind(&a.catScroll).Children(func() {
+		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).Children(func() {
 			if len(shown) == 0 {
 				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
 			}
@@ -422,12 +438,15 @@ func (a *app) catalogView(c *ui.Context) {
 				if !open {
 					arrow = "▸"
 				}
-				head := ui.ButtonBase(c).Fill().Radius(6).Padding(8, 2)
+				head := ui.ButtonBase(c).Fill().Radius(6).Padding(8, 0)
 				if head.Hovered() {
 					head.Background(t.SurfaceHover)
 				}
 				head.Children(func() {
-					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).SingleLine()
+					// Fill 按钮默认把内容居中;分组标题要贴左,和栏标题、
+					// 条目图标站在同一条竖线上。
+					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).
+						SingleLine().FillWidth().TextAlign(ui.Start)
 				})
 				if head.Clicked() {
 					if a.folded == nil {
@@ -443,7 +462,7 @@ func (a *app) catalogView(c *ui.Context) {
 						continue
 					}
 					selBg, selFg := a.selColors()
-					item := ui.ButtonBase(c).Fill().Radius(8)
+					item := ui.ButtonBase(c).Fill().Radius(8).Padding(0, 0)
 					switch {
 					case a.palSel == d.id:
 						item.Background(selBg)
@@ -474,7 +493,7 @@ func (a *app) catalogView(c *ui.Context) {
 						if a.palSel == d.id {
 							descCol = selFg
 						}
-						ui.Column(c).Fill().Gap(1).Padding(4, 10).Children(func() {
+						ui.Column(c).Fill().Gap(1).Padding(4, 0).Children(func() {
 							labelCol := ui.Color{}
 							if a.palSel == d.id {
 								labelCol = selFg
@@ -506,7 +525,7 @@ func (a *app) catalogView(c *ui.Context) {
 		// 什么都没有;最糟的情况是"替换"组标题被裁成半截字,看起来
 		// 像渲染坏了。这一行常占位(14px),只在真还有内容时写字,
 		// 所以滚到底时不会引起布局跳动。
-		ui.Row(c).FillWidth().Height(14).Padding(0, 8).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).FillWidth().Height(14).AlignItems(ui.Center).Children(func() {
 			if a.catalogHasMore() {
 				ui.Text(c, "↓ 下面还有").FontSize(11).TextColor(t.TextMuted)
 			}
@@ -609,7 +628,7 @@ func (a *app) stepsView(c *ui.Context) {
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(13)
 			ui.Spacer(c)
 			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
@@ -990,7 +1009,7 @@ func (a *app) filesView(c *ui.Context) {
 		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
 		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
-		ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Gap(8).Wrap().MinHeight(34).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "文件").Bold().FontSize(13)
 			addBtn := tonalButton(c, "添加文件…", true).Tooltip(shortcutTip("Ctrl+O"))
 			if addBtn.Clicked() {

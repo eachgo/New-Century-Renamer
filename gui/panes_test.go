@@ -107,19 +107,27 @@ func TestFileCardSpacingIsOuterGreaterThanInner(t *testing.T) {
 
 	// 在右栏取一条干净竖列（避开文字），量卡片底色的连续段：
 	// 卡片底色是 card，缝是 right 底色，两者不同。
+	// 列位置不能写死：栏宽会随窗口与内边距变，硬编码的 x 一旦落到
+	// 栏底色上就一张卡也量不到。逐列试，取第一列能量出三张卡的。
 	type run struct{ start, end int }
 	var runs []run
-	inCard := false
-	cur := run{}
-	for y := 60; y < 600; y++ {
-		card := isCardPixel(img, 600, y)
-		if card && !inCard {
-			inCard, cur = true, run{start: y}
-		} else if !card && inCard {
-			inCard, cur.end = false, y-1
-			if cur.end-cur.start > 20 {
-				runs = append(runs, cur)
+	for _, x := range []int{1000, 990, 980, 900, 700, 650, 620, 610} {
+		runs = runs[:0]
+		inCard := false
+		cur := run{}
+		for y := 60; y < 600; y++ {
+			card := isCardPixel(img, x, y)
+			if card && !inCard {
+				inCard, cur = true, run{start: y}
+			} else if !card && inCard {
+				inCard, cur.end = false, y-1
+				if cur.end-cur.start > 20 {
+					runs = append(runs, cur)
+				}
 			}
+		}
+		if len(runs) >= 3 {
+			break
 		}
 	}
 	if len(runs) < 3 {
