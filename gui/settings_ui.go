@@ -85,12 +85,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 		card := func(title string, fields func()) {
 			ui.Column(c).Fill().Gap(8).Padding(12, 14).Radius(10).
 				Background(cardBg).Children(func() {
-				ui.Text(c, title).FontSize(12).Bold().TextColor(t.TextMuted)
+				ui.Text(c, title).FontSize(13).Bold().TextColor(t.TextMuted)
 				fields()
 			})
 		}
 
-		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(16).
+		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(8).
 			Background(t.Surface).Shadow(0, 12, 32, 0, ui.RGBA(0x10, 0x30, 0x1F, 0.10)).Children(func() {
 			ui.Text(c, "设置").Bold().FontSize(18)
 
@@ -119,13 +119,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 									row("等待秒数", func() {
 										ui.Row(c).Gap(10).Children(func() {
 											ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
-											ui.Text(c, "本地慢模型可调大").FontSize(12).TextColor(t.TextMuted).Grow(1)
+											ui.Text(c, "本地慢模型可调大").FontSize(13).TextColor(t.TextMuted).Grow(1)
 										})
 									})
 									row("并发路数", func() {
 										ui.Row(c).Gap(10).Children(func() {
 											ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
-											ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+											ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(13).TextColor(t.TextMuted).Grow(1)
 										})
 									})
 									row("默认提示词", func() {
@@ -133,7 +133,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 											ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
 												Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
 											ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
-												FontSize(11).TextColor(t.TextMuted)
+												FontSize(12).TextColor(t.TextMuted)
 										})
 									})
 								})
@@ -160,7 +160,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 										ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 											sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
 											sw.Border(1, t.Border)
-											ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
+											ui.Text(c, colorHex(a.seedPick)).FontSize(13).TextColor(t.TextMuted)
 											label := "更改…"
 											if a.pickOpen {
 												label = "收起"
@@ -181,10 +181,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 										// 主色倾向;亮/暗两套各有自己的三阶层次。
 										pt := themeFor(a.seedPick).panes(a.isDark())
 										swatch := func(name string, col ui.Color) {
-											ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+											ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 												b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
 												b.Border(1, t.Border)
-												ui.Text(c, name).FontSize(11).TextColor(t.TextMuted)
+												ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
 											})
 										}
 										ui.Row(c).Gap(12).Wrap().Children(func() {
@@ -196,12 +196,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 									})
 								})
 								card("设置文件", func() {
-									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(13).TextColor(t.TextMuted)
 									ui.Row(c).Gap(8).Children(func() {
-										if ui.Button(c, "导出设置…").Radius(16).Clicked() {
+										if ui.Button(c, "导出设置…").Radius(8).Clicked() {
 											go a.exportSettings()
 										}
-										if ui.Button(c, "导入设置…").Radius(16).Clicked() {
+										if ui.Button(c, "导入设置…").Radius(8).Clicked() {
 											go a.importSettings()
 										}
 									})
@@ -222,13 +222,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 							row("等待秒数", func() {
 								ui.Row(c).Gap(10).Children(func() {
 									ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
-									ui.Text(c, "本地慢模型可调大").FontSize(12).TextColor(t.TextMuted).Grow(1)
+									ui.Text(c, "本地慢模型可调大").FontSize(13).TextColor(t.TextMuted).Grow(1)
 								})
 							})
 							row("并发路数", func() {
 								ui.Row(c).Gap(10).Children(func() {
 									ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
-									ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+									ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(13).TextColor(t.TextMuted).Grow(1)
 								})
 							})
 							row("默认提示词", func() {
@@ -236,7 +236,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
 										Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
 									ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
-										FontSize(11).TextColor(t.TextMuted)
+										FontSize(12).TextColor(t.TextMuted)
 								})
 							})
 						})
@@ -261,7 +261,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
 									sw.Border(1, t.Border)
-									ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
+									ui.Text(c, colorHex(a.seedPick)).FontSize(13).TextColor(t.TextMuted)
 									label := "更改…"
 									if a.pickOpen {
 										label = "收起"
@@ -282,10 +282,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 								// 主色倾向;亮/暗两套各有自己的三阶层次。
 								pt := themeFor(a.seedPick).panes(a.isDark())
 								swatch := func(name string, col ui.Color) {
-									ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 										b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
 										b.Border(1, t.Border)
-										ui.Text(c, name).FontSize(11).TextColor(t.TextMuted)
+										ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
 									})
 								}
 								ui.Row(c).Gap(12).Wrap().Children(func() {
@@ -297,12 +297,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 							})
 						})
 						card("设置文件", func() {
-							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(13).TextColor(t.TextMuted)
 							ui.Row(c).Gap(8).Children(func() {
-								if ui.Button(c, "导出设置…").Radius(16).Clicked() {
+								if ui.Button(c, "导出设置…").Radius(8).Clicked() {
 									go a.exportSettings()
 								}
-								if ui.Button(c, "导入设置…").Radius(16).Clicked() {
+								if ui.Button(c, "导入设置…").Radius(8).Clicked() {
 									go a.importSettings()
 								}
 							})
@@ -326,10 +326,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Spacer(c)
-				if ui.Button(c, "取消").Radius(16).Clicked() {
+				if ui.Button(c, "取消").Radius(8).Clicked() {
 					a.closeSettings(false)
 				}
-				if ui.PrimaryButton(c, "保存").Radius(16).Clicked() {
+				if ui.PrimaryButton(c, "保存").Radius(8).Clicked() {
 					a.commitAITimeout()
 					a.commitAIConcurrency()
 					a.commitAIPrompt()

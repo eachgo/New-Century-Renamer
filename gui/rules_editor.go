@@ -527,7 +527,7 @@ func varPicker(c *ui.Context, dst *string) {
 func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 	pline := func(label string, ctl func()) {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Width(96)
+			ui.Text(c, label).FontSize(13).TextColor(t.TextMuted).Width(96)
 			ctl()
 		})
 	}

@@ -103,8 +103,11 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	lt.InverseText = ui.RGB(255, 255, 255)
 	// 滚动条只有 1.43:1,几乎看不见;0.72 让它读得出来又不抢眼
 	lt.Scrollbar = tone(0.720, 0.20)
+	// 圆角阶梯只有三档:行 6 / 卡片 10 / 面板 14(见 gui/main.go 的注释)。
+	// Spacing 回到 4pt 基准——以前是 5,于是 Padding/Gap 的取值散成
+	// 19 种和 7 种,每个数字都是"看着差不多"手工调的。
 	lt.Radius = 10
-	lt.Spacing = 5
+	lt.Spacing = 4
 
 	dt := ui.DarkTheme()
 	dt.Background = tone(0.165, 0.28)
@@ -124,7 +127,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt.InverseText = tone(0.24, 0.30)
 	dt.Scrollbar = tone(0.560, 0.20)
 	dt.Radius = 10
-	dt.Spacing = 5
+	dt.Spacing = 4
 
 	groupColors := make(map[string]ui.Color, len(stepGroups))
 	for i, g := range stepGroups {
