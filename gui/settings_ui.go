@@ -59,7 +59,15 @@ func (a *app) settingsDialog(c *ui.Context) {
 
 	ui.Modal(c, &a.settingsOpen, func() {
 		w, h := c.Size()
+		// 宽窗口用两栏:AI 接口那张卡一个人就有 400 多高,单栏排下来
+		// 1280×720 下「主题」「设置文件」必然在视口之外——不是"滚一下
+		// 就能看到"的问题,是用户以为这些功能不存在。两栏把总高从
+		// 890 压到 500 左右,默认窗口下不用滚。窄窗口退回单栏滚动。
+		wide := w >= 980
 		dw := float32(520)
+		if wide {
+			dw = 880
+		}
 		if w-48 < dw {
 			dw = w - 48
 		}
@@ -90,108 +98,224 @@ func (a *app) settingsDialog(c *ui.Context) {
 			// 按钮始终可见。这里必须用 Grow(1) 而不是写死 dh-190:硬编码在
 			// 1280×720 下会把「主题」「设置文件」两张卡整个裁掉,而且裁得
 			// 一点痕迹都没有——用户以为功能不存在。
-			ui.Scroll(c).Grow(1).Children(func() {
+			// 记下滚动视口的位置:淡出遮罩要盖在它底边上,测试也要能量。
+			// Handle.Bounds 只在两帧之间可查(要有 *Context),所以存在这里。
+			a.setBodyRect = a.setBody.Bounds(c)
+			ui.Scroll(c).Grow(1).TrackScroll(&a.setScroll).Bind(&a.setBody).Children(func() {
 				ui.Column(c).Gap(12).Padding(2, 4).Children(func() {
-					card("AI 接口（OpenAI 兼容）", func() {
-						row("接口地址", func() {
-							ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
-						})
-						row("模型", func() {
-							ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
-						})
-						row("API Key", func() {
-							ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Fill()
-						})
-						row("等待秒数", func() {
-							ui.Row(c).Gap(10).Children(func() {
-								ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
-								ui.Text(c, "本地慢模型可调大").FontSize(12).TextColor(t.TextMuted).Grow(1)
+					if wide {
+						ui.Row(c).Gap(12).AlignItems(ui.Start).Children(func() {
+							ui.Column(c).Grow(1).FillHeight().Gap(12).Children(func() {
+								card("AI 接口（OpenAI 兼容）", func() {
+									row("接口地址", func() {
+										ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
+									})
+									row("模型", func() {
+										ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
+									})
+									row("API Key", func() {
+										ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Fill()
+									})
+									row("等待秒数", func() {
+										ui.Row(c).Gap(10).Children(func() {
+											ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
+											ui.Text(c, "本地慢模型可调大").FontSize(12).TextColor(t.TextMuted).Grow(1)
+										})
+									})
+									row("并发路数", func() {
+										ui.Row(c).Gap(10).Children(func() {
+											ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
+											ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+										})
+									})
+									row("默认提示词", func() {
+										ui.Column(c).Gap(4).Fill().Children(func() {
+											ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
+												Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
+											ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
+												FontSize(11).TextColor(t.TextMuted)
+										})
+									})
+								})
+							})
+							ui.Column(c).Grow(1).FillHeight().Gap(12).Children(func() {
+								card("文件", func() {
+									row("操作日志", func() {
+										ui.TextInput(c, &a.settingsDraft.Journal).Placeholder(defaultJournalPath()).Fill()
+									})
+								})
+								card("主题", func() {
+									row("外观模式", func() {
+										ui.Select(c, &a.settingsDraft.Theme.Mode, []string{"跟随系统", "浅色", "深色"}).Width(160)
+									})
+									row("主色来源", func() {
+										ui.Row(c).Gap(8).Children(func() {
+											ui.Switch(c, &a.seedFollow)
+											ui.Text(c, "跟随系统强调色").TextColor(t.TextMuted)
+										})
+									})
+									row("主色", func() {
+										// 平时只显示当前色块 + 更改按钮(主色不是高频操作,
+										// 展开的色彩面板会把整个对话框挤满)
+										ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+											sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
+											sw.Border(1, t.Border)
+											ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
+											label := "更改…"
+											if a.pickOpen {
+												label = "收起"
+											}
+											if ui.Button(c, label).Radius(14).Disabled(a.seedFollow).Clicked() {
+												a.pickOpen = !a.pickOpen
+											}
+										})
+									})
+									if a.pickOpen && !a.seedFollow {
+										ui.Row(c).Children(func() {
+											p := ui.ColorPicker(c, &a.seedPick)
+											p.Disabled(a.seedFollow)
+										})
+									}
+									row("配色预览", func() {
+										// 由主色自动生成的三栏"海拔"色板:不是纯灰,都带一点
+										// 主色倾向;亮/暗两套各有自己的三阶层次。
+										pt := themeFor(a.seedPick).panes(a.isDark())
+										swatch := func(name string, col ui.Color) {
+											ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+												b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
+												b.Border(1, t.Border)
+												ui.Text(c, name).FontSize(11).TextColor(t.TextMuted)
+											})
+										}
+										ui.Row(c).Gap(12).Wrap().Children(func() {
+											swatch("左栏", pt.left)
+											swatch("中栏", pt.mid)
+											swatch("右栏", pt.right)
+											swatch("卡片", pt.card)
+										})
+									})
+								})
+								card("设置文件", func() {
+									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+									ui.Row(c).Gap(8).Children(func() {
+										if ui.Button(c, "导出设置…").Radius(16).Clicked() {
+											go a.exportSettings()
+										}
+										if ui.Button(c, "导入设置…").Radius(16).Clicked() {
+											go a.importSettings()
+										}
+									})
+								})
 							})
 						})
-						row("并发路数", func() {
-							ui.Row(c).Gap(10).Children(func() {
-								ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
-								ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+					} else {
+						card("AI 接口（OpenAI 兼容）", func() {
+							row("接口地址", func() {
+								ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
+							})
+							row("模型", func() {
+								ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
+							})
+							row("API Key", func() {
+								ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Fill()
+							})
+							row("等待秒数", func() {
+								ui.Row(c).Gap(10).Children(func() {
+									ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
+									ui.Text(c, "本地慢模型可调大").FontSize(12).TextColor(t.TextMuted).Grow(1)
+								})
+							})
+							row("并发路数", func() {
+								ui.Row(c).Gap(10).Children(func() {
+									ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
+									ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+								})
+							})
+							row("默认提示词", func() {
+								ui.Column(c).Gap(4).Fill().Children(func() {
+									ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
+										Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
+									ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
+										FontSize(11).TextColor(t.TextMuted)
+								})
 							})
 						})
-						row("默认提示词", func() {
-							ui.Column(c).Gap(4).Fill().Children(func() {
-								ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
-									Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
-								ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
-									FontSize(11).TextColor(t.TextMuted)
+						card("文件", func() {
+							row("操作日志", func() {
+								ui.TextInput(c, &a.settingsDraft.Journal).Placeholder(defaultJournalPath()).Fill()
 							})
 						})
-					})
-					card("文件", func() {
-						row("操作日志", func() {
-							ui.TextInput(c, &a.settingsDraft.Journal).Placeholder(defaultJournalPath()).Fill()
-						})
-					})
-					card("主题", func() {
-						row("外观模式", func() {
-							ui.Select(c, &a.settingsDraft.Theme.Mode, []string{"跟随系统", "浅色", "深色"}).Width(160)
-						})
-						row("主色来源", func() {
-							ui.Row(c).Gap(8).Children(func() {
-								ui.Switch(c, &a.seedFollow)
-								ui.Text(c, "跟随系统强调色").TextColor(t.TextMuted)
+						card("主题", func() {
+							row("外观模式", func() {
+								ui.Select(c, &a.settingsDraft.Theme.Mode, []string{"跟随系统", "浅色", "深色"}).Width(160)
 							})
-						})
-						row("主色", func() {
-							// 平时只显示当前色块 + 更改按钮(主色不是高频操作,
-							// 展开的色彩面板会把整个对话框挤满)
-							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
-								sw.Border(1, t.Border)
-								ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
-								label := "更改…"
-								if a.pickOpen {
-									label = "收起"
-								}
-								if ui.Button(c, label).Radius(14).Disabled(a.seedFollow).Clicked() {
-									a.pickOpen = !a.pickOpen
-								}
+							row("主色来源", func() {
+								ui.Row(c).Gap(8).Children(func() {
+									ui.Switch(c, &a.seedFollow)
+									ui.Text(c, "跟随系统强调色").TextColor(t.TextMuted)
+								})
 							})
-						})
-						if a.pickOpen && !a.seedFollow {
-							ui.Row(c).Children(func() {
-								p := ui.ColorPicker(c, &a.seedPick)
-								p.Disabled(a.seedFollow)
+							row("主色", func() {
+								// 平时只显示当前色块 + 更改按钮(主色不是高频操作,
+								// 展开的色彩面板会把整个对话框挤满)
+								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+									sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
+									sw.Border(1, t.Border)
+									ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
+									label := "更改…"
+									if a.pickOpen {
+										label = "收起"
+									}
+									if ui.Button(c, label).Radius(14).Disabled(a.seedFollow).Clicked() {
+										a.pickOpen = !a.pickOpen
+									}
+								})
 							})
-						}
-						row("配色预览", func() {
-							// 由主色自动生成的三栏"海拔"色板:不是纯灰,都带一点
-							// 主色倾向;亮/暗两套各有自己的三阶层次。
-							pt := themeFor(a.seedPick).panes(a.isDark())
-							swatch := func(name string, col ui.Color) {
-								ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-									b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
-									b.Border(1, t.Border)
-									ui.Text(c, name).FontSize(11).TextColor(t.TextMuted)
+							if a.pickOpen && !a.seedFollow {
+								ui.Row(c).Children(func() {
+									p := ui.ColorPicker(c, &a.seedPick)
+									p.Disabled(a.seedFollow)
 								})
 							}
-							ui.Row(c).Gap(12).Wrap().Children(func() {
-								swatch("左栏", pt.left)
-								swatch("中栏", pt.mid)
-								swatch("右栏", pt.right)
-								swatch("卡片", pt.card)
+							row("配色预览", func() {
+								// 由主色自动生成的三栏"海拔"色板:不是纯灰,都带一点
+								// 主色倾向;亮/暗两套各有自己的三阶层次。
+								pt := themeFor(a.seedPick).panes(a.isDark())
+								swatch := func(name string, col ui.Color) {
+									ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+										b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
+										b.Border(1, t.Border)
+										ui.Text(c, name).FontSize(11).TextColor(t.TextMuted)
+									})
+								}
+								ui.Row(c).Gap(12).Wrap().Children(func() {
+									swatch("左栏", pt.left)
+									swatch("中栏", pt.mid)
+									swatch("右栏", pt.right)
+									swatch("卡片", pt.card)
+								})
 							})
 						})
-					})
-					card("设置文件", func() {
-						ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
-						ui.Row(c).Gap(8).Children(func() {
-							if ui.Button(c, "导出设置…").Radius(16).Clicked() {
-								go a.exportSettings()
-							}
-							if ui.Button(c, "导入设置…").Radius(16).Clicked() {
-								go a.importSettings()
-							}
+						card("设置文件", func() {
+							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+							ui.Row(c).Gap(8).Children(func() {
+								if ui.Button(c, "导出设置…").Radius(16).Clicked() {
+									go a.exportSettings()
+								}
+								if ui.Button(c, "导入设置…").Radius(16).Clicked() {
+									go a.importSettings()
+								}
+							})
 						})
-					})
+					}
 				})
 			})
+
+			// 窄窗口下表单会溢出滚动区,底边也要淡出:否则"主题"那半张
+			// 卡被硬切在一条直线上,看起来像对话框坏了而不是"还能往下滚"。
+			if a.setScroll.MaxY > 0 && a.setScroll.Y < a.setScroll.MaxY-1 {
+				a.fadeEdge(c, a.setBody, t.Surface)
+			}
 
 			// one primary action, right-aligned, apart from the rest (对比)。
 			// 用 outline 而不是 Divider(它画的是 Theme.Border,那是输入框

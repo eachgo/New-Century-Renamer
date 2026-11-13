@@ -797,13 +797,14 @@ func TestRealMatchesExt(t *testing.T) {
 	}
 }
 
-// 设置对话框的每一张卡都必须能被滚到。
-// 以前这里写死 MaxHeight(dh-190),1280×720 下「主题」「设置文件」两张卡
-// 高度为 0——被裁掉了,而且没有任何滚动提示,用户以为功能不存在。
+// 窄窗口(单栏)下设置对话框的每一张卡都必须能被滚到。
+// 宽窗口走两栏,四张卡一屏放得下,由 TestSettingsCardsVisibleAtDefaultSize
+// 守着——那里断言"不需要滚动"。这里只管窄窗口:单栏排下来总高 890,
+// 靠滚动够到后面的卡,而且按钮不该跟着滚走。
 func TestSettingsCardsReachableAtAnyHeight(t *testing.T) {
 	for _, h := range []int{480, 600, 720, 800} {
 		a := &app{stepSel: -1, settings: defaultSettings()}
-		tt := ui.NewTester(a.view, 1280, h)
+		tt := ui.NewTester(a.view, 900, h)
 		a.openSettings()
 		for i := 0; i < 4; i++ {
 			tt.Frame()

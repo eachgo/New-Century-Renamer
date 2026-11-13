@@ -61,6 +61,9 @@ type app struct {
 	settingsOpen      bool
 	helpOpen          bool
 	helpScroll        ui.ScrollState
+	setScroll         ui.ScrollState      // 设置对话框表单的滚动位置
+	setBody           ui.Handle           // 设置表单滚动区,用来判断要不要淡出底边
+	setBodyRect       ui.Rect             // 上一帧的滚动视口位置,测试用来量淡出
 	settingsDraft     Settings            // 设置对话框里正在编辑的副本;取消即丢弃
 	extColors         map[string]ui.Color // per-extension chip colors (main-thread)
 	seedFollow        bool                // theme seed follows the desktop accent
@@ -212,19 +215,30 @@ func (a *app) view(c *ui.Context) {
 	// 焦点要等这一帧构建完才有值:列表在构建时才把行标成可聚焦,
 	// 所以记在帧尾,给下一帧的 handleShortcuts 用。
 	a.fileFocus = a.table.FocusWithin(c)
-	// 目录被裁掉的那半行字,要淡出而不是硬切在一条直线上。遮罩必须画
-	// 在文字之上,而正常流里的 Absolute 元素永远排在文字下面(实测只能
-	// 在字缝里透出来),所以走 Overlay:它是窗口级的一层,盖在所有内容
-	// 之上,位置用 Absolute + Bounds 换算到窗口坐标。
+	// 目录被裁掉的那半行字,要淡出而不是硬切在一条直线上。
 	if a.catalogHasMore() {
-		if r := a.catScroll.Bounds(c); r.W > 0 && r.H > 0 {
-			pt := a.currentTheme().panes(a.isDark())
-			ui.Overlay(c, func() {
-				ui.Box(c).Absolute().Left(r.X).Top(r.Y+r.H-20).Width(r.W).Height(20).
-					Gradient(pt.base.Alpha(0), pt.base, 180)
-			})
-		}
+		a.fadeEdge(c, a.catScroll, a.currentTheme().panes(a.isDark()).base)
 	}
+}
+
+// fadeEdge 在滚动视口的底边盖一条渐变色,让被裁掉的那半行字淡出而不是
+// 硬切在一条直线上——硬切看起来像渲染坏了。
+//
+// 必须走 Overlay:遮罩要画在文字之上,而正常流里的 Absolute 元素永远排在
+// 文字下面(实测红色遮罩只在字缝里透出来)。Overlay 是窗口级的一层,盖在
+// 所有内容之上,位置用 Handle.Bounds 把滚动视口的坐标换算到窗口坐标。
+// to 是遮罩要淡入的颜色:它必须和视口底下那层底色一致,否则渐变到一半
+// 就换了个颜色,看起来像一块脏印子而不是"内容还在继续"。
+func (a *app) fadeEdge(c *ui.Context, h ui.Handle, to ui.Color) {
+	r := h.Bounds(c)
+	if r.W <= 0 || r.H <= 0 {
+		return
+	}
+	const fadeH float32 = 20
+	ui.Overlay(c, func() {
+		ui.Box(c).Absolute().Left(r.X).Top(r.Y+r.H-fadeH).Width(r.W).Height(fadeH).
+			Gradient(to.Alpha(0), to, 180)
+	})
 }
 
 // statusBar 是整个应用底部的固定状态栏(所有窗格之下,横贯全宽)。
