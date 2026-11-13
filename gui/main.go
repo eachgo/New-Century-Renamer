@@ -461,7 +461,10 @@ func (a *app) catalogView(c *ui.Context) {
 						continue
 					}
 					selBg, selFg := a.selColors()
-					item := ui.ButtonBase(c).Fill().Radius(6).Padding(0, 0)
+					// 上下各 2 的留白:条目之间要有缝,否则 32 条挤成一片,
+					// 眼睛没法判断一行到哪结束。悬停底色跟着长高,这也是
+					// "可点区域比文字大"的一层。
+					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0)
 					switch {
 					case a.palSel == d.id:
 						item.Background(selBg)
