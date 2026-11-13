@@ -73,7 +73,10 @@ func TestE2EApplyUndo(t *testing.T) {
 	if len(a.files) != len(paths) {
 		t.Fatalf("added %d of %d files", len(a.files), len(paths))
 	}
-	tt := ui.NewTester(a.view, 1280, 1300)
+	// 目录条目是两行(名称 + 说明),32 条加 11 个组标题要 2000 多高才
+	// 一屏放得下;矮窗口下条目会滚出视口,按文字点击会报"outside the
+	// window"。这里只想测改名的完整链路,所以把窗口开到放得下。
+	tt := ui.NewTester(a.view, 1280, 2600)
 	tt.Frame()
 	for _, label := range []string{"全部转小写", "追加序号"} {
 		if err := tt.Click(label); err != nil {
@@ -123,7 +126,7 @@ func TestE2EMetadataFlow(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	a.settings.Journal = filepath.Join(dir, ".journal.json")
 	a.addPaths(paths)
-	tt := ui.NewTester(a.view, 1280, 1300)
+	tt := ui.NewTester(a.view, 1280, 2600)
 	tt.Frame()
 
 	// 作者 - 标题 preset step

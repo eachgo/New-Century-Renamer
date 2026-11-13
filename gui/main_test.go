@@ -625,9 +625,11 @@ func TestMultiSelectEntry(t *testing.T) {
 // 三栏不编号:用户的工作流是"先有文件",编号会误导;只需说清
 // "功能会加入步骤"这一条关系
 
-// 左栏说明区不给设计语言做注释;默认文案应为行动指引,
-// 且不能要求用户"悬停"——键盘/触摸用户做不到,那样只剩一个空框。
-func TestCatalogHintIsActionable(t *testing.T) {
+// 每条功能的说明直接写在条目第二行,默认可见。
+// 以前说明只活在左栏底部那个 64px 的框里、而且要悬停才填——键盘和
+// 触摸用户做不到悬停,拿到的就是一个永远空着的框加一句"把鼠标停在
+// 功能上"的指令。
+func TestCatalogDescriptionsAreInline(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
@@ -637,8 +639,15 @@ func TestCatalogHintIsActionable(t *testing.T) {
 	if tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
 		t.Fatal("默认文案要求悬停,键盘/触摸用户拿不到说明")
 	}
-	if !tt.HasText("点一个功能，它就加入中栏；步骤从上到下依次执行") {
-		t.Error("缺少行动指引")
+	// 不悬停、不点击,说明本身就要在屏幕上。
+	for _, d := range catalog {
+		if !tt.HasText(d.desc) {
+			t.Fatalf("功能 %q 的说明没有默认显示出来: %q", d.label, d.desc)
+		}
+	}
+	// 标题栏那句"点击加入步骤"就是唯一的操作指引,不需要底框再说一遍。
+	if !tt.HasText("功能 · 点击加入步骤") {
+		t.Error("缺少栏标题里的操作指引")
 	}
 }
 
