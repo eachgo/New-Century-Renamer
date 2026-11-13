@@ -8,7 +8,7 @@ on:
       version:
         description: "版本号(不含 v,仅手动触发时使用)"
         required: true
-        default: "0.1.2"
+        default: "0.1.3"
 
 permissions:
   contents: write
@@ -69,12 +69,14 @@ jobs:
                 go build -trimpath -ldflags "$ldflags" -o "../dist/$name" . )
           }
 
-          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/arm64; do
+          # GUI 与 CLI 全平台都出。mygo 是纯 Go 原生渲染(不依赖 WebKitGTK),
+          # CGO_ENABLED=0 也能交叉编译;运行期通过 purego 动态加载系统库
+          # (Linux 上是 libepoxy/libEGL/libpango/libX11),所以打包体积很小,
+          # 但用户机器上要有图形会话与这些基础库。
+          for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             goos="${t%%/*}"; goarch="${t##*/}"
             build_cli "$goos" "$goarch"
-            # mygo 的 Linux GUI 要连系统显示服务(X11/Wayland)+OpenGL,各发行版
-            # 桌面差异大，Linux 只出 CLI
-            [ "$goos" != "linux" ] && build_gui "$goos" "$goarch"
+            build_gui "$goos" "$goarch"
           done
 
           ls -l dist
@@ -153,10 +155,14 @@ jobs:
           # 逐个列出,不要用 dist/ncreamer-*,否则会把打包好的 zip 再传一遍
           # ——zip 里已经装着 windows 的两个 exe,重复上传等于多发 24MB。
           files: |
+            dist/ncreamer-darwin-amd64
+            dist/ncreamer-gui-darwin-amd64
             dist/ncreamer-darwin-arm64
             dist/ncreamer-gui-darwin-arm64
             dist/ncreamer-linux-amd64
+            dist/ncreamer-gui-linux-amd64
             dist/ncreamer-linux-arm64
+            dist/ncreamer-gui-linux-arm64
             dist/ncreamer-windows-amd64.exe
             dist/ncreamer-windows-arm64.exe
             dist/ncreamer-gui-windows-amd64.exe

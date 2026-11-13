@@ -70,7 +70,7 @@ HI-FI 厂商开始出新的离线播放器，唱片店重新排队，有人开�
 
 ARM 版（如骁龙本）把 `amd64` 换成 `arm64`。
 
-### macOS / Linux
+### macOS / Linux（命令行）
 
 一条命令装 CLI 到 `/usr/local/bin`：
 
@@ -93,11 +93,25 @@ shasum -a 256 -c SHA256SUMS.txt --ignore-missing    # Linux 上用 sha256sum -c
 chmod +x ncreamer-darwin-arm64 && mv ncreamer-darwin-arm64 /usr/local/bin/ncreamer
 ```
 
-macOS 版 GUI（`ncreamer-gui-darwin-arm64`）同理，下载后 `chmod +x` 直接跑。
+### 图形界面（macOS / Linux）
+
+GUI 与 CLI 一样，就是一个可执行文件：
+
+```bash
+# Apple 芯片用 arm64，Intel Mac 用 amd64
+curl -LO https://github.com/eachgo/New-Century-Renamer/releases/latest/download/ncreamer-gui-darwin-arm64
+chmod +x ncreamer-gui-darwin-arm64 && ./ncreamer-gui-darwin-arm64
+```
+
+```bash
+# Linux
+curl -LO https://github.com/eachgo/New-Century-Renamer/releases/latest/download/ncreamer-gui-linux-amd64
+chmod +x ncreamer-gui-linux-amd64 && ./ncreamer-gui-linux-amd64
+```
 
 > macOS 上没签名没公证，首次打开会被 Gatekeeper 拦一下：右键点图标 → 打开，或者到"系统设置 → 隐私与安全性"里放行一次。
 
-Linux 只发布 CLI：图形界面要连系统的显示服务（X11/Wayland）和 OpenGL，各发行版的桌面环境差异较大，暂不提供通用二进制（想用界面可以自己编译，见[构建](#构建)）。界面是程序自己在 GPU 上画的，不需要额外装浏览器内核。
+界面是程序自己在 GPU 上画的（纯 Go，没有 cgo），**不需要装浏览器内核、也不需要 WebKitGTK**。运行时它通过 `purego` 动态加载系统基础库：Linux 上是 `libepoxy` / `libEGL` / `libpango` / `libX11`（桌面发行版通常已经装好，最小化安装可能需要补 `libegl1 libepoxy0 libpango-1.0-0 libx11-6`），并且需要一个图形会话（X11 或 Wayland）。纯命令行的服务器上请用 CLI 版。
 
 ### 从源码构建
 
