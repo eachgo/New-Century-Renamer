@@ -425,9 +425,10 @@ func fileExistsFor(p string) bool {
 	return err == nil
 }
 
-// The 选取 range is a word now, not a color: only the two scopes that
-// actually change what later steps touch get one, and 整体 says nothing.
-func TestStepScopeLabels(t *testing.T) {
+// 范围用色条而不是文字:文字只能说明"这一行是什么范围",色条还能说明
+// "范围持续到哪一行"。这个测试断言的是后者——第 4 行开的选取文件名,
+// 到第 12 行才切换,中间每一行(含中间的排除文件行)右槽都必须亮着。
+func TestStepRangeBars(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	// 1..3 processing
 	for _, id := range []string{"case.lower", "pinyin", "truncate"} {
@@ -444,37 +445,48 @@ func TestStepScopeLabels(t *testing.T) {
 	a.steps = append(a.steps, step("scope.ext"))
 	a.steps = append(a.steps, step("unfilter"), step("scope.all"))
 
-	labels := a.stepScopeLabels()
-
-	// 1..3: no scope open yet, so nothing to say
+	dt := a.currentTheme()
+	bars := a.stepRangeBars(dt)
+	if len(bars) != len(a.steps) {
+		t.Fatalf("色条行数 %d 与步骤数 %d 不符", len(bars), len(a.steps))
+	}
+	off := ui.Color{}
+	// 1..3: 还没开任何范围,两槽全空
 	for i := 0; i <= 2; i++ {
-		if labels[i] != "" {
-			t.Fatalf("step %d 不该有范围词: %q", i+1, labels[i])
+		if bars[i][0] != off || bars[i][1] != off {
+			t.Fatalf("第 %d 步不该有范围色条", i+1)
 		}
 	}
-	// 4..8: 选取文件名 is open
-	for i := 3; i <= 7; i++ {
-		if labels[i] != "仅文件名" {
-			t.Fatalf("step %d: %q", i+1, labels[i])
+	// 4..11: 选取文件名一直开着——这是文字做不到的"持续到哪一行"
+	for i := 3; i <= 10; i++ {
+		if bars[i][1] != dt.rangeScopeName {
+			t.Fatalf("第 %d 步应当仍在仅文件名范围内", i+1)
 		}
 	}
-	// 9..11: the filter row does not change the scope, still 文件名
-	for i := 8; i <= 10; i++ {
-		if labels[i] != "仅文件名" {
-			t.Fatalf("step %d: %q", i+1, labels[i])
+	// 12..13: 切到扩展名
+	if bars[11][1] != dt.rangeScopeExt {
+		t.Fatalf("第 12 步(选取扩展名)右槽应是扩展名色")
+	}
+	if bars[12][1] != dt.rangeScopeExt {
+		t.Fatalf("第 13 步(清除筛选)不该结束选取范围")
+	}
+	// 14: 恢复整体,两槽都空
+	if bars[13][0] != off || bars[13][1] != off {
+		t.Fatalf("第 14 步(恢复整体)之后不该还有范围")
+	}
+	// 筛选范围:从第 9 步(排除文件)开始,到第 13 步(清除筛选)结束
+	for i := 0; i <= 7; i++ {
+		if bars[i][0] != off {
+			t.Fatalf("第 %d 步不该有筛选范围", i+1)
 		}
 	}
-	// 12: switched to 扩展名
-	if labels[11] != "仅扩展名" {
-		t.Fatalf("step 12 (选取扩展名): %q", labels[11])
+	for i := 8; i <= 11; i++ {
+		if bars[i][0] != dt.rangeFilter {
+			t.Fatalf("第 %d 步应当仍在筛选范围内", i+1)
+		}
 	}
-	// 13: 清除筛选 only ends the filter range, scope still 扩展名
-	if labels[12] != "仅扩展名" {
-		t.Fatalf("step 13: %q", labels[12])
-	}
-	// 14: 恢复整体 closes it
-	if labels[13] != "" {
-		t.Fatalf("step 14: %q", labels[13])
+	if bars[12][0] != off {
+		t.Fatalf("第 13 步(清除筛选)之后筛选范围应当结束")
 	}
 }
 

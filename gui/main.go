@@ -483,33 +483,86 @@ func (a *app) catalogView(c *ui.Context) {
 	})
 }
 
-// stepScopeLabels returns, per step, the word for the 选取 range that is
-// open at that row: "" for the default (整体), "仅文件名", "仅扩展名".
+// stepRangeBars returns, per step, the two fixed range-bar slots:
+// [0] = left slot for the 筛选 range (seed complement), [1] = right slot for
+// the 选取 range — filename and extension take two neighboring hues so a
+// switch from 选取文件名 to 选取扩展名 shows as a color change instead of one
+// continuous bar. A zero Color means the slot is off (transparent).
+// Slots never move: at most two ranges can be open, each owning its place.
 //
-// It used to be a 4px color bar in a fixed right-hand slot. Two bars, three
-// hues, no legend anywhere in the app: you had to already know what the
-// colors meant, and 筛选 even reused a hue from the category palette. The
-// 筛选 range needs no marker at all — it is delimited by the 筛选文件 and
-// 清除筛选 rows sitting right there in the same list. The 选取 range is the
-// only one worth a word, because it changes what the *following* steps touch.
-func (a *app) stepScopeLabels() []string {
-	out := make([]string, len(a.steps))
-	scope := ""
+// 为什么是色条而不是文字:文字只能说明"这一行是什么范围",色条还能说明
+// "范围持续到哪一行"——第 4 行设了"仅文件名"、第 12 行才"恢复整体",
+// 中间每一行右边都有一条同色竖线连成一竖,一眼看出这 8 行都在范围内;
+// 写成文字则每行都要读一遍,还占宽度。所以这里保留色条,另配图例。
+func (a *app) stepRangeBars(dt *derivedTheme) [][2]ui.Color {
+	out := make([][2]ui.Color, len(a.steps))
+	filterOn := false
+	scopeCol := ui.Color{} // zero = off
 	for i := range a.steps {
 		s := &a.steps[i]
-		if key, _ := kindByLabel[s.kind]; key == "scope" {
+		key, _ := kindByLabel[s.kind]
+		switch key {
+		case "filter":
+			filterOn = true
+		case "unfilter":
+			filterOn = false
+		case "scope":
 			switch s.scopeSel {
 			case "整体":
-				scope = ""
+				scopeCol = ui.Color{}
 			case "扩展名":
-				scope = "仅扩展名"
-			default:
-				scope = "仅文件名"
+				scopeCol = dt.rangeScopeExt
+			default: // 文件名
+				scopeCol = dt.rangeScopeName
 			}
 		}
-		out[i] = scope
+		if filterOn {
+			out[i][0] = dt.rangeFilter
+		}
+		out[i][1] = scopeCol
 	}
 	return out
+}
+
+// rangeLegend 说明色条的含义——只列此刻真正生效的范围,没开的范围不占地方。
+// 报告原本的批评是"色条没有图例",不是"色条错了":编码本身最省宽度,缺的
+// 只是让它自解释。图例与色条同色同形(4px 竖条),看一次就能对上。
+func (a *app) rangeLegend(c *ui.Context, t *ui.Theme, dt *derivedTheme) {
+	bars := a.stepRangeBars(dt)
+	var filt, name, ext bool
+	for _, b := range bars {
+		if b[0].A != 0 {
+			filt = true
+		}
+		if b[1].A != 0 {
+			if b[1] == dt.rangeScopeExt {
+				ext = true
+			} else {
+				name = true
+			}
+		}
+	}
+	if !filt && !name && !ext {
+		return
+	}
+	chip := func(col ui.Color, label string) {
+		ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Width(4).Height(13).Radius(2).Background(col)
+			ui.Text(c, label).FontSize(11).TextColor(t.TextMuted).SingleLine()
+		})
+	}
+	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, "范围").FontSize(11).TextColor(t.TextMuted)
+		if filt {
+			chip(dt.rangeFilter, "筛选")
+		}
+		if name {
+			chip(dt.rangeScopeName, "仅文件名")
+		}
+		if ext {
+			chip(dt.rangeScopeExt, "仅扩展名")
+		}
+	})
 }
 
 // ---- middle pane: ordered task steps + selected step's detail ----
@@ -545,7 +598,7 @@ func (a *app) stepsView(c *ui.Context) {
 			a.intentCards(c)
 		} else {
 			dt := a.currentTheme()
-			scopes := a.stepScopeLabels()
+			bars := a.stepRangeBars(dt)
 			// 始终可选中、可编辑;多选与拖动也不需要模式开关
 			a.stepList.Key = func(i int) any { return a.steps[i].opUID }
 			a.stepList.Selected = &a.stepSel
@@ -559,20 +612,35 @@ func (a *app) stepsView(c *ui.Context) {
 			// 列表没有自己的可视边界,行被排进详情区地盘然后整行 Clip 掉。
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
+					// 图例:色条只在真有范围时出现,所以图例也只列此刻生效的那几种。
+					// 报告原本说"色条没有图例、全应用找不到任何解释"——补的是这一句。
+					a.rangeLegend(c, t, dt)
 					ui.List(c, &a.stepList, len(a.steps), func(i int) {
 						s := a.steps[i]
 						cat := dt.groupColor(s.opGroup)
-						// 行结构:编号 · 操作名 · 参数 · 范围词。
-						// 以前还有类别胶囊和两条范围色条,四套编码挤在一行 38px
-						// 里,其中两套没有图例、类别胶囊连续同类时还退化成圆点。
-						// 现在类别色只留在参数胶囊的底色上(一处,带信息),范围
-						// 只在非默认时写一个词。
+						// 行结构:编号 · 操作名 · 参数胶囊 · 类别胶囊 · 右缘两条范围色条。
+						// 四套编码挤在 38px 里确实密,但它们各答一个不同的问题:
+						// 参数=改什么,类别色=哪一类处理(靠色相分,不靠读字),
+						// 范围色条=这条规则管到哪一行。报告批评的是"没有图例",
+						// 所以补的是图例(stepsView 顶部),不是删掉编码。
 						// 当前步骤与多选集合都高亮
 						hot := i == a.stepSel || a.chosen.Has(s.opUID)
 						row := ui.Column(c).Fill().Padding(6, 6).MinHeight(38).Radius(6)
 						if hot {
 							row.Background(t.Selection)
 						}
+						// 范围色条自绘:两槽固定——右槽=选取范围,左槽=筛选范围;
+						// 未激活透明占位,槽位永不移动
+						row.DrawOver(func(p *ui.Painter, r ui.Rect) {
+							for k := 0; k < 2; k++ {
+								col := bars[i][1-k] // [1] 右槽,[0] 左槽
+								if col.A == 0 {
+									continue
+								}
+								x := r.X + r.W - 4 - float32(k)*6
+								p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
+							}
+						})
 						row.Children(func() {
 							// 高亮行:mygo 会把选中行的文字染成强调色(浅),显式
 							// 声明深色,不靠继承
@@ -605,13 +673,20 @@ func (a *app) stepsView(c *ui.Context) {
 										}
 									})
 								}
-								// 范围词:只在非默认时出现,占位固定,不引起行内跳动
-								ui.Row(c).Width(62).Gap(4).Children(func() {
+								// 胶囊区:固定宽度单独管理,行内不再被挤
+								catBg, catFg := chipTones(cat, a.isDark())
+								ui.Row(c).Width(84).Gap(4).Children(func() {
 									ui.Spacer(c)
-									if lbl := scopes[i]; lbl != "" {
-										ui.Text(c, lbl).FontSize(11).TextColor(t.TextMuted).SingleLine()
+									// 连续同类别:胶囊退化为同色圆点,换组才显示文字
+									if i > 0 && a.steps[i-1].opGroup == s.opGroup {
+										ui.Box(c).Size(9, 9).Background(catFg)
+									} else {
+										ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
+											Background(catBg).TextColor(catFg)
 									}
 								})
+								// 色条保留区:两条竖线永远画在这里,不压胶囊
+								ui.Box(c).Width(12)
 								// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
 								// 本行被悬停、或已在本行的选择里;悬停与已选时占位,
 								// 保证布局不跳
