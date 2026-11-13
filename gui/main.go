@@ -406,104 +406,149 @@ func (a *app) stepsView(c *ui.Context) {
 			a.stepList.Reorder = func(rows []int, to int) {
 				a.moveSteps(rows, to)
 			}
-			ui.List(c, &a.stepList, len(a.steps), func(i int) {
-				s := a.steps[i]
-				cat := dt.groupColor(s.opGroup)
-				// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
-				// 扫颜色即可读流程,不用逐个读编号
-				// 当前步骤与多选集合都高亮
-				hot := i == a.stepSel || a.chosen.Has(s.opUID)
-				row := ui.Column(c).Fill().Padding(6, 6).MinHeight(38).Radius(6)
-				if hot {
-					row.Background(t.Selection)
-				}
-				// 范围色条自绘:两槽固定——右槽=选取范围,左槽=筛选范围;
-				// 未激活透明占位,槽位永不移动
-				row.DrawOver(func(p *ui.Painter, r ui.Rect) {
-					for k := 0; k < 2; k++ {
-						col := bars[i][1-k] // [1] 右槽,[0] 左槽
-						if col.A == 0 {
-							continue
+			// 列表与详情共用同一条滚动轴:详情紧跟最后一行,不再钉在栏底。
+			// 以前是"列表 Grow(1) 吃满高度 + 详情钉底",结果是 1 步时选中行
+			// 与编辑器之间隔 290px 空白,12 步时第 8 行起被分隔线硬切——
+			// 列表没有自己的可视边界,行被排进详情区地盘然后整行 Clip 掉。
+			ui.Scroll(c).Grow(1).Children(func() {
+				ui.Column(c).FillWidth().Children(func() {
+					ui.List(c, &a.stepList, len(a.steps), func(i int) {
+						s := a.steps[i]
+						cat := dt.groupColor(s.opGroup)
+						// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
+						// 扫颜色即可读流程,不用逐个读编号
+						// 当前步骤与多选集合都高亮
+						hot := i == a.stepSel || a.chosen.Has(s.opUID)
+						row := ui.Column(c).Fill().Padding(6, 6).MinHeight(38).Radius(6)
+						if hot {
+							row.Background(t.Selection)
 						}
-						x := r.X + r.W - 4 - float32(k)*6
-						p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
-					}
-				})
-				row.Children(func() {
-					// 高亮行:mygo 会把选中行的文字染成强调色(浅),显式
-					// 声明深色,不靠继承
-					numCol, labCol := t.TextMuted, t.Text
-					if hot {
-						numCol, labCol = t.Text, t.Text
-					}
-					ui.Row(c).Gap(6).Children(func() {
-						ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22).TextAlign(ui.End)
-						// 全部步骤统一左对齐(设计书:不要在同一列表里混用对齐);
-						// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
-						if s.opFlow {
-							ui.Row(c).Fill().Gap(6).Children(func() {
-								// Shrink(0):操作名不参与压缩,要压缩就让后面的参数
-								// 胶囊去省略。以前没有它,"追加序号"会被挤成"追…"、
-								// "AI 按内容命名"挤成"AI…"——名字比参数重要。
-								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
-								if v := s.summary(); v != "" {
-									// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
-									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
-										Background(cat.Alpha(0.16)).TextColor(t.Text)
+						// 范围色条自绘:两槽固定——右槽=选取范围,左槽=筛选范围;
+						// 未激活透明占位,槽位永不移动
+						row.DrawOver(func(p *ui.Painter, r ui.Rect) {
+							for k := 0; k < 2; k++ {
+								col := bars[i][1-k] // [1] 右槽,[0] 左槽
+								if col.A == 0 {
+									continue
 								}
-							})
-						} else {
-							ui.Row(c).Fill().Gap(6).Children(func() {
-								ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
-								if v := s.summary(); v != "" && v != s.opLabel {
-									ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
-										Background(cat.Alpha(0.16)).TextColor(t.Text)
-								}
-							})
-						}
-						// 胶囊区:固定宽度单独管理,行内不再被挤
-						catBg, catFg := chipTones(cat, a.isDark())
-						ui.Row(c).Width(84).Gap(4).Children(func() {
-							ui.Spacer(c)
-							// 连续同类别:胶囊退化为同色圆点,换组才显示文字
-							if i > 0 && a.steps[i-1].opGroup == s.opGroup {
-								ui.Box(c).Size(9, 9).Background(catFg)
-							} else {
-								ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
-									Background(catBg).TextColor(catFg)
+								x := r.X + r.W - 4 - float32(k)*6
+								p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
 							}
 						})
-						// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
-						// 本行被悬停、或已在本行的选择里;悬停与已选时占位,
-						// 保证布局不跳
-						picked := a.chosen.Has(s.opUID)
-						if a.pickMode || picked || row.Hovered() {
-							dotColor := t.Border
-							if picked {
-								dotColor = t.Accent
+						row.Children(func() {
+							// 高亮行:mygo 会把选中行的文字染成强调色(浅),显式
+							// 声明深色,不靠继承
+							numCol, labCol := t.TextMuted, t.Text
+							if hot {
+								numCol, labCol = t.Text, t.Text
 							}
-							pick := ui.ButtonBase(c).Size(16, 16).Radius(8).Border(1, dotColor)
-							if picked {
-								pick.Background(t.Accent)
-							}
-							pick.Children(func() {
-								if picked {
-									ui.Text(c, "✓").FontSize(10).TextColor(t.AccentText)
-								}
-							})
-							if pick.Clicked() {
-								if picked {
-									a.chosen.Remove(s.opUID)
+							ui.Row(c).Gap(6).Children(func() {
+								ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22).TextAlign(ui.End)
+								// 全部步骤统一左对齐(设计书:不要在同一列表里混用对齐);
+								// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
+								if s.opFlow {
+									ui.Row(c).Fill().Gap(6).Children(func() {
+										// Shrink(0):操作名不参与压缩,要压缩就让后面的参数
+										// 胶囊去省略。以前没有它,"追加序号"会被挤成"追…"、
+										// "AI 按内容命名"挤成"AI…"——名字比参数重要。
+										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
+										if v := s.summary(); v != "" {
+											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
+											ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
+												Background(cat.Alpha(0.16)).TextColor(t.Text)
+										}
+									})
 								} else {
-									a.chosen.Add(s.opUID)
+									ui.Row(c).Fill().Gap(6).Children(func() {
+										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
+										if v := s.summary(); v != "" && v != s.opLabel {
+											ui.Text(c, v).FontSize(11).Padding(2, 8).Radius(8).MaxWidth(150).SingleLine().Ellipsis("…").
+												Background(cat.Alpha(0.16)).TextColor(t.Text)
+										}
+									})
 								}
-							}
+								// 胶囊区:固定宽度单独管理,行内不再被挤
+								catBg, catFg := chipTones(cat, a.isDark())
+								ui.Row(c).Width(84).Gap(4).Children(func() {
+									ui.Spacer(c)
+									// 连续同类别:胶囊退化为同色圆点,换组才显示文字
+									if i > 0 && a.steps[i-1].opGroup == s.opGroup {
+										ui.Box(c).Size(9, 9).Background(catFg)
+									} else {
+										ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
+											Background(catBg).TextColor(catFg)
+									}
+								})
+								// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
+								// 本行被悬停、或已在本行的选择里;悬停与已选时占位,
+								// 保证布局不跳
+								picked := a.chosen.Has(s.opUID)
+								if a.pickMode || picked || row.Hovered() {
+									dotColor := t.Border
+									if picked {
+										dotColor = t.Accent
+									}
+									pick := ui.ButtonBase(c).Size(16, 16).Radius(8).Border(1, dotColor)
+									if picked {
+										pick.Background(t.Accent)
+									}
+									pick.Children(func() {
+										if picked {
+											ui.Text(c, "✓").FontSize(10).TextColor(t.AccentText)
+										}
+									})
+									if pick.Clicked() {
+										if picked {
+											a.chosen.Remove(s.opUID)
+										} else {
+											a.chosen.Add(s.opUID)
+										}
+									}
+								}
+								// 色条保留区:两条竖线永远画在这里,不压胶囊
+								ui.Box(c).Width(12)
+							})
+						})
+					}).Gap(0) // 行相接,范围竖线连续;行距由行内 Padding 提供
+					// detail of the selected step — 选中即可编辑,无需解锁
+					if a.stepSel >= 0 && a.stepSel < len(a.steps) {
+						r := &a.steps[a.stepSel]
+						ui.Divider(c)
+						ui.Text(c, r.opLabel).Bold()
+						if r.opDesc != "" {
+							ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
 						}
-						// 色条保留区:两条竖线永远画在这里,不压胶囊
-						ui.Box(c).Width(12)
-					})
+						r.paramsEditor(c, t)
+						ui.Row(c).Gap(8).Children(func() {
+							if ui.Button(c, "上移").Disabled(a.stepSel == 0).Tooltip(shortcutTip("Alt+↑")).Clicked() {
+								a.swapSteps(a.stepSel-1, a.stepSel)
+							}
+							if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Tooltip(shortcutTip("Alt+↓")).Clicked() {
+								a.swapSteps(a.stepSel, a.stepSel+1)
+							}
+							// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
+							// 错误色 + 二次确认 + 确认态三秒自动收回。以前它和"复制"同款,
+							// 一个像不可逆、一个像随手,用户分不出轻重。
+							if a.confirmDelStep && a.confirmStale() {
+								a.dropConfirm()
+							}
+							if a.confirmDelStep {
+								confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+								confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
+								if confirm.Clicked() {
+									a.deleteStep(a.stepSel)
+									a.dropConfirm()
+								}
+							} else if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
+								a.armConfirm("step")
+							}
+							if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
+								a.duplicateStep(a.stepSel)
+							}
+						})
+					}
 				})
-			}).Gap(0).Grow(1) // 行相接,范围竖线连续;行距由行内 Padding 提供
+			})
 		}
 		// 多选(Ctrl+点击)时的批量操作
 		if a.chosen.Len() > 0 {
@@ -527,43 +572,6 @@ func (a *app) stepsView(c *ui.Context) {
 				}
 				if ui.Button(c, "全不选").Radius(16).Clicked() {
 					a.chosen.Clear()
-				}
-			})
-		}
-		// detail of the selected step — 选中即可编辑,无需解锁
-		if a.stepSel >= 0 && a.stepSel < len(a.steps) {
-			r := &a.steps[a.stepSel]
-			ui.Divider(c)
-			ui.Text(c, r.opLabel).Bold()
-			if r.opDesc != "" {
-				ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
-			}
-			r.paramsEditor(c, t)
-			ui.Row(c).Gap(8).Children(func() {
-				if ui.Button(c, "上移").Disabled(a.stepSel == 0).Tooltip(shortcutTip("Alt+↑")).Clicked() {
-					a.swapSteps(a.stepSel-1, a.stepSel)
-				}
-				if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Tooltip(shortcutTip("Alt+↓")).Clicked() {
-					a.swapSteps(a.stepSel, a.stepSel+1)
-				}
-				// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
-				// 错误色 + 二次确认 + 确认态三秒自动收回。以前它和"复制"同款,
-				// 一个像不可逆、一个像随手,用户分不出轻重。
-				if a.confirmDelStep && a.confirmStale() {
-					a.dropConfirm()
-				}
-				if a.confirmDelStep {
-					confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
-					confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
-					if confirm.Clicked() {
-						a.deleteStep(a.stepSel)
-						a.dropConfirm()
-					}
-				} else if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
-					a.armConfirm("step")
-				}
-				if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
-					a.duplicateStep(a.stepSel)
 				}
 			})
 		}
