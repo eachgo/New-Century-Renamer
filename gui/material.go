@@ -43,6 +43,11 @@ type paneTones struct {
 	card             ui.Color // 右栏文件卡片(在 right 之上浮一层)
 	outline          ui.Color // 极浅分隔线(带一点主题色倾向,不是纯灰)
 	shadow           ui.Color // 浮起卡片的投影色(含 alpha)
+	// chip 是文件卡片里那些小胶囊(路径、日期、大小)的底色。以前它们用
+	// Theme.SurfaceHover,而 SurfaceHover 的明度和右栏底几乎相同
+	// (实测对比度 1.00)——胶囊贴在卡片上只剩圆角能认出来,像没画底。
+	// 单独给一个比卡片深一档的色,让它确实是"一块底"。
+	chip ui.Color
 }
 
 // stepGroups is the fixed group order; each gets its own hue offset.
@@ -148,6 +153,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		card:    oklchColor(0.995, cc*0.03, H),
 		outline: oklchColor(0.900, cc*0.16, H),
 		shadow:  ui.RGBA(0, 0, 0, 0.08), // ≈8% 黑,让浮起的卡片有一点体积
+		chip:    oklchColor(0.918, cc*0.14, H),
 	}
 	// 暗色 base 原来 L=0.105,实测渲出来 #000400——几乎纯黑,违反
 	// PUI p.77「Avoid pure black」,而且三栏之间只有 1.03–1.12 的层次,
@@ -161,6 +167,7 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		card:    oklchColor(0.300, cc*0.18, H),
 		outline: oklchColor(0.400, cc*0.16, H),
 		shadow:  ui.RGBA(0, 0, 0, 0.35), // 暗色下几乎不可见,只给一点体积
+		chip:    oklchColor(0.360, cc*0.20, H),
 	}
 
 	return &derivedTheme{

@@ -1285,7 +1285,7 @@ func (a *app) filesView(c *ui.Context) {
 						ui.Row(c).Gap(6).Children(func() {
 							if f.group == "" {
 								path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(12).Padding(1, 6).Radius(4).
-									Background(t.SurfaceHover).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
+									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
 								path.Tooltip(filepath.Dir(f.path))
 							}
 							// 真实类型:与扩展名相符时不必说;只有真不符才标红。
@@ -1298,12 +1298,12 @@ func (a *app) filesView(c *ui.Context) {
 									Tooltip("扩展名是 ." + extNoDot + "，但文件内容像 " + f.realType)
 							} else if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
 								ui.Text(c, f.typ).FontSize(12).Padding(1, 6).Radius(4).
-									Background(t.SurfaceHover).TextColor(t.TextMuted)
+									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted)
 							}
 							ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(4).
-								Background(t.SurfaceHover).TextColor(t.TextMuted)
+								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted)
 							ui.Text(c, humanSize(f.size)).FontSize(12).Padding(1, 6).Radius(4).
-								Background(t.SurfaceHover).TextColor(t.TextMuted)
+								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted)
 							ui.Spacer(c)
 						})
 						// 失败原因直接写在卡片里:只写"失败"等于不说。
