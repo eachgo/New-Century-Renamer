@@ -220,21 +220,18 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 }
 
-// The catalog's 高级 group carries the CSV-rename action. Settings is NOT in
-// the catalog any more: it is an application-level entry, so it lives in the
-// title bar (see TestSettingsLivesInTitleBar).
-func TestAdvancedActions(t *testing.T) {
-	acts := map[string]bool{}
+// 目录里不该再有"立即执行"的动作:目录是"往管道里加东西"的地方,
+// 混进一个点了就跑的动作,和它旁边 32 个"点了加一步"的条目长得一样。
+// 设置进标题栏、导入CSV 进右栏工具栏(与导出CSV 成对)。
+func TestNoActionEntriesInCatalog(t *testing.T) {
+	var acts []string
 	for _, d := range catalog {
 		if d.act != "" {
-			acts[d.act] = true
+			acts = append(acts, d.act)
 		}
 	}
-	if !acts["import-csv"] {
-		t.Fatalf("missing advanced actions: %v", acts)
-	}
-	if acts["settings"] {
-		t.Fatal("设置不该留在目录里:它是应用级入口,任何窗口高度都要滚到底才能看见")
+	if len(acts) != 0 {
+		t.Fatalf("目录里还有立即执行的动作: %v", acts)
 	}
 }
 

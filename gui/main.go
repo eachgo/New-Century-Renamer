@@ -324,12 +324,10 @@ func (a *app) catalogView(c *ui.Context) {
 					case item.Hovered():
 						item.Background(t.SurfaceHover)
 					}
-					// 对齐即含义:处理步骤左对齐;流程控制与工具动作居中。
-					// 不用读文字,扫一眼对齐方式就知道条目性质
+					// 全部条目统一左对齐。原来"居中即流程控制"那套编码
+					// 没有图例,而且中栏早就放弃了它(见 stepsView 的注释),
+					// 同一条视觉规则出了左栏就失效——这类暗示比不暗示更糟。
 					align := ui.Start
-					if d.flow || d.act != "" {
-						align = ui.Center
-					}
 					item.Children(func() {
 						// 图标走色彩管线:按分组类别色(与步骤行类别胶囊同源),
 						// 选中时白——图标即类别指示,扫色即知
@@ -355,18 +353,13 @@ func (a *app) catalogView(c *ui.Context) {
 					}
 					if item.Clicked() {
 						a.palHint = d.desc // 点过之后说明留在框里,不用再悬停一次
-						switch d.act {
-						case "import-csv":
-							go a.importCSV()
-						default:
-							r := d.make()
-							r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
-							a.stepUID++
-							r.opUID = a.stepUID
-							a.steps = append(a.steps, r)
-							a.stepSel = len(a.steps) - 1
-							a.palSel = d.id
-						}
+						r := d.make()
+						r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
+						a.stepUID++
+						r.opUID = a.stepUID
+						a.steps = append(a.steps, r)
+						a.stepSel = len(a.steps) - 1
+						a.palSel = d.id
 					}
 				}
 			}
@@ -829,6 +822,12 @@ func (a *app) filesView(c *ui.Context) {
 			expBtn := tonalButton(c, "导出CSV", len(a.files) > 0)
 			if expBtn.Clicked() {
 				go a.exportCSV()
+			}
+			// 导入CSV 原来在左栏"高级"组里,可它作用于文件清单——和导出
+			// 是同一件事的两头,被拆到两个栏里谁也找不到另一半。
+			impBtn := tonalButton(c, "导入CSV", !a.busy)
+			if impBtn.Clicked() {
+				go a.importCSV()
 			}
 			if a.confirmClear && a.confirmStale() {
 				a.dropConfirm() // 挂太久:当用户改主意,收回确认态

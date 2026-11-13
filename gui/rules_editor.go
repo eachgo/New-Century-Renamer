@@ -239,7 +239,6 @@ var catalog = []opDef{
 	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名，可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
 		return baseRule("template")
 	}},
-	{id: "act.import-csv", icon: "act.import-csv", group: "高级", label: "导入编辑好的CSV改名", desc: "按导出的 CSV 列表（new_name 列）批量改名；点击立即执行，不加入步骤", act: "import-csv"},
 }
 
 func opByID(id string) (opDef, bool) {
