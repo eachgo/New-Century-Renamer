@@ -57,8 +57,14 @@ func TestThreePanesShareOneContainerSyntax(t *testing.T) {
 	title, _ := tt.Find("功能 · 点击加入步骤")
 	group, _ := tt.Find("▾ 筛选/范围")
 	item, _ := tt.Find("筛选文件")
-	if group.X != title.X {
-		t.Errorf("分组标题 x=%.1f 与栏标题 x=%.1f 不共线", group.X, title.X)
+	// 分组标题居中(它是"这一类",不是"这一条"),所以不与栏标题共线;
+	// 但要落在左栏视口的中线上,否则就是随手偏了一点。
+	if a.catRect.W > 0 {
+		mid := a.catRect.X + a.catRect.W/2
+		gc := group.X + group.W/2
+		if d := gc - mid; d > 24 || d < -24 {
+			t.Errorf("分组标题中心 %.1f 偏离左栏中线 %.1f 达 %.1f", gc, mid, d)
+		}
 	}
 	if d := item.X - title.X; d < 8 || d > 20 {
 		t.Errorf("条目文字相对栏标题缩进 %.1f,应当在 8~20 之间(图标列 + gap)", d)

@@ -625,27 +625,40 @@ func TestMultiSelectEntry(t *testing.T) {
 // 三栏不编号:用户的工作流是"先有文件",编号会误导;只需说清
 // "功能会加入步骤"这一条关系
 
-// 每条功能的说明直接写在条目第二行,默认可见。
-// 以前说明只活在左栏底部那个 64px 的框里、而且要悬停才填——键盘和
-// 触摸用户做不到悬停,拿到的就是一个永远空着的框加一句"把鼠标停在
-// 功能上"的指令。
-func TestCatalogDescriptionsAreInline(t *testing.T) {
+// 说明走 Tooltip:目录要在一屏里放下 32 条,每条占两行就只剩一半可见。
+// 这里量的是"说明挂在条目上、而且是那个功能自己的说明"——Tooltip 的
+// 内容不进 Texts(),所以只能查 app 侧的数据与悬停后的行为。
+func TestCatalogDescriptionsAreTooltips(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
-	if tt.HasText("左对齐 = 改名步骤 · 居中 = 流程控制/工具") {
-		t.Fatal("设计语言说明仍在")
-	}
 	if tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
-		t.Fatal("默认文案要求悬停,键盘/触摸用户拿不到说明")
+		t.Fatal("底部说明框应当已经删掉")
 	}
-	// 不悬停、不点击,说明本身就要在屏幕上。
+	// 每一条都得有说明可给,否则 Tooltip 会空着。
 	for _, d := range catalog {
-		if !tt.HasText(d.desc) {
-			t.Fatalf("功能 %q 的说明没有默认显示出来: %q", d.label, d.desc)
+		if d.desc == "" {
+			t.Errorf("功能 %q 没有说明", d.label)
 		}
 	}
-	// 标题栏那句"点击加入步骤"就是唯一的操作指引,不需要底框再说一遍。
+	// 悬停「筛选文件」之后,它的说明要真的出现在屏幕上。
+	rect, ok := tt.Find("筛选文件")
+	if !ok {
+		t.Fatal("找不到「筛选文件」")
+	}
+	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
+	tt.Advance(700 * time.Millisecond)
+	tt.Frame()
+	var want string
+	for _, d := range catalog {
+		if d.id == "filter" {
+			want = d.desc
+		}
+	}
+	if !tt.HasText(want) {
+		t.Fatalf("悬停「筛选文件」后没看到说明: %q", want)
+	}
+	// 标题栏那句"点击加入步骤"就是唯一的操作指引。
 	if !tt.HasText("功能 · 点击加入步骤") {
 		t.Error("缺少栏标题里的操作指引")
 	}

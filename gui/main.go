@@ -94,6 +94,7 @@ type app struct {
 	folded    map[string]bool
 	palScroll ui.ScrollState
 	catScroll ui.Handle // 目录滚动位置;用来判断"下面还有没有"
+	catRect   ui.Rect   // 上一帧的目录视口位置,测试用来量底缘渐隐
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -376,7 +377,7 @@ func (a *app) addIntent(in intent) {
 
 // catalogHasMore reports whether the catalog still has rows below the
 // visible part, as the last frame laid it out: the fade at the bottom only
-// shows then, so the cue means something instead of being decoration.
+// shows then, so it means something instead of being decoration.
 func (a *app) catalogHasMore() bool {
 	return a.palScroll.MaxY > 0 && a.palScroll.Y < a.palScroll.MaxY-1
 }
@@ -424,8 +425,9 @@ func (a *app) catalogView(c *ui.Context) {
 			ui.Spacer(c)
 		})
 		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth()
-		// 用 TrackScroll 记住滚动位置:底缘那行"↓ 下面还有"要据此决定
-		// 显不显示,不能靠猜。
+		// TrackScroll 记住滚动位置:底缘渐隐只在真还有内容时出现,
+		// 而这个判断要读它,不能靠猜。
+		a.catRect = a.catScroll.Bounds(c)
 		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).Children(func() {
 			if len(shown) == 0 {
 				ui.Text(c, "没有匹配的功能").FontSize(13).TextColor(t.TextMuted).Padding(8, 10)
@@ -443,10 +445,7 @@ func (a *app) catalogView(c *ui.Context) {
 					head.Background(t.SurfaceHover)
 				}
 				head.Children(func() {
-					// Fill 按钮默认把内容居中;分组标题要贴左,和栏标题、
-					// 条目图标站在同一条竖线上。
-					ui.Text(c, arrow+" "+g).FontSize(13).TextColor(t.TextMuted).
-						SingleLine().FillWidth().TextAlign(ui.Start)
+					ui.Text(c, arrow+" "+g).FontSize(13).TextColor(t.TextMuted).SingleLine()
 				})
 				if head.Clicked() {
 					if a.folded == nil {
@@ -484,29 +483,16 @@ func (a *app) catalogView(c *ui.Context) {
 								ie.TextColor(a.currentTheme().groupColor(d.group))
 							}
 						}
-						// 说明直接写在条目第二行,默认可见。以前它只活在底部
-						// 那个 64px 的框里、而且要悬停才填——键盘和触摸用户
-						// 做不到悬停,拿到的就是一个永远空着的框加一句指令。
-						// 两行是常驻高度(不随悬停变化),所以鼠标扫过时条目
-						// 不会跳,点击不会被位移打断。
-						descCol := t.TextMuted
+						labelCol := ui.Color{}
 						if a.palSel == d.id {
-							descCol = selFg
+							labelCol = selFg
 						}
-						ui.Column(c).Fill().Gap(2).Padding(4, 0).Children(func() {
-							labelCol := ui.Color{}
-							if a.palSel == d.id {
-								labelCol = selFg
-							}
-							txt := ui.Text(c, d.label).SingleLine().FillWidth().TextAlign(align)
-							if labelCol.A != 0 {
-								txt.TextColor(labelCol)
-							}
-							// 左栏只有 220 DIP,说明几乎都要省略号;给鼠标
-							// 用户一条看全文的路,键盘用户靠点进去后的参数区。
-							ui.Text(c, d.desc).FontSize(12).TextColor(descCol).
-								SingleLine().Ellipsis("…").FillWidth().Tooltip(d.desc)
-						})
+						// 说明走 Tooltip:目录要在一屏里放下 32 条,每条占两行
+						// 就只剩一半可见;悬停即得,和系统里其它按钮一致。
+						txt := ui.Text(c, d.label).SingleLine().FillWidth().TextAlign(align).Tooltip(d.desc)
+						if labelCol.A != 0 {
+							txt.TextColor(labelCol)
+						}
 					})
 					if item.Clicked() {
 						r := d.make()
@@ -520,17 +506,6 @@ func (a *app) catalogView(c *ui.Context) {
 				}
 			}
 		})
-		// 目录底缘的"下面还有"提示。mygo 的滚动条只在悬停时画
-		// (paint.go:991 barsShown = hovered || dragging),静止时右缘
-		// 什么都没有;最糟的情况是"替换"组标题被裁成半截字,看起来
-		// 像渲染坏了。这一行常占位(14px),只在真还有内容时写字,
-		// 所以滚到底时不会引起布局跳动。
-		ui.Row(c).FillWidth().Height(14).AlignItems(ui.Center).Children(func() {
-			if a.catalogHasMore() {
-				ui.Text(c, "↓ 下面还有").FontSize(12).TextColor(t.TextMuted)
-			}
-		})
-
 	})
 }
 
