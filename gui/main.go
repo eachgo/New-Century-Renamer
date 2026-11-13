@@ -60,6 +60,7 @@ type app struct {
 	settings          Settings
 	settingsOpen      bool
 	helpOpen          bool
+	helpScroll        ui.ScrollState
 	settingsDraft     Settings            // 设置对话框里正在编辑的副本;取消即丢弃
 	extColors         map[string]ui.Color // per-extension chip colors (main-thread)
 	seedFollow        bool                // theme seed follows the desktop accent
@@ -165,7 +166,7 @@ func (a *app) view(c *ui.Context) {
 				ui.Text(c, "?").FontSize(13).TextColor(t.TextMuted)
 			})
 			if help.Clicked() {
-				a.helpOpen = true
+				a.openHelp()
 			}
 			// 设置是应用级入口,不该藏在"往管道里加东西"的目录末尾——
 			// 那里它排在 y≈1385,任何窗口高度都要先滚到底才能看见。
@@ -1641,7 +1642,7 @@ func (a *app) handleShortcuts(c *ui.Context) {
 		go a.addFilesDialog()
 	}
 	if c.Shortcut(0, ui.KeyF1) {
-		a.helpOpen = true
+		a.openHelp()
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyComma) {
 		a.openSettings()

@@ -120,3 +120,49 @@ func TestVarPickerInsertsUsableAIPlaceholder(t *testing.T) {
 		t.Fatalf("插进模板的是省略号,用户还得自己猜要写什么: %q", got)
 	}
 }
+
+// 重新打开要从顶部开始:接着上次滚到的位置会让人以为内容变了。
+func TestHelpReopensAtTop(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 1000, 480)
+	tt.Frame()
+	tt.Frame()
+
+	tt.Key(0, ui.KeyF1)
+	tt.Frame()
+	for i := 0; i < 4; i++ {
+		tt.Scroll(500, 300, 0, 200)
+		tt.Frame()
+	}
+	if a.helpScroll.Y == 0 {
+		t.Fatal("测试没滚到底,后面的断言没有意义")
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	tt.Key(0, ui.KeyF1)
+	tt.Frame()
+	if a.helpScroll.Y != 0 {
+		t.Fatalf("重新打开时停在 y=%.1f,应当回到顶部", a.helpScroll.Y)
+	}
+}
+
+// 小窗口里内容放不下时得能滚到最底下那行快捷键,否则等于没写。
+func TestHelpScrollsToShortcutLine(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 1000, 480)
+	tt.Frame()
+	tt.Frame()
+	tt.Key(0, ui.KeyF1)
+	tt.Frame()
+
+	if a.helpScroll.MaxY <= 0 {
+		t.Fatal("480 高的窗口里帮助内容应当溢出,否则这条测试没在测滚动")
+	}
+	for i := 0; i < 4; i++ {
+		tt.Scroll(500, 300, 0, 200)
+		tt.Frame()
+	}
+	if !tt.HasText("Ctrl+D 复制步骤 · Alt+↑↓ 调整顺序 · Ctrl+逗号 设置 · F1 帮助") {
+		t.Fatal("滚到底也看不到快捷键那一行")
+	}
+}

@@ -9,6 +9,13 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// openHelp 每次从顶部开始:上次读到哪是上次的事,重新打开时先看到
+// "五步就够"的标题,而不是接着上次滚到的变量表中间。
+func (a *app) openHelp() {
+	a.helpScroll.Y = 0
+	a.helpOpen = true
+}
+
 // openSettings starts editing on a copy of the current settings. Every widget
 // in the dialog writes to the draft, so「取消」/Esc just drop it — the table
 // no longer has two behaviours where some fields revert and some don't.

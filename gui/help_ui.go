@@ -34,7 +34,7 @@ func (a *app) helpDialog(c *ui.Context) {
 					a.helpOpen = false
 				}
 			})
-			ui.Scroll(c).Grow(1).Children(func() {
+			ui.Scroll(c).Grow(1).TrackScroll(&a.helpScroll).Children(func() {
 				ui.Column(c).FillWidth().Gap(10).Children(func() {
 					steps := []struct{ n, title, body string }{
 						{"1", "把文件拖进来", "拖文件夹也行——会按文件夹分组，一个文件夹一组。也可以点右栏“添加文件…”。"},
