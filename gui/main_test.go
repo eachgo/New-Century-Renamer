@@ -781,31 +781,153 @@ func TestStatFileKeepGroup(t *testing.T) {
 
 // EPUB/DOCX 的容器是 ZIP,m4a/mov 是 MP4:这些都不是"扩展名在撒谎",
 // 不该标红。假警报一多,真警报就被淹掉了。
+//
+// 嗅探结果现在是 formatTable 的规范键(小写),容器类返回容器名,
+// 所以这里用 "zip"/"mp4" 而不是以前的 "ZIP"/"MP4"。
 func TestRealMatchesExt(t *testing.T) {
 	ok := [][2]string{
-		{"epub", "ZIP"}, {"docx", "ZIP"}, {"xlsx", "ZIP"}, {"apk", "ZIP"},
-		{"m4a", "MP4"}, {"mov", "MP4"}, {"mp4", "MP4"},
-		{"mkv", "MKV"}, {"webm", "MKV"},
-		{"ogg", "OGG"}, {"opus", "OGG"},
-		{"jpg", "JPEG"}, {"jpeg", "JPEG"},
-		{"mp3", "MP3"}, {"flac", "FLAC"}, {"pdf", "PDF"}, {"png", "PNG"},
+		{"epub", "zip"}, {"docx", "zip"}, {"xlsx", "zip"}, {"apk", "zip"},
+		{"m4a", "mp4"}, {"m4b", "mp4"}, {"mov", "mp4"}, {"mp4", "mp4"}, {"3gp", "mp4"},
+		{"mkv", "mkv"}, {"webm", "mkv"},
+		{"ogg", "ogg"}, {"opus", "ogg"}, {"oga", "ogg"}, {"spx", "ogg"},
+		{"jpg", "jpeg"}, {"jpeg", "jpeg"},
+		{"mp3", "mp3"}, {"flac", "flac"}, {"pdf", "pdf"}, {"png", "png"},
+		// 老式 Office 三件套都是 OLE 复合文档
+		{"doc", "ole"}, {"xls", "ole"}, {"ppt", "ole"},
+		{"azw3", "mobi"}, {"wma", "asf"},
 	}
 	for _, c := range ok {
-		if !realMatchesExt(c[0], c[1]) {
+		if contentCheck(c[0], c[1], 1<<20) != contentOK {
 			t.Errorf("%s 内容 %s 应视为相符", c[0], c[1])
 		}
 	}
 	bad := [][2]string{
-		{"mp3", "WebP"}, {"jpg", "ZIP"}, {"pdf", "MP4"}, {"epub", "MP3"},
+		{"mp3", "webp"}, {"jpg", "zip"}, {"pdf", "mp4"}, {"epub", "mp3"},
 	}
 	for _, c := range bad {
-		if realMatchesExt(c[0], c[1]) {
+		if contentCheck(c[0], c[1], 1<<20) != contentMismatch {
 			t.Errorf("%s 内容 %s 是真不符,应报警", c[0], c[1])
 		}
 	}
 	// 嗅探不出内容(空文件/未知格式)时不报警
-	if !realMatchesExt("mp3", "") {
+	if contentCheck("mp3", "", 1<<20) == contentMismatch {
 		t.Error("嗅探不出内容时不该报警")
+	}
+}
+
+// contentCheck 是 realMatchesExt 背后的三档判断:相符 / 真不符 /
+// 声称是二进制格式却读不出魔数。以前第三档被当成"没问题"静默放过,
+// 于是一个内容被写坏的 .docx(根本不是 ZIP)看起来和正常文件一样。
+func TestContentCheckThreeWay(t *testing.T) {
+	const big = int64(1 << 20)
+	cases := []struct {
+		ext, real string
+		size      int64
+		want      contentVerdict
+		why       string
+	}{
+		{"mp3", "mp3", big, contentOK, "扩展名与魔数一致"},
+		{"epub", "zip", big, contentOK, "EPUB 本来就是 ZIP 容器"},
+		{"m4a", "mp4", big, contentOK, "m4a 是 MP4 容器"},
+		{"mp3", "webp", big, contentMismatch, "内容是真 WebP"},
+		{"docx", "", big, contentUnrecognized, "声称是 ZIP 却读不出魔数"},
+		{"flac", "", big, contentUnrecognized, "声称是 FLAC 却读不出魔数"},
+		{"txt", "", big, contentNoOpinion, "纯文本本来没有魔数"},
+		{"svg", "", big, contentNoOpinion, "SVG 可以是纯文本"},
+		{"mp3", "", 3, contentNoOpinion, "3 字节的文件没有嗅探价值"},
+		{"", "webp", big, contentNoOpinion, "没有扩展名就无从比较"},
+		{"qqq", "", big, contentNoOpinion, "未知格式,不猜也不报"},
+	}
+	for _, c := range cases {
+		if got := contentCheck(c.ext, c.real, c.size); got != c.want {
+			t.Errorf("contentCheck(%q,%q,%d) = %d, want %d(%s)",
+				c.ext, c.real, c.size, got, c.want, c.why)
+		}
+	}
+}
+
+// 以前 ftyp box 的偏移写错成 b[0:4],而 ISO-BMFF 前面还有 4 字节
+// box size,于是真实的 mp4/m4a/mov 一个都嗅探不到——containerExts
+// 里六条 MP4 家族白名单在运行时形同虚设。这条测试用真实魔数开头
+// 的临时文件守住偏移。
+func TestSniffMagicRecognizesContainers(t *testing.T) {
+	cases := []struct {
+		name string
+		head []byte
+		want string
+	}{
+		{"a.m4a", []byte("\x00\x00\x00\x20ftypM4A \x00\x00\x00\x00"), "mp4"},
+		{"a.mp4", []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00"), "mp4"},
+		{"a.mov", []byte("\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00"), "mp4"},
+		{"a.epub", []byte("PK\x03\x04\x14\x00\x00\x00"), "zip"},
+		{"a.docx", []byte("PK\x03\x04\x14\x00\x06\x00"), "zip"},
+		{"a.doc", []byte("\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1"), "ole"},
+		{"a.wma", []byte("\x30\x26\xB2\x75\x8E\x66\xCF\x11"), "asf"},
+		{"a.rar", []byte("Rar!\x1A\x07\x01\x00"), "rar"},
+		{"a.7z", []byte("7z\xBC\xAF\x27\x1C\x00\x04"), "7z"},
+		{"a.flac", []byte("fLaC\x00\x00\x00\x22"), "flac"},
+		{"a.pdf", []byte("%PDF-1.7\n"), "pdf"},
+		{"a.png", []byte("\x89PNG\r\n\x1a\n\x00\x00"), "png"},
+		{"a.jpg", []byte("\xff\xd8\xff\xe0\x00\x10JF"), "jpeg"},
+		{"a.mp3", []byte("ID3\x04\x00\x00\x00\x00"), "mp3"},
+		{"a.mkv", []byte("\x1A\x45\xDF\xA3\x01\x00\x00\x00"), "mkv"},
+		{"a.gif", []byte("GIF89a\x01\x00\x01\x00"), "gif"},
+	}
+	for _, c := range cases {
+		p := filepath.Join(t.TempDir(), c.name)
+		if err := os.WriteFile(p, c.head, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if got := sniffMagic(p); got != c.want {
+			t.Errorf("%s 嗅探 = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// 嗅探结果必须都能在 formatTable 里查到标签,否则界面会退回
+// 大写英文(以前 sniffMagic 就是直接返回 "MP4"/"ZIP" 这种),
+// 同一份内容在两处显示成两种叫法。
+func TestSniffResultsHaveLabels(t *testing.T) {
+	for key := range containerLabels {
+		if _, ok := formatTable[key]; ok {
+			continue // 容器键同时是格式键时,标签来自 formatTable
+		}
+		if contentLabel(key) == "" {
+			t.Errorf("容器 %q 没有展示名", key)
+		}
+	}
+	for _, key := range []string{
+		"mp3", "flac", "ogg", "opus", "wav", "wma", "m4a", "aac", "mid", "oga", "spx", "mka",
+		"mp4", "m4v", "mov", "mkv", "webm", "avi", "flv", "3gp",
+		"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "svg", "ico",
+		"txt", "md", "log", "csv", "json", "xml", "html", "htm", "srt", "ass",
+		"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "ole",
+		"epub", "mobi", "azw3", "m4b",
+		"zip", "rar", "7z", "tar", "gz", "apk", "jar", "cbz", "odt", "ods", "odp",
+	} {
+		if _, ok := formatTable[key]; !ok {
+			t.Errorf("%q 不在 formatTable 里(会退回成大写扩展名)", key)
+			continue
+		}
+		if formatCategory(key) == "" {
+			t.Errorf("%q 没有类别", key)
+		}
+	}
+	// containerExts 里出现的每个容器名都得有展示名:要么在 containerLabels
+	// 里(MP4/ZIP/OLE 这类容器),要么本身就是 formatTable 的格式键
+	// (jpeg 之于 jpg)。两者都没有说明嗅探返回了一个界面叫不出名字的值。
+	for ext, cs := range containerExts {
+		if _, ok := formatTable[ext]; !ok {
+			t.Errorf("containerExts 的键 %q 不在 formatTable 里", ext)
+		}
+		for _, c := range cs {
+			if _, ok := containerLabels[c]; ok {
+				continue
+			}
+			if _, ok := formatTable[c]; !ok {
+				t.Errorf("containerExts[%q] 的容器 %q 没有展示名", ext, c)
+			}
+		}
 	}
 }
 
@@ -1082,5 +1204,36 @@ func TestTitlebarActionsSitAtRightEdge(t *testing.T) {
 	// 900 - 138 - 8 - 26(齿轮) - 26(?) ≈ 702 起。留 40 的余量防字体差异。
 	if r.X < 660 {
 		t.Errorf("问号 x=%.1f,离右缘太远(应 >660),让位算了两遍", r.X)
+	}
+}
+
+// 三种类型标记必须各自出现,而且只有真不符才标红:
+// 扩展名 .mp3 内容是 WebP → 红胶囊「内容为 WebP 图片」;
+// 扩展名 .docx 内容读不出 ZIP 魔数 → 中性胶囊「内容未识别」;
+// 扩展名 .mp3 内容也像 MP3 → 什么都不画(相符是默认,不该占位置)。
+func TestContentChipsRenderThreeStates(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	now := time.Date(2026, 11, 14, 9, 0, 0, 0, time.Local)
+	a.files = []fileInfo{
+		{path: `C:\x\lie.mp3`, modTime: now, size: 4096, typ: "MP3 音频", realType: "webp"},
+		{path: `C:\x\broken.docx`, modTime: now, size: 4096, typ: "Word 文档", realType: ""},
+		{path: `C:\x\ok.mp3`, modTime: now, size: 4096, typ: "MP3 音频", realType: "mp3"},
+	}
+	a.preview()
+	tt := ui.NewTester(a.view, 1100, 700)
+	tt.Frame()
+	tt.Frame()
+
+	if r, ok := tt.Find("内容为 WebP 图片"); !ok {
+		t.Error("真不符的文件没有标红提示")
+	} else if r.W <= r.H {
+		t.Errorf("标红胶囊被压成竖排: %.1f×%.1f", r.W, r.H)
+	}
+	if _, ok := tt.Find("内容未识别"); !ok {
+		t.Error("声称是二进制格式却读不出魔数,应给中性提示")
+	}
+	if r, ok := tt.Find("内容为 MP3 音频"); ok {
+		t.Errorf("相符的文件不该挂提示,却渲染出 %.0f×%.0f 的胶囊", r.W, r.H)
 	}
 }

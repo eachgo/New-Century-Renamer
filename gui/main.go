@@ -1304,14 +1304,27 @@ func (a *app) filesView(c *ui.Context) {
 							// 真实类型:与扩展名相符时不必说;只有真不符才标红。
 							// EPUB/DOCX 的容器本来就是 ZIP,m4a/mov 本来就是 MP4,
 							// 按字符串判等会把整屏正常文件标红,假警报淹掉真警报。
+							//
+							// 但"嗅探不出来"不等于"没问题":以前 real=="" 直接
+							// 静默放过,于是一个内容被写坏的 .docx(根本不是 ZIP)
+							// 在界面上看起来和正常文件一模一样。现在分三档:
+							// 真不符标红;声称是二进制格式却读不出魔数,给一条
+							// 中性提示(不红,因为可能是加密/自定义封装);其余不画。
 							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
-							if f.realType != "" && !realMatchesExt(extNoDot, f.realType) {
-								ui.Text(c, "内容为 "+f.realType+" 容器").FontSize(12).Padding(1, 6).Radius(4).
+							switch contentCheck(extNoDot, f.realType, f.size) {
+							case contentMismatch:
+								ui.Text(c, "内容为 "+contentLabel(f.realType)).FontSize(12).Padding(1, 6).Radius(4).
 									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).SingleLine().
-									Tooltip("扩展名是 ." + extNoDot + "，但文件内容像 " + f.realType)
-							} else if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
-								ui.Text(c, f.typ).FontSize(12).Padding(1, 6).Radius(4).
-									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
+									Tooltip("扩展名是 ." + extNoDot + "，但文件内容像 " + contentLabel(f.realType))
+							case contentUnrecognized:
+								ui.Text(c, "内容未识别").FontSize(12).Padding(1, 6).Radius(4).
+									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine().
+									Tooltip("扩展名是 ." + extNoDot + "，但文件开头读不出已知的格式标记")
+							default:
+								if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
+									ui.Text(c, f.typ).FontSize(12).Padding(1, 6).Radius(4).
+										Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
+								}
 							}
 							ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(4).
 								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
@@ -2096,24 +2109,17 @@ func (a *app) undo() {
 
 // detectType gives the 识别类型 column: the format by extension, plus a
 // note when we can read metadata out of it.
+//
+// 以前这里自带一份 labels map,和 sniffMagic 的大写英文、extCategory 的
+// 中文类别各说各话:同一个 .m4a 在标签里叫「MP4 音频」、在嗅探里叫
+// 「MP4」,加一种格式要改三处。现在标签全部来自 formatTable,
+// 这里只负责"扩展名 → 标签 + 元数据后缀"。
 func detectType(path string) string {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
-	labels := map[string]string{
-		"epub": "EPUB 电子书", "pdf": "PDF 文档",
-		"mp4": "MP4 视频", "m4v": "MP4 视频", "mov": "MP4 视频", "m4a": "MP4 音频", "m4b": "MP4 有声书",
-		"mkv": "MKV 视频", "webm": "WebM 视频", "mka": "MKV 音频", "avi": "AVI 视频",
-		"mp3": "MP3 音频", "flac": "FLAC 音频", "ogg": "OGG 音频", "wma": "WMA 音频", "wav": "WAV 音频",
-		"jpg": "JPEG 图片", "jpeg": "JPEG 图片", "png": "PNG 图片", "gif": "GIF 图片", "webp": "WebP 图片", "bmp": "BMP 图片",
-		"txt": "文本", "md": "Markdown", "srt": "字幕", "ass": "字幕",
-		"zip": "压缩包", "rar": "压缩包", "7z": "压缩包", "tar": "压缩包",
+	if ext == "" {
+		return "无扩展名"
 	}
-	label, ok := labels[ext]
-	if !ok {
-		if ext == "" {
-			return "无扩展名"
-		}
-		label = strings.ToUpper(ext)
-	}
+	label := formatLabel(ext)
 	if m := core.ExtractMeta(path); m != nil {
 		if _, has := m["title"]; has {
 			label += " ·含元数据"

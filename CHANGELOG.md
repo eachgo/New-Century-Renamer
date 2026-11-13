@@ -82,6 +82,36 @@
 - **发版时版本号只有一处来源**。release.yml 新增一步:按 tag 改写
   `gui/mygo.json` 的 version,否则发 0.1.4 的包里 FileVersion 还写着 0.1.3。
 
+### 修复 · 类型判定
+类型判定原来有三套各说各话的口径:`detectType` 按扩展名给中文标签、`sniffMagic`
+按魔数给大写英文、`extCategory` 又按扩展名分中文类别(而且全仓库没人调用它)。
+同一个 `.m4a` 在前两套里分别叫「MP4 音频」和「MP4」,加一种格式要改三处,漏
+一处就出现「标签说音频、嗅探说视频」这种自相矛盾的界面。现在只留 `formatTable`
+一张表:扩展名标签、魔数嗅探结果、类别、相符判断全部从它派生。
+
+- **MP4 家族的内容嗅探一直没生效**。ISO-BMFF 的 `ftyp` box 前面还有 4 字节
+  box size,代码判的是 `b[0:4] == "ftyp"`,所以真实的 mp4/m4a/m4b/m4v/mov/3gp
+  一个都嗅探不到——`containerExts` 里那六条 MP4 家族白名单在运行时形同虚设。
+  改判 `b[4:8]` 后正常。顺带把嗅探范围从 16 字节扩到 512 字节(否则 tar 的
+  `ustar`、MOBI 的 `BOOKMOBI` 在偏移 257/60 处永远读不到),并补上
+  OLE(doc/xls/ppt)、ASF(wma)、RAR、7z、gz、FLV、MIDI、TIFF、ICO、MOBI、tar、SVG。
+- **「嗅探不出内容」不再等于「没问题」**。`realMatchesExt` 以前在 `real == ""`
+  时直接返回 true,于是一个内容被写坏、根本不是 ZIP 的 `.docx` 在界面上看起来
+  和正常文件一模一样。现在分三档:内容与扩展名真不符 → 红胶囊;扩展名声称是
+  二进制格式、内容却读不出任何已知魔数 → 中性胶囊「内容未识别」(不标红,因为
+  可能是加密或自定义封装);相符或无从判断 → 不画。纯文本类(以及可以写成纯
+  文本的 SVG)本来就没有魔数,不算未识别。
+- **标红文案不再误导**。以前 `.mp3` 里装着 m4a 会写「内容为 MP4 容器」——听着
+  像里面是视频。容器类改用自己的名字(「MP4 容器」「Matroska 容器」「Ogg 容器」
+  「ZIP 容器」「OLE 复合文档」),非容器才用格式标签。
+- **新增回归测试**守住这几处:`TestSniffMagicRecognizesContainers` 用真实魔数
+  开头的临时文件验 16 种格式(含三种 ftyp 变体,专门盯偏移)、
+  `TestContentCheckThreeWay` 验三档判断的 11 个组合、
+  `TestSniffResultsHaveLabels` 验每个嗅探结果都有展示名且 `containerExts`
+  的键都在表里(这条一写就抓出 oga/mka/spx 三个漏登记)、
+  `TestContentChipsRenderThreeStates` 渲染三个文件确认红胶囊/中性胶囊/不画
+  三种状态各自出现。
+
 ### 修复 · 文档
 - **CHANGELOG 里三处与代码不符的说法已按实测改正**(见 0.1.3 节末尾的复核说明),
   并把 `tokens_test.go` 的白名单收紧、扫描范围从四个文件扩到九个。

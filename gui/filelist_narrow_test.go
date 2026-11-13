@@ -18,7 +18,7 @@ func TestFileNameReadableAtMinimumWidth(t *testing.T) {
 	dir := t.TempDir()
 	a.files = []fileInfo{
 		{path: filepath.Join(dir, "01. THE UNION.flac"), size: 12 << 20,
-			modTime: time.Now(), realType: "FLAC", typ: "FLAC 音频", group: "Album"},
+			modTime: time.Now(), realType: "flac", typ: "FLAC 音频", group: "Album"},
 	}
 	a.steps = append(a.steps, step("case.lower"))
 	a.preview()

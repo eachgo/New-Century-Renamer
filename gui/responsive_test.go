@@ -22,7 +22,7 @@ func narrowApp(t *testing.T, splitL, splitM float32) *app {
 	a.files = []fileInfo{{
 		path: filepath.Join(t.TempDir(), "2026-11-14 会议录音 很长的名字.mp3"),
 		size: 1 << 20, modTime: time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC),
-		realType: "MP3", typ: "MP3 音频",
+		realType: "mp3", typ: "MP3 音频",
 	}}
 	a.preview()
 	return a
