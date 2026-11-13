@@ -425,9 +425,9 @@ func fileExistsFor(p string) bool {
 	return err == nil
 }
 
-// Fixed two slots: [1]=选取 range (right), [0]=筛选 range (left); zero
-// Color = off. 文件名 and 扩展名 take neighboring hues, so switching shows.
-func TestStepRangeBars(t *testing.T) {
+// The 选取 range is a word now, not a color: only the two scopes that
+// actually change what later steps touch get one, and 整体 says nothing.
+func TestStepScopeLabels(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	// 1..3 processing
 	for _, id := range []string{"case.lower", "pinyin", "truncate"} {
@@ -444,35 +444,37 @@ func TestStepRangeBars(t *testing.T) {
 	a.steps = append(a.steps, step("scope.ext"))
 	a.steps = append(a.steps, step("unfilter"), step("scope.all"))
 
-	dt := themeFor(ui.Hex("#2F7A52"))
-	bars := a.stepRangeBars(dt)
+	labels := a.stepScopeLabels()
 
-	// before 4: both slots off
-	if bars[2] != [2]ui.Color{} {
-		t.Fatalf("step 3: %v", bars[2])
+	// 1..3: no scope open yet, so nothing to say
+	for i := 0; i <= 2; i++ {
+		if labels[i] != "" {
+			t.Fatalf("step %d 不该有范围词: %q", i+1, labels[i])
+		}
 	}
-	// 4..8: right slot = scopeName, left off
+	// 4..8: 选取文件名 is open
 	for i := 3; i <= 7; i++ {
-		if bars[i][0].A != 0 || bars[i][1] != dt.rangeScopeName {
-			t.Fatalf("step %d: %v", i+1, bars[i])
+		if labels[i] != "仅文件名" {
+			t.Fatalf("step %d: %q", i+1, labels[i])
 		}
 	}
-	// 9..12: left = filter, right = scope (name until 11, ext from 12)
+	// 9..11: the filter row does not change the scope, still 文件名
 	for i := 8; i <= 10; i++ {
-		if bars[i][0] != dt.rangeFilter || bars[i][1] != dt.rangeScopeName {
-			t.Fatalf("step %d: %v", i+1, bars[i])
+		if labels[i] != "仅文件名" {
+			t.Fatalf("step %d: %q", i+1, labels[i])
 		}
 	}
-	if bars[11][0] != dt.rangeFilter || bars[11][1] != dt.rangeScopeExt {
-		t.Fatalf("step 12 (选取扩展名): %v", bars[11])
+	// 12: switched to 扩展名
+	if labels[11] != "仅扩展名" {
+		t.Fatalf("step 12 (选取扩展名): %q", labels[11])
 	}
-	// 13 清除筛选: left off, right still ext
-	if bars[12][0].A != 0 || bars[12][1] != dt.rangeScopeExt {
-		t.Fatalf("step 13: %v", bars[12])
+	// 13: 清除筛选 only ends the filter range, scope still 扩展名
+	if labels[12] != "仅扩展名" {
+		t.Fatalf("step 13: %q", labels[12])
 	}
-	// 14 恢复整体: both off
-	if bars[13] != [2]ui.Color{} {
-		t.Fatalf("step 14: %v", bars[13])
+	// 14: 恢复整体 closes it
+	if labels[13] != "" {
+		t.Fatalf("step 14: %q", labels[13])
 	}
 }
 

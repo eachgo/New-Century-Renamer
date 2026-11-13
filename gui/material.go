@@ -17,14 +17,8 @@ type derivedTheme struct {
 	light, dark *ui.Theme
 	selBg       ui.Color // catalog/steps selection: deep seed tone
 	selFg       ui.Color
-	cardBg      ui.Color // settings card ground: near-neutral seed tint
-	// range bars: two fixed slots — right = 选取范围 (filename/extension,
-	// two neighboring hues so a switch shows), left = 筛选范围 (the seed's
-	// complement). A slot holds its place transparent when its range is off
-	rangeFilter    ui.Color
-	rangeScopeName ui.Color
-	rangeScopeExt  ui.Color
-	groupColors    map[string]ui.Color // fixed color per catalog group
+	cardBg      ui.Color            // settings card ground: near-neutral seed tint
+	groupColors map[string]ui.Color // fixed color per catalog group
 
 	// 三栏"海拔"配色(Material 3 的 surface container 阶)。
 	// 亮色:越核心越亮——左栏最暗(后退),中栏最亮(浮起),右栏居中。
@@ -167,12 +161,9 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		selFg:  ui.RGB(255, 255, 255),
 		cardBg: oklchColor(0.962, cc*0.12, H),
 		// 补色给筛选范围,相近色给选取范围(文件名/扩展名两个相邻色相)
-		rangeFilter:    oklchColor(0.62, 0.13, math.Mod(H+180, 360)),
-		rangeScopeName: oklchColor(0.62, 0.13, math.Mod(H+30, 360)),
-		rangeScopeExt:  oklchColor(0.62, 0.13, math.Mod(H+60, 360)),
-		groupColors:    groupColors,
-		lightPane:      ltPane,
-		darkPane:       dtPane,
+		groupColors: groupColors,
+		lightPane:   ltPane,
+		darkPane:    dtPane,
 	}
 }
 

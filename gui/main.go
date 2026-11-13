@@ -482,38 +482,31 @@ func (a *app) catalogView(c *ui.Context) {
 	})
 }
 
-// stepRangeBars returns, per step, the two fixed range-bar slots:
-// [0] = left slot for the 筛选 range (seed complement), [1] = right slot
-// for the 选取 range — filename and extension take two neighboring hues so
-// a switch from 选取文件名 to 选取扩展名 shows as a color change instead
-// of one continuous bar. A zero Color means the slot is off (transparent).
-// Slots never move: at most two ranges can be open, each owning its place.
-func (a *app) stepRangeBars(dt *derivedTheme) [][2]ui.Color {
-	out := make([][2]ui.Color, len(a.steps))
-	filterOn := false
-	scopeCol := ui.Color{} // zero = off
+// stepScopeLabels returns, per step, the word for the 选取 range that is
+// open at that row: "" for the default (整体), "仅文件名", "仅扩展名".
+//
+// It used to be a 4px color bar in a fixed right-hand slot. Two bars, three
+// hues, no legend anywhere in the app: you had to already know what the
+// colors meant, and 筛选 even reused a hue from the category palette. The
+// 筛选 range needs no marker at all — it is delimited by the 筛选文件 and
+// 清除筛选 rows sitting right there in the same list. The 选取 range is the
+// only one worth a word, because it changes what the *following* steps touch.
+func (a *app) stepScopeLabels() []string {
+	out := make([]string, len(a.steps))
+	scope := ""
 	for i := range a.steps {
 		s := &a.steps[i]
-		key, _ := kindByLabel[s.kind]
-		switch key {
-		case "filter":
-			filterOn = true
-		case "unfilter":
-			filterOn = false
-		case "scope":
+		if key, _ := kindByLabel[s.kind]; key == "scope" {
 			switch s.scopeSel {
 			case "整体":
-				scopeCol = ui.Color{}
+				scope = ""
 			case "扩展名":
-				scopeCol = dt.rangeScopeExt
-			default: // 文件名
-				scopeCol = dt.rangeScopeName
+				scope = "仅扩展名"
+			default:
+				scope = "仅文件名"
 			}
 		}
-		if filterOn {
-			out[i][0] = dt.rangeFilter
-		}
-		out[i][1] = scopeCol
+		out[i] = scope
 	}
 	return out
 }
@@ -551,7 +544,7 @@ func (a *app) stepsView(c *ui.Context) {
 			a.intentCards(c)
 		} else {
 			dt := a.currentTheme()
-			bars := a.stepRangeBars(dt)
+			scopes := a.stepScopeLabels()
 			// 始终可选中、可编辑;多选与拖动也不需要模式开关
 			a.stepList.Key = func(i int) any { return a.steps[i].opUID }
 			a.stepList.Selected = &a.stepSel
@@ -568,26 +561,17 @@ func (a *app) stepsView(c *ui.Context) {
 					ui.List(c, &a.stepList, len(a.steps), func(i int) {
 						s := a.steps[i]
 						cat := dt.groupColor(s.opGroup)
-						// 行结构:编号 · 操作名 · 参数值胶囊 · 类别胶囊 · 范围色条。
-						// 扫颜色即可读流程,不用逐个读编号
+						// 行结构:编号 · 操作名 · 参数 · 范围词。
+						// 以前还有类别胶囊和两条范围色条,四套编码挤在一行 38px
+						// 里,其中两套没有图例、类别胶囊连续同类时还退化成圆点。
+						// 现在类别色只留在参数胶囊的底色上(一处,带信息),范围
+						// 只在非默认时写一个词。
 						// 当前步骤与多选集合都高亮
 						hot := i == a.stepSel || a.chosen.Has(s.opUID)
 						row := ui.Column(c).Fill().Padding(6, 6).MinHeight(38).Radius(6)
 						if hot {
 							row.Background(t.Selection)
 						}
-						// 范围色条自绘:两槽固定——右槽=选取范围,左槽=筛选范围;
-						// 未激活透明占位,槽位永不移动
-						row.DrawOver(func(p *ui.Painter, r ui.Rect) {
-							for k := 0; k < 2; k++ {
-								col := bars[i][1-k] // [1] 右槽,[0] 左槽
-								if col.A == 0 {
-									continue
-								}
-								x := r.X + r.W - 4 - float32(k)*6
-								p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
-							}
-						})
 						row.Children(func() {
 							// 高亮行:mygo 会把选中行的文字染成强调色(浅),显式
 							// 声明深色,不靠继承
@@ -620,16 +604,11 @@ func (a *app) stepsView(c *ui.Context) {
 										}
 									})
 								}
-								// 胶囊区:固定宽度单独管理,行内不再被挤
-								catBg, catFg := chipTones(cat, a.isDark())
-								ui.Row(c).Width(84).Gap(4).Children(func() {
+								// 范围词:只在非默认时出现,占位固定,不引起行内跳动
+								ui.Row(c).Width(62).Gap(4).Children(func() {
 									ui.Spacer(c)
-									// 连续同类别:胶囊退化为同色圆点,换组才显示文字
-									if i > 0 && a.steps[i-1].opGroup == s.opGroup {
-										ui.Box(c).Size(9, 9).Background(catFg)
-									} else {
-										ui.Text(c, s.opGroup).FontSize(11).Padding(2, 8).Radius(8).
-											Background(catBg).TextColor(catFg)
+									if lbl := scopes[i]; lbl != "" {
+										ui.Text(c, lbl).FontSize(11).TextColor(t.TextMuted).SingleLine()
 									}
 								})
 								// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
@@ -658,8 +637,6 @@ func (a *app) stepsView(c *ui.Context) {
 										}
 									}
 								}
-								// 色条保留区:两条竖线永远画在这里,不压胶囊
-								ui.Box(c).Width(12)
 							})
 						})
 					}).Gap(0) // 行相接,范围竖线连续;行距由行内 Padding 提供
