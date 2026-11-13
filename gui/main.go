@@ -59,6 +59,7 @@ type app struct {
 
 	settings          Settings
 	settingsOpen      bool
+	helpOpen          bool
 	settingsDraft     Settings            // 设置对话框里正在编辑的副本;取消即丢弃
 	extColors         map[string]ui.Color // per-extension chip colors (main-thread)
 	seedFollow        bool                // theme seed follows the desktop accent
@@ -114,6 +115,8 @@ func (a *app) view(c *ui.Context) {
 	} else if a.pickMode && c.Shortcut(0, ui.KeyEscape) {
 		a.pickMode = false
 		a.chosen.Clear()
+	} else if a.helpOpen && c.Shortcut(0, ui.KeyEscape) {
+		a.helpOpen = false
 	} else if a.settingsOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.closeSettings(false)
 	}
@@ -152,6 +155,18 @@ func (a *app) view(c *ui.Context) {
 				brand.PaddingStart(float32(bar.Left) + 8)
 			}
 			ui.Spacer(c)
+			// 帮助入口:34 项功能、9 种模板变量、NFO 编号、CSV 回填,
+			// 全靠试是学不会的。放标题栏而不是目录里——它不属于管道。
+			help := ui.ButtonBase(c).Size(26, 26).Radius(13).Padding(0).Tooltip("帮助 F1")
+			if help.Hovered() {
+				help = help.Background(t.SurfaceHover)
+			}
+			help.Children(func() {
+				ui.Text(c, "?").FontSize(13).TextColor(t.TextMuted)
+			})
+			if help.Clicked() {
+				a.helpOpen = true
+			}
 			// 设置是应用级入口,不该藏在"往管道里加东西"的目录末尾——
 			// 那里它排在 y≈1385,任何窗口高度都要先滚到底才能看见。
 			// 桌面应用的约定是设置不进内容列表,所以放标题栏右侧。
@@ -189,6 +204,7 @@ func (a *app) view(c *ui.Context) {
 		a.statusBar(c)
 	})
 	a.settingsDialog(c)
+	a.helpDialog(c)
 	// 焦点要等这一帧构建完才有值:列表在构建时才把行标成可聚焦,
 	// 所以记在帧尾,给下一帧的 handleShortcuts 用。
 	a.fileFocus = a.table.FocusWithin(c)
@@ -1646,6 +1662,9 @@ func (a *app) handleShortcuts(c *ui.Context) {
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyO) && !a.busy {
 		go a.addFilesDialog()
+	}
+	if c.Shortcut(0, ui.KeyF1) {
+		a.helpOpen = true
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyComma) {
 		a.openSettings()

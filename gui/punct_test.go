@@ -18,6 +18,7 @@ var allowedHalfWidthGUI = []string{
 	"如 : / ? *",
 	"<META:",
 	"<NFO:",
+	"<AI:",
 }
 
 // TestGUIPunctuationIsFullWidth is the GUI half of the punctuation gate; the

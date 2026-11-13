@@ -482,6 +482,45 @@ func (r *guiRule) summary() string {
 	return ""
 }
 
+// templateVars is the list offered by the 插入变量 dropdown. Ordered by how
+// often each one is actually wanted, not alphabetically: <NAME> and <EXT> in
+// almost every template, <AI:…> last because it needs an endpoint configured.
+var templateVars = []struct{ name, insert, desc string }{
+	{"<NAME>", "<NAME>", "原文件名（不含扩展名）"},
+	{"<EXT>", "<EXT>", "原扩展名"},
+	{"<.EXT>", "<.EXT>", "带点的扩展名"},
+	{"<SEQ>", "<SEQ>", "序号（原始数字，不补零）"},
+	{"<DATE>", "<DATE>", "修改日期 YYYY-MM-DD"},
+	{"<META:title>", "<META:title>", "标题"},
+	{"<META:artist>", "<META:artist>", "歌手"},
+	{"<META:author>", "<META:author>", "作者"},
+	{"<META:album>", "<META:album>", "专辑"},
+	{"<META:date>", "<META:date>", "元数据里的日期"},
+	// 插入的是可用的占位指示,不是省略号:用户要在这里写自己的话
+	{"<AI:…>", "<AI:按内容起名>", "让模型按内容起名"},
+}
+
+// insertVar appends a variable to the template at the caret's end. There is
+// no caret API for "insert here", and appending is what people actually do
+// (build "<META:artist> - <META:title>" left to right); selecting and typing
+// over is still available for the rest.
+func insertVar(dst *string, v string) {
+	*dst += v
+}
+
+// varPicker is the 插入变量 dropdown next to a template input. A menu
+// button rather than a modal: picking a variable is a two-second act and
+// should not take the user away from the form they are filling in.
+func varPicker(c *ui.Context, dst *string) {
+	ui.MenuButton(c, "插入变量", func(m *ui.Menu) {
+		for _, v := range templateVars {
+			if m.Item(v.name + "  " + v.desc).Chosen() {
+				insertVar(dst, v.insert)
+			}
+		}
+	})
+}
+
 // paramsEditor builds the detail form of one step below the task list.
 // One parameter per line (fixed-width label + control): the middle pane
 // can be narrow, so nothing wraps into mismatched pairs.
@@ -506,7 +545,12 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 		pline("替换为", func() { ui.TextInput(c, &r.newStr).Placeholder("替换为").FillWidth() })
 		pline("正则", func() { ui.Switch(c, &r.regex) })
 	case "template":
-		pline("模板", func() { ui.TextInput(c, &r.tpl).Placeholder("<META:author> - <META:title><.EXT>").FillWidth() })
+		pline("模板", func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.TextInput(c, &r.tpl).Placeholder("<META:author> - <META:title><.EXT>").FillWidth()
+				varPicker(c, &r.tpl)
+			})
+		})
 	case "case":
 		pline("转换方式", func() { ui.Select(c, &r.caseMode, []string{"大写", "小写", "标题"}).Width(160) })
 	case "insert":
@@ -538,7 +582,10 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>，空=追加").FillWidth() })
 	case "nfo":
 		pline("命名模板", func() {
-			ui.TextInput(c, &r.tpl).Placeholder("空=<剧名 - S01E01 - 标题>；可用 <NFO:title> <NFO:showtitle> <NFO:year> <NFO:episode>").FillWidth()
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.TextInput(c, &r.tpl).Placeholder("空=<剧名 - S01E01 - 标题>").FillWidth()
+				varPicker(c, &r.tpl)
+			})
 		})
 		pline("NFO 文件", func() {
 			ui.TextInput(c, &r.nfoFile).Placeholder("留空=同文件夹的 .nfo；或填某个 .nfo 的完整路径").FillWidth()
