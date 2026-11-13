@@ -192,13 +192,16 @@ func (a *app) view(c *ui.Context) {
 		// 于是内容画到标题栏底下。Grow(1) 只吃标题栏之外的剩余空间。
 		// Split 外面留一点内边距,让中/右两张圆角卡片浮在 base 底色上、
 		// 四周露出基底(和左栏同色),读起来就是"卡片浮在底板上"。
-		ui.Split(c, &a.splitL,
+		// 三栏之间留空缝,不画分隔线:见 panes.go 里 splitPanes 的注释——
+		// mygo 的 Split 把线色写死成 Theme.Border,而 Border 要留给输入框
+		// 的边框,深了以后那两条线比它们分隔的内容还显眼。
+		a.splitPanes(c, &a.splitL,
 			func() { a.catalogView(c) },
 			func() {
-				ui.Split(c, &a.splitM,
+				a.splitPanes(c, &a.splitM,
 					func() { a.stepsView(c) },
-					func() { a.filesView(c) }).Grow(1).FillWidth()
-			}).Grow(1).FillWidth().Padding(8, 8, 8, 8)
+					func() { a.filesView(c) })
+			})
 		// ③ 应用级底部状态栏:这里是"对整个软件"的操作与反馈,与右栏
 		// "对文件列表"的操作分开。左边是警示/状态文字(多少将更名、报错),
 		// 右边是主操作"执行更名"和"回滚上次"——执行是主按钮实心,回滚镂空。
@@ -215,8 +218,10 @@ func (a *app) view(c *ui.Context) {
 // 左侧状态/警示:多少将更名、几个有问题、正在等模型的秒数;右侧:主操作。
 func (a *app) statusBar(c *ui.Context) {
 	t := c.Theme()
-	// 顶部一条极细的分隔线,和上方内容区分开
-	ui.Box(c).FillWidth().Height(1).Background(t.Border)
+	// 顶部一条极细的分隔线,和上方内容区分开。用 outline 而不是 Border:
+	// Border 是输入框的边框色,为了看得见必须够深;装饰线用同一个色会
+	// 比它分隔的内容还显眼。
+	ui.Box(c).FillWidth().Height(1).Background(a.currentTheme().panes(a.isDark()).outline)
 	ui.Row(c).FillWidth().Height(46).Padding(0, 12).Gap(10).AlignItems(ui.Center).
 		Background(a.currentTheme().panes(a.isDark()).left).Children(func() {
 		// ---- 左:状态 / 警示文字 ----
@@ -719,7 +724,7 @@ func (a *app) stepsView(c *ui.Context) {
 					// detail of the selected step — 选中即可编辑,无需解锁
 					if a.stepSel >= 0 && a.stepSel < len(a.steps) {
 						r := &a.steps[a.stepSel]
-						ui.Divider(c)
+						ui.Box(c).FillWidth().Height(1).Background(dt.panes(a.isDark()).outline)
 						ui.Text(c, r.opLabel).Bold()
 						if r.opDesc != "" {
 							ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
@@ -759,7 +764,7 @@ func (a *app) stepsView(c *ui.Context) {
 		// 多选(Ctrl+点击)时的批量操作
 		if a.chosen.Len() > 0 {
 			n := a.chosen.Len()
-			ui.Divider(c)
+			ui.Box(c).FillWidth().Height(1).Background(a.currentTheme().panes(a.isDark()).outline)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, fmt.Sprintf("已选 %d 步", n)).Bold()
 				// 批量删除同样是"丢东西",和单步删除、清空列表共用一套语言
@@ -1133,7 +1138,9 @@ func (a *app) filesView(c *ui.Context) {
 					}
 				})
 				row.Children(func() {
-					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
+					// 卡内上下 8、卡间 12:内边距必须小于间距,分组才成立
+					// (PUI p.18 的"内 < 外")。两个值都在 4px 网格上。
+					card := ui.Column(c).Fill().Gap(4).Padding(8, 10).Radius(8).
 						Background(dt.panes(a.isDark()).card)
 					// 失败的行要能一眼从"将更名"里挑出来:整卡降饱和太狠会
 					// 连文件名都读不清,所以只加一道危险色描边,文字保持原样。
@@ -1265,7 +1272,7 @@ func (a *app) filesView(c *ui.Context) {
 						})
 					}
 				})
-			}).Gap(10).Grow(1)
+			}).Gap(12).Grow(1)
 		}
 	})
 }

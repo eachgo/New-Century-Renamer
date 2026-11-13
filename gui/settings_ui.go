@@ -193,8 +193,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 				})
 			})
 
-			// one primary action, right-aligned, apart from the rest (对比)
-			ui.Divider(c)
+			// one primary action, right-aligned, apart from the rest (对比)。
+			// 用 outline 而不是 Divider(它画的是 Theme.Border,那是输入框
+			// 的边框色,比装饰线该有的深度深一档)。
+			ui.Box(c).FillWidth().Height(1).Background(a.currentTheme().panes(a.isDark()).outline)
 			if a.saveErr != "" {
 				ui.Text(c, a.saveErr).TextColor(t.Danger)
 			}
