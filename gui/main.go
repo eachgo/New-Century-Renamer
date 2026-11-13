@@ -73,17 +73,18 @@ type app struct {
 	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
 	aiPromptText      string              // 设置里"默认提示词"多行输入框的缓冲
 
-	steps    []guiRule // ordered task steps
-	stepSel  int       // selected step, -1 = none
-	stepList ui.ListState
-	palSel   string            // last catalog op added, highlighted in the list
-	stepUID  int               // 自增步骤身份
-	chosen   ui.Selection[int] // multi-selected step uids
-	pickMode bool              // 显示行内多选圆点(触摸入口)
-	pickOpen bool              // 设置里的主色选择器是否展开
-	dialogs  dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
-	palHint  string            // hovered/selected catalog entry's explanation
-	palQuery string            // 目录过滤框的内容;空=不过滤
+	steps     []guiRule // ordered task steps
+	stepSel   int       // selected step, -1 = none
+	stepList  ui.ListState
+	palSel    string            // last catalog op added, highlighted in the list
+	stepUID   int               // 自增步骤身份
+	chosen    ui.Selection[int] // multi-selected step uids
+	pickMode  bool              // 显示行内多选圆点(触摸入口)
+	pickOpen  bool              // 设置里的主色选择器是否展开
+	dialogs   dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
+	palHint   string            // hovered/selected catalog entry's explanation
+	palQuery  string            // 目录过滤框的内容;空=不过滤
+	palScroll ui.ScrollState    // 目录滚动位置;用来判断"下面还有没有"
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -267,6 +268,13 @@ func (a *app) statusBar(c *ui.Context) {
 	})
 }
 
+// catalogHasMore reports whether the catalog still has rows below the
+// visible part, as the last frame laid it out: the fade at the bottom only
+// shows then, so the cue means something instead of being decoration.
+func (a *app) catalogHasMore() bool {
+	return a.palScroll.MaxY > 0 && a.palScroll.Y < a.palScroll.MaxY-1
+}
+
 // ---- left pane: grouped catalog of named operations ----
 
 func (a *app) catalogView(c *ui.Context) {
@@ -296,7 +304,9 @@ func (a *app) catalogView(c *ui.Context) {
 	ui.Column(c).Fill().Padding(4, 4).Children(func() {
 		ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
 		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth().Padding(6, 8)
-		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
+		// 用 TrackScroll 记住滚动位置:底缘那行"↓ 下面还有"要据此决定
+		// 显不显示,不能靠猜。
+		ui.Scroll(c).Fill().Padding(4, 6).TrackScroll(&a.palScroll).Children(func() {
 			if len(shown) == 0 {
 				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
 			}
@@ -359,6 +369,16 @@ func (a *app) catalogView(c *ui.Context) {
 						}
 					}
 				}
+			}
+		})
+		// 目录底缘的"下面还有"提示。mygo 的滚动条只在悬停时画
+		// (paint.go:991 barsShown = hovered || dragging),静止时右缘
+		// 什么都没有;最糟的情况是"替换"组标题被裁成半截字,看起来
+		// 像渲染坏了。这一行常占位(14px),只在真还有内容时写字,
+		// 所以滚到底时不会引起布局跳动。
+		ui.Row(c).FillWidth().Height(14).Padding(0, 8).AlignItems(ui.Center).Children(func() {
+			if a.catalogHasMore() {
+				ui.Text(c, "↓ 下面还有").FontSize(11).TextColor(t.TextMuted)
 			}
 		})
 		// 底部说明区:固定高度,内容变化不移动目录条目(否则点击会被位移打断)。
