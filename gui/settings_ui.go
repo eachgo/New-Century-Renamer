@@ -90,7 +90,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 			})
 		}
 
-		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(8).
+		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(14).
 			Background(t.Surface).Shadow(0, 12, 32, 0, ui.RGBA(0x10, 0x30, 0x1F, 0.10)).Children(func() {
 			ui.Text(c, "设置").Bold().FontSize(18)
 

@@ -89,8 +89,13 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	lt := ui.LightTheme()
 	lt.Background = tone(0.972, 0.10) // warm/cool tint follows the seed
 	lt.Surface = tone(0.995, 0.04)
-	lt.SurfaceHover = tone(0.955, 0.16)
-	lt.SurfacePressed = tone(0.930, 0.18)
+	// 悬停/按下用"文字色的状态层"(M3 的 state layer),不用固定的色块。
+	// 原来 SurfaceHover 是 tone(0.955):在右栏底(同样 L≈0.955)上实测
+	// 1.00:1,等于没画;而三栏四层海拔明度各不相同,任何固定色调都会
+	// 与其中某一层撞上。改成半透明叠色后,它在 base/mid/right/card 上
+	// 都稳定在 1.17:1 左右,深浅两种外观也自动对(亮色压深、暗色提亮)。
+	lt.SurfaceHover = lt.Text.Alpha(0.08)
+	lt.SurfacePressed = lt.Text.Alpha(0.14)
 	// 控件边界。0.920 时按钮描边/输入框边框对底色只有 1.03–1.24:1,
 	// 等于"没有边界"——用户看不出哪里可以点。0.72 抬到 2.0–2.4,
 	// 仍然很轻,但轮廓立得住;装饰用的分隔线另走 paneTones.outline。
@@ -117,8 +122,9 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt := ui.DarkTheme()
 	dt.Background = tone(0.165, 0.28)
 	dt.Surface = tone(0.215, 0.24)
-	dt.SurfaceHover = tone(0.265, 0.24)
-	dt.SurfacePressed = tone(0.305, 0.24)
+	// 同亮色:状态层叠色,不做固定色块(理由见上面 lt.SurfaceHover)
+	dt.SurfaceHover = dt.Text.Alpha(0.10)
+	dt.SurfacePressed = dt.Text.Alpha(0.17)
 	// 0.325 时控件边界只有 1.46:1,等于没有边界;0.56 抬到 3.9(对 base),
 	// 卡片上也有 2.9,暗色下按钮轮廓才立得住
 	dt.Border = tone(0.560, 0.22)

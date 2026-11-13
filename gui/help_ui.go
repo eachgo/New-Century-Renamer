@@ -25,10 +25,10 @@ func (a *app) helpDialog(c *ui.Context) {
 		}
 		dh := h - 48
 
-		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(16, 18).Radius(14).
+		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(14).
 			Background(t.Background).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "五步就够").Bold().FontSize(15)
+				ui.Text(c, "五步就够").Bold().FontSize(18)
 				ui.Spacer(c)
 				if ui.Button(c, "知道了").Radius(14).Clicked() {
 					a.helpOpen = false

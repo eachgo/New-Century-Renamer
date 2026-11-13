@@ -84,3 +84,14 @@ func oklchColor(l, c, hDeg float64) ui.Color {
 	bl := -0.0041960863*l_ - 0.7034186147*m_ + 1.7076147010*s_
 	return ui.Color{R: lin(r), G: lin(g), B: lin(bl), A: 255}
 }
+
+// over 把 fg(可带 alpha)合成到不透明的 bg 上,得到实际渲出的颜色。
+// 带 alpha 的底色由渲染器自行叠加,测试里要断言"看上去是什么色"就得
+// 自己先合一次。
+func over(fg, bg ui.Color) ui.Color {
+	a := float64(fg.A) / 255
+	mix := func(f, b uint8) uint8 {
+		return uint8(math.Round(float64(f)*a + float64(b)*(1-a)))
+	}
+	return ui.RGBA(mix(fg.R, bg.R), mix(fg.G, bg.G), mix(fg.B, bg.B), 255)
+}

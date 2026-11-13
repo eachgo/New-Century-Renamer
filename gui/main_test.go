@@ -976,3 +976,111 @@ func TestOnlyOneConfirmAtATime(t *testing.T) {
 		t.Fatalf("两个确认态同时挂着: delStep=%v clear=%v", a.confirmDelStep, a.confirmClear)
 	}
 }
+
+// 悬停底必须在每一层海拔上都看得出来。
+// 改前 SurfaceHover 是固定色调 tone(0.955),而右栏底正好也是 L≈0.955,
+// 两者实测 1.00:1——悬停时只有图标和文字变色,底色那层等于没画。
+// 三栏四层海拔明度各不相同,任何固定色调都会与其中某一层撞上,所以改用
+// 半透明的文字色叠层。这条断言防止以后有人把它改回固定色。
+func TestHoverVisibleOnEveryPane(t *testing.T) {
+	for _, hex := range []string{"#2F7A52", "#F2703C", "#3140A8", "#8A2BE2", "#000000", "#FFFFFF"} {
+		dt := themeFor(ui.Hex(hex))
+		for _, dark := range []bool{false, true} {
+			th := dt.light
+			if dark {
+				th = dt.dark
+			}
+			p := dt.panes(dark)
+			for pane, bg := range map[string]ui.Color{
+				"base": p.base, "left": p.left, "mid": p.mid,
+				"right": p.right, "card": p.card,
+			} {
+				if r := contrastRatio(over(th.SurfaceHover, bg), bg); r < 1.12 {
+					t.Errorf("%s dark=%v: hover on %s %.3f < 1.12, 悬停底色看不见", hex, dark, pane, r)
+				}
+				if r := contrastRatio(over(th.SurfacePressed, bg), bg); r < 1.20 {
+					t.Errorf("%s dark=%v: pressed on %s %.3f < 1.20", hex, dark, pane, r)
+				}
+			}
+		}
+	}
+}
+
+// 浅填充(Tonal)按钮上的字必须读得出来。
+// 以前直接用 Accent 当字色压 Accent 12% 底:默认绿 3.50:1、橙 2.35:1,
+// 都低于 WCAG 4.5。Accent 要够亮才承得住白字,不能再兼作浅底上的字。
+func TestTonalButtonInkReadable(t *testing.T) {
+	for _, hex := range []string{"#2F7A52", "#F2703C", "#3140A8", "#8A2BE2", "#E22B5C", "#F5C518", "#000000", "#FFFFFF"} {
+		dt := themeFor(ui.Hex(hex))
+		for _, dark := range []bool{false, true} {
+			th := dt.light
+			if dark {
+				th = dt.dark
+			}
+			ink := th.Accent
+			if !dark {
+				_, ac, ah := colorToOklch(th.Accent)
+				ink = oklchColor(0.44, ac, ah)
+			}
+			p := dt.panes(dark)
+			// 12% 常态底与 20% 悬停底都要过 4.5
+			for _, al := range []float32{0.12, 0.20} {
+				bg := over(th.Accent.Alpha(al), p.right)
+				if r := contrastRatio(ink, bg); r < 4.5 {
+					t.Errorf("%s dark=%v alpha=%.2f: tonal ink %.2f < 4.5", hex, dark, al, r)
+				}
+			}
+		}
+	}
+}
+
+// 900 宽下日期/大小胶囊不能被压成竖排。
+// 改前元数据行既没有 Wrap、胶囊也没有 SingleLine,右栏只剩约 350 时
+// 「2026-11-14」被逐字折行,实测「1 B」胶囊 18.9×33.9(宽小于高),
+// 读起来像竖排。现在整颗胶囊换行、胶囊内不断行。
+func TestMetadataChipsStayHorizontalAt900(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	now := time.Date(2026, 11, 14, 9, 0, 0, 0, time.Local)
+	a.files = []fileInfo{
+		{path: `C:\x\Awich - THE UNION\01 - Awich - THE UNION.mp3`, modTime: now, size: 1, typ: "MP3 音频"},
+		{path: `C:\x\Awich - THE UNION\02 - Awich - THE UNION.mp3`, modTime: now, size: 1048576, typ: "MP3 音频"},
+	}
+	for i := range a.files {
+		a.files[i].group = "Awich - THE UNION"
+	}
+	a.preview()
+	tt := ui.NewTester(a.view, 900, 700)
+	tt.Frame()
+	tt.Frame()
+	for _, s := range []string{"1 B", "1.0 MB", now.Format("2006-01-02")} {
+		r, ok := tt.Find(s)
+		if !ok {
+			t.Errorf("%q 没渲染出来", s)
+			continue
+		}
+		if r.W <= r.H {
+			t.Errorf("%q 被压成竖排: %.1f×%.1f(宽应明显大于高)", s, r.W, r.H)
+		}
+	}
+}
+
+// 标题栏右侧的齿轮/问号必须紧贴窗口按钮那一侧,不能停在窗口中间。
+// 改前 summary 的 PaddingEnd 又加了一次 bar.Right,让位算两遍,
+// 右侧控件组被推左 138,和最小化/关闭之间空出一大段。
+func TestTitlebarActionsSitAtRightEdge(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 900, 200)
+	tt.SetTitleBar(ui.TitleBar{Height: 38, Right: 138, Bottom: 38})
+	tt.Frame()
+	tt.Frame()
+	r, ok := tt.Find("?")
+	if !ok {
+		t.Fatal("找不到问号按钮")
+	}
+	// 行右侧留给三个窗口按钮 138,summary 的 PaddingEnd 8,再往左才是 ?/齿轮。
+	// 900 - 138 - 8 - 26(齿轮) - 26(?) ≈ 702 起。留 40 的余量防字体差异。
+	if r.X < 660 {
+		t.Errorf("问号 x=%.1f,离右缘太远(应 >660),让位算了两遍", r.X)
+	}
+}

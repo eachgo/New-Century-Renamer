@@ -41,14 +41,35 @@ jobs:
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
-      # 产物与 build.ps1 -All 完全一致,只是改在本机流水线上跑,
-      # 保证发布包与脚本产物同名同结构。
+      # GUI 的版本号写在 gui/mygo.json 里,它会被 mygo 写进 exe 的
+      # 版本信息与 Linux 包名。tag 才是版本的唯一来源,所以先把它改过来,
+      # 免得发出去的 0.1.4 包里 FileVersion 还写着 0.1.3。
+      - name: 同步 GUI 版本号
+        shell: bash
+        run: |
+          set -euo pipefail
+          v="${{ steps.ver.outputs.version }}"
+          python3 - "$v" <<'PY'
+          import json, pathlib, sys
+          v = sys.argv[1]
+          p = pathlib.Path("gui/mygo.json")
+          cfg = json.loads(p.read_text(encoding="utf-8"))
+          cfg["version"] = v
+          p.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print("gui/mygo.json version =", v)
+          PY
+
+      # 产物与 build.ps1 -All 一一对应:CLI 用裸 go build(它没有资源要嵌),
+      # GUI 必须用 `go tool mygo build` —— 图标、版本信息、清单(逐显示器
+      # DPI 感知)都由它写成 .syso 链进可执行文件。裸 go build 出来的 GUI
+      # 是白底默认图标,这正是以前"准备了图标但产物没图标"的原因。
       - name: 交叉编译
         shell: bash
         run: |
           set -euo pipefail
           v="${{ steps.ver.outputs.version }}"
           mkdir -p dist
+          stage="$RUNNER_TEMP/mygo-build"
 
           build_cli() {
             local goos=$1 goarch=$2 name="ncreamer-$1-$2"
@@ -58,25 +79,52 @@ jobs:
               go build -trimpath -ldflags "-s -w -X main.version=$v" -o "dist/$name" ./cmd/ncreamer
           }
 
+          # mygo 的 -platform 接受逗号分隔的多个目标,一次调用就能出全平台,
+          # 不必按平台循环(每次调用都要重编一遍 mygo 的构建工具)。
           build_gui() {
-            local goos=$1 goarch=$2 name="ncreamer-gui-$1-$2"
-            [ "$goos" = "windows" ] && name="$name.exe"
-            echo "GUI  $name"
-            local ldflags="-s -w"
-            # Windows 双击不弹控制台黑框
-            [ "$goos" = "windows" ] && ldflags="$ldflags -H=windowsgui"
-            ( cd gui && GOOS=$goos GOARCH=$goarch CGO_ENABLED=0 \
-                go build -trimpath -ldflags "$ldflags" -o "../dist/$name" . )
+            echo "GUI  全平台"
+            # -skip-installer:不下载 NSIS 做 Windows 安装器
+            # -skip-dmg:磁盘镜像只能在 macOS 上做
+            ( cd gui && go tool mygo build \
+                -platform "windows/amd64,windows/arm64,linux/amd64,linux/arm64,darwin/amd64,darwin/arm64" \
+                -skip-installer -skip-dmg -o "$stage" )
           }
 
-          # GUI 与 CLI 全平台都出。mygo 是纯 Go 原生渲染(不依赖 WebKitGTK),
-          # CGO_ENABLED=0 也能交叉编译;运行期通过 purego 动态加载系统库
-          # (Linux 上是 libepoxy/libEGL/libpango/libX11),所以打包体积很小,
-          # 但用户机器上要有图形会话与这些基础库。
+          build_cli windows amd64
+          build_cli windows arm64
+          build_cli linux amd64
+          build_cli linux arm64
+          build_cli darwin amd64
+          build_cli darwin arm64
+          build_gui
+
+          # mygo 的输出按 <os>-<arch>/ 分目录,这里摊平成 dist/ 下的发布名
           for t in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             goos="${t%%/*}"; goarch="${t##*/}"
-            build_cli "$goos" "$goarch"
-            build_gui "$goos" "$goarch"
+            src="$stage/$goos-$goarch"
+            case "$goos" in
+              windows)
+                # exe 自带图标,单文件即可发布
+                cp "$src/ncreamer-gui.exe" "dist/ncreamer-gui-$goos-$goarch.exe"
+                ;;
+              darwin)
+                # macOS 要的是 .app 包,裸二进制双击打不开
+                ( cd "$src" && zip -q -r "$GITHUB_WORKSPACE/dist/ncreamer-gui-$goos-$goarch.zip" "ncreamer-gui.app" )
+                ;;
+              linux)
+                # Linux 的图标在 .desktop 里指向 png,发裸二进制会丢图标,
+                # 所以发 mygo 打好的 tar.gz(二进制 + png + desktop + install.sh)
+                cp "$src"/*.tar.gz "dist/ncreamer-gui-$goos-$goarch.tar.gz"
+                cp "$src"/*.deb "dist/ncreamer-gui_${v}_${goarch}.deb"
+                # rpm 用发行版的架构名(x86_64/aarch64),与 GOARCH 不同名,
+                # 这里按 goarch 显式挑文件再统一改名,免得 cp 到空
+                case "$goarch" in
+                  amd64) rpmarch=x86_64 ;;
+                  arm64) rpmarch=aarch64 ;;
+                esac
+                cp "$src"/*."$rpmarch".rpm "dist/ncreamer-gui-${v}-1.${goarch}.rpm"
+                ;;
+            esac
           done
 
           ls -l dist
@@ -156,13 +204,17 @@ jobs:
           # ——zip 里已经装着 windows 的两个 exe,重复上传等于多发 24MB。
           files: |
             dist/ncreamer-darwin-amd64
-            dist/ncreamer-gui-darwin-amd64
             dist/ncreamer-darwin-arm64
-            dist/ncreamer-gui-darwin-arm64
+            dist/ncreamer-gui-darwin-amd64.zip
+            dist/ncreamer-gui-darwin-arm64.zip
             dist/ncreamer-linux-amd64
-            dist/ncreamer-gui-linux-amd64
             dist/ncreamer-linux-arm64
-            dist/ncreamer-gui-linux-arm64
+            dist/ncreamer-gui-linux-amd64.tar.gz
+            dist/ncreamer-gui-linux-arm64.tar.gz
+            dist/ncreamer-gui_${{ steps.ver.outputs.version }}_amd64.deb
+            dist/ncreamer-gui_${{ steps.ver.outputs.version }}_arm64.deb
+            dist/ncreamer-gui-${{ steps.ver.outputs.version }}-1.amd64.rpm
+            dist/ncreamer-gui-${{ steps.ver.outputs.version }}-1.arm64.rpm
             dist/ncreamer-windows-amd64.exe
             dist/ncreamer-windows-arm64.exe
             dist/ncreamer-gui-windows-amd64.exe

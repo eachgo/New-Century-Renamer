@@ -1,6 +1,22 @@
 {
-  "name": "gui",
-  "identifier": "com.example.gui",
+  "name": "ncreamer-gui",
+  "slug": "ncreamer-gui",
+  "identifier": "io.github.eachgo.ncreamer",
   "version": "0.1.3",
-  "out": "build"
+  "copyright": "MIT",
+  "license": "MIT",
+  "out": "dist",
+  "windows": {
+    "displayName": "跨向更名器"
+  },
+  "linux": {
+    "maintainer": "New Century Renamer contributors",
+    "comment": "批量改名：拼音、元数据、NFO、AI 命名",
+    "categories": [
+      "Utility",
+      "FileTools"
+    ],
+    "webview": false,
+    "command": "ncreamer-gui"
+  }
 }

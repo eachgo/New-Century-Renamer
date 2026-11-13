@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -521,6 +522,53 @@ func varPicker(c *ui.Context, dst *string) {
 	})
 }
 
+// numDecimals is how many decimal places a step of this size needs: 1 → 0,
+// 0.05 → 2. It decides how a number is shown, never how it is stored.
+func numDecimals(step float64) int {
+	if s := strconv.FormatFloat(step, 'f', -1, 64); strings.Contains(s, ".") {
+		return len(s) - strings.IndexByte(s, '.') - 1
+	}
+	return 0
+}
+
+// numField is one number the user types or steps, as a text field with a
+// stepper beside it.
+//
+// It replaces ui.NumberInput, whose look we could not live with: that
+// widget puts a text field and two −/+ buttons in one row, each with its
+// own border and radius, and its parts are not the same height (the field
+// is 33 DIP tall from its padding, the buttons 28). At 175% zoom the
+// field's frame ends up visibly taller than the buttons next to it and
+// runs into the select above, and its digits sit left, not centered.
+// Here the field and the stepper are one height, the field's text is
+// centered, and the width is ours to set.
+func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
+	const h = 32
+	format := func(v float64) string { return strconv.FormatFloat(v, 'f', numDecimals(float64(step)), 64) }
+	row := ui.Row(c).Gap(6).AlignItems(ui.Center)
+	text := ui.Local(row, "text", func() string { return format(*value) })
+	row.Children(func() {
+		in := ui.TextInput(c, text).Width(width).Height(h).TextAlign(ui.Center)
+		if in.Changed() {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(*text), 64); err == nil {
+				*value = clamp(v, float64(lo), float64(hi))
+			}
+		}
+		if in.Shortcut(0, ui.KeyUp) {
+			*value = clamp(*value+float64(step), float64(lo), float64(hi))
+			*text = format(*value)
+		}
+		if in.Shortcut(0, ui.KeyDown) {
+			*value = clamp(*value-float64(step), float64(lo), float64(hi))
+			*text = format(*value)
+		}
+		if !in.Focused() {
+			*text = format(*value)
+		}
+		ui.Stepper(c, value, float64(lo), float64(hi), float64(step)).Height(h)
+	})
+}
+
 // paramsEditor builds the detail form of one step below the task list.
 // One parameter per line (fixed-width label + control): the middle pane
 // can be narrow, so nothing wraps into mismatched pairs.
@@ -556,14 +604,14 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 	case "insert":
 		pline("插入位置", func() { ui.Select(c, &r.insMode, []string{"文件名前", "文件名后", "指定位置"}).Width(160) })
 		if r.insMode == "指定位置" {
-			pline("第几个字符", func() { ui.NumberInput(c, &r.pos, 1, 9999, 1).Width(90) })
+			pline("第几个字符", func() { numField(c, &r.pos, 1, 9999, 1, 90) })
 		}
 		pline("插入文本", func() { ui.TextInput(c, &r.text).Placeholder("插入文本").FillWidth() })
 	case "delete":
-		pline("从第几个字符", func() { ui.NumberInput(c, &r.pos, 1, 9999, 1).Width(90) })
-		pline("删除数量", func() { ui.NumberInput(c, &r.count, 1, 9999, 1).Width(90) })
+		pline("从第几个字符", func() { numField(c, &r.pos, 1, 9999, 1, 90) })
+		pline("删除数量", func() { numField(c, &r.count, 1, 9999, 1, 90) })
 	case "truncate":
-		pline("保留长度", func() { ui.NumberInput(c, &r.maxLen, 1, 9999, 1).Width(90) })
+		pline("保留长度", func() { numField(c, &r.maxLen, 1, 9999, 1, 90) })
 	case "ext":
 		pline("新扩展名", func() { ui.TextInput(c, &r.newExt).Placeholder("空=删除扩展名").FillWidth() })
 	case "seq":
@@ -571,13 +619,13 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 		if r.numBase == "字母" {
 			pline("大小写", func() { ui.Select(c, &r.numCase, []string{"大写", "小写"}).Width(120) })
 		} else {
-			pline("不足位补齐", func() { ui.NumberInput(c, &r.seqWidth, 1, 9, 1).Width(90) })
+			pline("不足位补齐", func() { numField(c, &r.seqWidth, 1, 9, 1, 90) })
 		}
 		pline("分组方式", func() { ui.Select(c, &r.numGroup, []string{"不分组", "按扩展名", "按文件夹"}).Width(180) })
 		pline("起始 / 步长", func() {
-			ui.NumberInput(c, &r.seqStart, -9999, 999999, 1).Width(70)
+			numField(c, &r.seqStart, -9999, 999999, 1, 70)
 			ui.Text(c, "/").TextColor(t.TextMuted)
-			ui.NumberInput(c, &r.seqStep, -999, 999, 1).Width(70)
+			numField(c, &r.seqStep, -999, 999, 1, 70)
 		})
 		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>，空=追加").FillWidth() })
 	case "nfo":

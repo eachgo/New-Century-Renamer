@@ -190,7 +190,10 @@ func (a *app) view(c *ui.Context) {
 			}
 			// 右上角是用户扫视时第一个落脚点,放"这批有多少文件、几个会改名"
 			// 比放一个和窗口标题重复的名字有用。
-			ui.Text(c, a.batchSummary()).FontSize(12).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
+			// 右侧让位只由这一行的 Padding(0, bar.Right, ...) 负责。
+			// 以前这里又加了一次 bar.Right,让位被算两遍,于是齿轮和
+			// 问号被推到窗口中间,和最小化/关闭之间空出一大段。
+			ui.Text(c, a.batchSummary()).FontSize(12).TextColor(t.TextMuted).PaddingEnd(8)
 		})
 		// 只 Grow 不 Fill:Fill 会让 Split 想占满整列(含标题栏那几十像素),
 		// 于是内容画到标题栏底下。Grow(1) 只吃标题栏之外的剩余空间。
@@ -415,7 +418,7 @@ func (a *app) catalogView(c *ui.Context) {
 	// 所以左栏也套一层同样的卡片:两侧同色(0.955)、中间最亮(0.990),
 	// 一眼看出"中间是工作区、两侧是辅助"。
 	pt := a.currentTheme().panes(a.isDark())
-	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.right).Clip().
+	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.right).Clip().
 		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
 		// 栏头与中/右栏同构:一行 Row,标题靠左,不再用 Padding 去凑基线。
 		// 栏头统一 MinHeight(34) + 垂直居中:三栏的标题就落在同一条基线上。
@@ -604,7 +607,7 @@ func (a *app) stepsView(c *ui.Context) {
 	// 中间栏:核心工作区,浮得最高的一张白色圆角卡片(暗色下也比两侧亮一阶),
 	// 压在基底之上;给它圆角 + 一层柔投影,像一张单独浮起的纸。
 	pt := a.currentTheme().panes(a.isDark())
-	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.mid).Clip().
+	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
 		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(14)
@@ -654,7 +657,7 @@ func (a *app) stepsView(c *ui.Context) {
 						// 所以补的是图例(stepsView 顶部),不是删掉编码。
 						// 当前步骤与多选集合都高亮
 						hot := i == a.stepSel || a.chosen.Has(s.opUID)
-						row := ui.Column(c).Fill().Padding(6, 6).MinHeight(38).Radius(6)
+						row := ui.Column(c).Fill().Padding(6).MinHeight(38).Radius(6)
 						if hot {
 							row.Background(t.Selection)
 						}
@@ -993,7 +996,7 @@ func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	// 右边栏:结果空间,浮在基底之上的一张浅卡片(比中栏低一阶),也是圆角。
 	pt := a.currentTheme().panes(a.isDark())
-	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.right).Clip().
+	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.right).Clip().
 		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
 		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
@@ -1130,7 +1133,7 @@ func (a *app) filesView(c *ui.Context) {
 				if r.header {
 					// 吸顶头:实底(和右栏同色)盖住从下面滚过的文件卡,
 					// 读起来像"钉住"的标签条。
-					ui.Row(c).Fill().Gap(8).Padding(6, 6).
+					ui.Row(c).Fill().Gap(8).Padding(6).
 						Background(dt.panes(a.isDark()).right).Children(func() {
 						ui.Text(c, r.group).FontSize(14).FontWeight(600).TextColor(t.Text)
 						if nGroups > 1 {
@@ -1202,17 +1205,22 @@ func (a *app) filesView(c *ui.Context) {
 						oCol := a.fileColor(dt, oExt)
 						nCol := a.fileColor(dt, nExt)
 						// 名字组 = [胶囊文件名] . [胶囊扩展名],点是两胶囊之间
-						// 的独立文本;原名中性胶囊组,预览类型色胶囊组
+						// 的独立文本;原名中性胶囊组,预览类型色胶囊组。
+						// 整组包在一个不换行的 Row 里:否则外层 Wrap 会把
+						// 中间的「.」留在上一行、扩展名胶囊掉到下一行,
+						// 读起来像文件名后面多了个孤零零的句点。
 						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
-							// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
-							// 四行,把 54px 的卡片撑到 95px,整列节奏全乱
-							ui.Text(c, stem).FontSize(14).Padding(2, 10).Radius(6).
-								Background(stemBg).MinWidth(70).MaxWidth(170).SingleLine().Ellipsis("…")
-							if ext != "" {
-								ui.Text(c, ".").FontSize(14).TextColor(t.TextMuted)
-								ui.Text(c, strings.TrimPrefix(ext, ".")).FontSize(14).Padding(2, 10).Radius(6).
-									Background(extBg).TextColor(extFg)
-							}
+							ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+								// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
+								// 四行,把 54px 的卡片撑到 95px,整列节奏全乱
+								ui.Text(c, stem).FontSize(14).Padding(2, 10).Radius(6).
+									Background(stemBg).MinWidth(70).MaxWidth(170).SingleLine().Ellipsis("…")
+								if ext != "" {
+									ui.Text(c, ".").FontSize(14).TextColor(t.TextMuted)
+									ui.Text(c, strings.TrimPrefix(ext, ".")).FontSize(14).Padding(2, 10).Radius(6).
+										Background(extBg).TextColor(extFg)
+								}
+							})
 						}
 						// Wrap:窗口窄到放不下「原名 → 新名」时换行,而不是把
 						// 文件名压成「…」。名字是这个软件唯一要看的东西,
@@ -1260,7 +1268,12 @@ func (a *app) filesView(c *ui.Context) {
 						// 等于把「Awich - THE UNION」重复 4 次。所以:
 						// 路径只在没有分组头时出现,类型只在扩展名缺失时出现,
 						// 内容嗅探只在真不符时出现(相符是默认,不用报)。
-						ui.Row(c).Gap(6).Children(func() {
+						//
+						// Wrap 与 SingleLine 都是必需的:窗口拉到 900 宽时右栏
+						// 只剩约 350,这一行原来既不换行也不禁断行,于是每个
+						// 胶囊被压成"日/期"竖排两行、"1 B"也竖着排。现在整颗
+						// 胶囊换到下一行,胶囊内部永不断行。
+						ui.Row(c).Gap(6).Wrap().Children(func() {
 							if f.group == "" {
 								path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(12).Padding(1, 6).Radius(4).
 									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
@@ -1272,16 +1285,16 @@ func (a *app) filesView(c *ui.Context) {
 							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
 							if f.realType != "" && !realMatchesExt(extNoDot, f.realType) {
 								ui.Text(c, "内容为 "+f.realType+" 容器").FontSize(12).Padding(1, 6).Radius(4).
-									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).
+									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).SingleLine().
 									Tooltip("扩展名是 ." + extNoDot + "，但文件内容像 " + f.realType)
 							} else if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
 								ui.Text(c, f.typ).FontSize(12).Padding(1, 6).Radius(4).
-									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted)
+									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 							}
 							ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(4).
-								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted)
+								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 							ui.Text(c, humanSize(f.size)).FontSize(12).Padding(1, 6).Radius(4).
-								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted)
+								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 							ui.Spacer(c)
 						})
 						// 失败原因直接写在卡片里:只写"失败"等于不说。
@@ -1358,11 +1371,22 @@ func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 }
 
 // tonalButton 是"次要动作"的浅填充(Tonal)按钮:用主色的一层低透明底,
-// 文字用主色,视觉上比主按钮弱、比纯文字强。用于文件列表上的操作
-// (添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
+// 文字用同色相的深墨色,视觉上比主按钮弱、比纯文字强。用于文件列表上的
+// 操作(添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
+//
+// 字色不能直接用 Accent:Accent 要够亮才承得住白字,拿它压自己的 12% 底
+// 实测只有 3.50:1(默认绿)到 2.35:1(橙),低于 WCAG 4.5。亮色下改用
+// 同色相、L 0.44 的墨色;暗色下 Accent 本身就有 5.4 以上,继续用它,
+// 免得暗色按钮反而变闷。
 func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
-	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).TextColor(t.Accent).
+	ink := t.Accent
+	if !t.Dark {
+		// 同色相、L 0.44 的墨色;chroma 沿用 Accent 的(已被 seed 收敛过)
+		_, ac, ah := colorToOklch(t.Accent)
+		ink = oklchColor(0.44, ac, ah)
+	}
+	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).TextColor(ink).
 		Background(t.Accent.Alpha(0.12))
 	if !enabled {
 		b = b.TextColor(t.TextMuted).Background(t.SurfaceHover)
