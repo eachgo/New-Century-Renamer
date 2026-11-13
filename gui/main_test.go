@@ -220,32 +220,46 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 }
 
-// The catalog's 高级 group carries the CSV-rename and settings actions.
+// The catalog's 高级 group carries the CSV-rename action. Settings is NOT in
+// the catalog any more: it is an application-level entry, so it lives in the
+// title bar (see TestSettingsLivesInTitleBar).
 func TestAdvancedActions(t *testing.T) {
 	acts := map[string]bool{}
 	for _, d := range catalog {
-		if d.group == "高级" && d.act != "" {
+		if d.act != "" {
 			acts[d.act] = true
 		}
 	}
-	if !acts["import-csv"] || !acts["settings"] {
+	if !acts["import-csv"] {
 		t.Fatalf("missing advanced actions: %v", acts)
+	}
+	if acts["settings"] {
+		t.Fatal("设置不该留在目录里:它是应用级入口,任何窗口高度都要滚到底才能看见")
 	}
 }
 
-// Clicking 设置 opens the modal (not a step).
-func TestSettingsEntryOpensDialog(t *testing.T) {
-	a := &app{stepSel: -1, settings: defaultSettings()}
-	tt := ui.NewTester(a.view, 1280, 1600) // tall window: 高级 group is at the bottom
-	if err := tt.Click("设置"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Frame()
-	if !a.settingsOpen {
-		t.Fatal("settings dialog did not open")
-	}
-	if len(a.steps) != 0 {
-		t.Fatalf("设置 wrongly added a step: %+v", a.steps)
+// 设置 lives in the title bar now, at any window height without scrolling.
+func TestSettingsLivesInTitleBar(t *testing.T) {
+	for _, h := range []int{480, 720, 1080} {
+		a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+		tt := ui.NewTester(a.view, 1280, h)
+		tt.Frame()
+		// 齿轮没有文字,用快捷键证明它接在同一条路上;再直接点图标所在位置。
+		r, ok := tt.Find("New Century Renamer")
+		if !ok {
+			t.Fatalf("h=%d 找不到标题栏", h)
+		}
+		if r.Y > 60 {
+			t.Fatalf("h=%d 标题栏不在顶部: y=%.1f", h, r.Y)
+		}
+		tt.Key(ui.Cmd, ui.KeyComma)
+		tt.Frame()
+		if !a.settingsOpen {
+			t.Fatalf("h=%d Ctrl+, 没打开设置", h)
+		}
+		if len(a.steps) != 0 {
+			t.Fatalf("h=%d 设置 wrongly added a step: %+v", h, a.steps)
+		}
 	}
 }
 

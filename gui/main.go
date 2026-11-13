@@ -83,6 +83,7 @@ type app struct {
 	pickOpen bool              // 设置里的主色选择器是否展开
 	dialogs  dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
 	palHint  string            // hovered/selected catalog entry's explanation
+	palQuery string            // 目录过滤框的内容;空=不过滤
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -146,6 +147,22 @@ func (a *app) view(c *ui.Context) {
 				brand.PaddingStart(float32(bar.Left) + 8)
 			}
 			ui.Spacer(c)
+			// 设置是应用级入口,不该藏在"往管道里加东西"的目录末尾——
+			// 那里它排在 y≈1385,任何窗口高度都要先滚到底才能看见。
+			// 桌面应用的约定是设置不进内容列表,所以放标题栏右侧。
+			gear := ui.ButtonBase(c).Size(26, 26).Radius(13).Padding(0).
+				Tooltip(shortcutTip("Ctrl+,"))
+			if gear.Hovered() {
+				gear = gear.Background(t.SurfaceHover)
+			}
+			gear.Children(func() {
+				if ic := opIcon("act.settings"); ic != nil {
+					ui.Icon(c, ic).FontSize(14).TextColor(t.TextMuted)
+				}
+			})
+			if gear.Clicked() {
+				a.openSettings()
+			}
 			// 右上角是用户扫视时第一个落脚点,放"这批有多少文件、几个会改名"
 			// 比放一个和窗口标题重复的名字有用。
 			ui.Text(c, a.batchSummary()).FontSize(11).TextColor(t.TextMuted).PaddingEnd(float32(bar.Right) + 8)
@@ -254,8 +271,21 @@ func (a *app) statusBar(c *ui.Context) {
 
 func (a *app) catalogView(c *ui.Context) {
 	t := c.Theme()
+	// 过滤:34 项 11 组正落在"需要搜索"的量级(Colborne 第 5 章专讲
+	// 搜索)。输入框收 label / desc / 组名三处,任一命中即留下。
+	shown := catalog
+	if q := strings.ToLower(strings.TrimSpace(a.palQuery)); q != "" {
+		shown = nil
+		for _, d := range catalog {
+			if strings.Contains(strings.ToLower(d.label), q) ||
+				strings.Contains(strings.ToLower(d.desc), q) ||
+				strings.Contains(strings.ToLower(d.group), q) {
+				shown = append(shown, d)
+			}
+		}
+	}
 	var groups []string
-	for _, d := range catalog {
+	for _, d := range shown {
 		if len(groups) == 0 || groups[len(groups)-1] != d.group {
 			groups = append(groups, d.group)
 		}
@@ -265,10 +295,14 @@ func (a *app) catalogView(c *ui.Context) {
 	// 左边栏:与顶栏/底栏同属"基底"层,不画底色(继承窗口 base),只做内容。
 	ui.Column(c).Fill().Padding(4, 4).Children(func() {
 		ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(13).Padding(8, 10)
+		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth().Padding(6, 8)
 		ui.Scroll(c).Fill().Padding(4, 6).Children(func() {
+			if len(shown) == 0 {
+				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
+			}
 			for _, g := range groups {
-				ui.Text(c, g).FontSize(12).TextColor(t.TextMuted).Padding(8, 8)
-				for _, d := range catalog {
+				ui.Text(c, g).FontSize(12).TextColor(t.TextMuted).Padding(8, 3)
+				for _, d := range shown {
 					if d.group != g {
 						continue
 					}
@@ -314,8 +348,6 @@ func (a *app) catalogView(c *ui.Context) {
 						switch d.act {
 						case "import-csv":
 							go a.importCSV()
-						case "settings":
-							a.openSettings()
 						default:
 							r := d.make()
 							r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
@@ -1519,6 +1551,9 @@ func (a *app) handleShortcuts(c *ui.Context) {
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyO) && !a.busy {
 		go a.addFilesDialog()
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyComma) {
+		a.openSettings()
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyEnter) && !a.busy && a.hasChanges() {
 		go a.apply()

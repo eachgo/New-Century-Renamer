@@ -240,7 +240,6 @@ var catalog = []opDef{
 		return baseRule("template")
 	}},
 	{id: "act.import-csv", icon: "act.import-csv", group: "高级", label: "导入编辑好的CSV改名", desc: "按导出的 CSV 列表（new_name 列）批量改名；点击立即执行，不加入步骤", act: "import-csv"},
-	{id: "act.settings", icon: "act.settings", group: "高级", label: "设置", desc: "AI 接口、主题颜色、日志位置；点击打开设置窗口，不加入步骤", act: "settings"},
 }
 
 func opByID(id string) (opDef, bool) {
