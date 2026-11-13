@@ -379,6 +379,11 @@ func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, tota
 			progress(i, len(plan))
 		}
 		op := &plan[i]
+		// Applied 说的是"这一轮真的把它改了",不是"以前改过"。不清的话,
+		// 上一轮成功、这一轮被跳过或失败的项会同时带着 Applied=true 和
+		// Err!=nil,界面按 Applied 优先统计就把它算进"成功",而行里写着
+		// "失败"——同一个文件,一处说成功、一处说失败。
+		op.Applied = false
 		if op.Err != nil || op.OldName == op.NewName {
 			continue
 		}

@@ -1545,22 +1545,73 @@ func (a *app) flashAlpha() float32 {
 	return float32(left) / float32(flashDuration)
 }
 
+// rowState 是一行文件卡片现在处于哪种状态。文案、颜色、状态栏计数
+// 全部由它派生,所以行里写什么、底栏算什么不可能各说一套。
+type rowState int
+
+const (
+	rowPending   rowState = iota // 还没执行,等着改名
+	rowApplied                   // 这一轮真的改了
+	rowFailed                    // 这一轮失败了,原因在 op.Err
+	rowSkipped                   // 执行过了,但这一行没动
+	rowUnchanged                 // 名字本来就没变,不需要处理
+)
+
+// rowOutcome 是"这一行现在是什么状态"的唯一判定。
+//
+// 以前这条 switch 存在三份:resultChip 的文案与颜色、apply 之后统计成功
+// 失败的那一段、还有一个没人调用的 resultText。三份里前两份的顺序正好
+// 相反——resultChip 先判 Err、apply 先判 Applied——于是同一个文件会在
+// 行里写"失败"、在状态栏被算进"成功"。顺序只能有一份。
+func (a *app) rowOutcome(op core.RenameOp) rowState {
+	switch {
+	case op.Err != nil:
+		return rowFailed
+	case op.Applied:
+		return rowApplied
+	case a.applied:
+		// 执行过这一轮,但这一个没动(名字不变、或被跳过)。执行之后再
+		// 说"不变"没有意义,用户要问的是"这次为什么没改它"。
+		return rowSkipped
+	case op.OldName == op.NewName:
+		return rowUnchanged
+	}
+	return rowPending
+}
+
+// applyOutcome 数这一次执行真正改了几个、几个失败。它和行里的结果共用
+// rowOutcome,所以底栏说的数字和右栏每行写的字永远一致。
+//
+// 只看 rowApplied / rowFailed:名字没变化、本来就不需要处理的那些不算
+// 失败,否则一次干净的批量看起来像出了很多错。
+func (a *app) applyOutcome() (ok, failed int) {
+	for _, op := range a.ops {
+		switch a.rowOutcome(op) {
+		case rowApplied:
+			ok++
+		case rowFailed:
+			failed++
+		}
+	}
+	return ok, failed
+}
+
 // resultChip gives the outcome text and its color.
 func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 	t := a.currentTheme().light
 	if a.isDark() {
 		t = a.currentTheme().dark
 	}
-	switch {
-	case op.Err != nil:
+	switch a.rowOutcome(op) {
+	case rowFailed:
 		return "失败", t.Danger
-	case op.Applied:
+	case rowApplied:
 		// 执行之后这一行的名字就是磁盘上的名字,"成功"是结果而不是状态;
 		// 说"已更名"才能和上面那些还没执行的"将更名"分开。
 		return "已更名", t.Success
-	case a.applied:
+	case rowSkipped:
 		return "跳过", t.TextMuted
-	case op.OldName == op.NewName:
+	case rowUnchanged:
 		return "不变", t.TextMuted
 	}
 	return "将更名", t.Accent
@@ -1651,22 +1702,6 @@ func filepathSplitName(name string) (stem, ext string) {
 		return name, ""
 	}
 	return name[:i], name[i:]
-}
-
-// resultText is the 结果 column: pending state in preview, outcome after apply.
-func (a *app) resultText(op core.RenameOp) string {
-	switch {
-	case op.Err != nil:
-		return "失败：" + op.Err.Error()
-	case op.Applied:
-		return "成功"
-	case a.applied:
-		return "跳过"
-	case op.OldName == op.NewName:
-		return "不变"
-	default:
-		return "将更名"
-	}
 }
 
 // update re-renders the window after a change made off the view pass.
@@ -2216,15 +2251,9 @@ func (a *app) apply() {
 	if err != nil {
 		a.status = "执行出错：" + err.Error()
 	} else {
-		ok, failed := 0, 0
-		for _, op := range a.ops {
-			switch {
-			case op.Applied:
-				ok++
-			case op.Err != nil:
-				failed++
-			}
-		}
+		// 统计和行里的结果用同一个判定,否则会出现"行里写失败、底栏算
+		// 成功"这种自相矛盾——用户没法知道该信哪一个。
+		ok, failed := a.applyOutcome()
 		// 只报告这一次真的发生了什么:"失败"不该把"名字没变化、无需处理"
 		// 的文件也算进去,那会让一次干净的批量看起来像出了很多错。
 		if ok == 0 {

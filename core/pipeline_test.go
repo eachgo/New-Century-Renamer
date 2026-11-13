@@ -801,3 +801,48 @@ func TestApplyPlanProgressNilIsSameAsApplyPlan(t *testing.T) {
 		t.Fatalf("没改名: %q", plan[0].NewName)
 	}
 }
+
+// Applied 只说明"这一轮真的把它改了",不能带着上一轮的残留。
+//
+// 上一轮成功、这一轮失败或跳过的项,以前会同时带着 Applied=true 和
+// Err!=nil。界面按 Applied 优先统计就把它算进"成功",而行里写着"失败"
+// ——同一个文件,一处说成功、一处说失败。
+func TestApplyPlanClearsStaleApplied(t *testing.T) {
+	dir := t.TempDir()
+	journal := filepath.Join(dir, "j.json")
+	for _, n := range []string{"冲突.txt", "不变.txt", "成功.txt", "带着错误的.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 占住"冲突.txt"的目标名,让它这一轮必然失败。
+	if err := os.WriteFile(filepath.Join(dir, "已占用.txt"), []byte("y"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan := []RenameOp{
+		{Dir: dir, OldName: "冲突.txt", NewName: "已占用.txt", Applied: true},
+		{Dir: dir, OldName: "不变.txt", NewName: "不变.txt", Applied: true},
+		{Dir: dir, OldName: "成功.txt", NewName: "改好了.txt", Applied: true},
+		{Dir: dir, OldName: "带着错误的.txt", NewName: "别的.txt", Applied: true, Err: fmt.Errorf("上一轮就错了")},
+	}
+	if err := ApplyPlan(plan, journal); err != nil {
+		t.Fatal(err)
+	}
+
+	if plan[0].Err == nil {
+		t.Fatal("目标被占住时应当报错")
+	}
+	if plan[0].Applied {
+		t.Fatalf("失败的那条仍带着上一轮的 Applied: %+v", plan[0])
+	}
+	if plan[1].Applied {
+		t.Fatalf("跳过的那条仍带着上一轮的 Applied: %+v", plan[1])
+	}
+	if plan[3].Applied {
+		t.Fatalf("带着错误的条目不该是 Applied: %+v", plan[3])
+	}
+	if !plan[2].Applied || plan[2].Err != nil {
+		t.Fatalf("真的改了的那条应当是 Applied: %+v", plan[2])
+	}
+}

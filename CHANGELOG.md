@@ -131,6 +131,28 @@
 - **发版时版本号只有一处来源**。release.yml 新增一步:按 tag 改写
   `gui/mygo.json` 的 version,否则发 0.1.4 的包里 FileVersion 还写着 0.1.3。
 
+### 修复 · 执行结果的一致性
+- **`Applied` 只表示"这一轮真的把它改了"**。`ApplyPlanProgress` 里失败
+  （目标已存在、`rename` 报错）和跳过（名字本来就没变）这两条分支是直接
+  `continue` 的，没有清掉 `op.Applied`。于是同一个 op 可以同时带着
+  `Applied=true` 和 `Err!=nil`——上一轮改成功、这一轮重排后失败，就是这种
+  状态。现在循环一开头先 `op.Applied = false`，一处覆盖三条 `continue`。
+- **行里的字和底栏的数字改成同一次判定**。原来 `resultChip` 先判 `Err`、
+  `apply()` 的统计先判 `Applied`，两个顺序正好相反：那个同时带两个标记的
+  文件，右栏行里写「失败」，底栏却把它算进「成功」，一次批量看起来既成功
+  又失败。现在两边都走 `rowOutcome(op)` 一个 switch（`rowFailed` /
+  `rowApplied` / `rowSkipped` / `rowUnchanged` / `rowPending`），底栏由
+  `applyOutcome()` 按同一判定数数，物理上不可能再对不上。
+- **删掉第三份重复的 switch**。`resultText` 没有任何调用者，文案还写着
+  「成功」（别处都是「已更名」），留着只会让下次改动漏掉一处。
+- **两条回归测试**。`TestApplyPlanClearsStaleApplied` 给四个 op 全部预置
+  `Applied: true`，占住目标名让其中一条必然失败，断言失败与跳过两条都是
+  `Applied == false`；`TestRowTextAndCountersAgree` 拿五种 op（含同时带
+  `Err` 和 `Applied` 的那条）在 `a.applied` 两种取值下逐一对账，行里写什么
+  底栏就必须数出什么。两条都做过反向验证：撤掉 `op.Applied = false` 报
+  「失败的那条仍带着上一轮的 Applied」，把 `Applied` 判到 `Err` 前面报
+  「带错误的一行应显示失败, got "已更名"」。
+
 ### 修复 · 类型判定
 类型判定原来有三套各说各话的口径:`detectType` 按扩展名给中文标签、`sniffMagic`
 按魔数给大写英文、`extCategory` 又按扩展名分中文类别(而且全仓库没人调用它)。
