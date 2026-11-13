@@ -1,4 +1,4 @@
-# 构建产物
+# ── 构建产物 ─────────────────────────────────────────────
 cmd/ncreamer/*.exe
 ncreamer.exe
 ncreamer-gui.exe
@@ -6,53 +6,37 @@ gui/ncreamer-gui.exe
 gui/gui.exe
 gui/build/
 dist/
+*.exe~
 
-# 运行时状态(可能含 API Key)
+# ── 运行时状态(可能含 API Key)────────────────────────────
 ncreamer-settings.json
 gui/ncreamer-settings.json
 .ncreamer-journal.json
 ncreamer-list.csv
-
 # 改名前的旧文件名(REAMER_* 时代),留着防止误提交
 reamer-settings.json
 .reamer-journal.json
 reamer-list.csv
 
-# 开发期的临时演示/测试目录
-demo/
-csvtest/
-
-# 测试素材:约 200MB 的音频/PDF/EPUB,不入库。
+# ── 测试素材:约 200MB 的音频/PDF/EPUB,不入库。─────────────
 # 端到端测试(gui/e2e_test.go)在此目录缺失时自动 skip。
 testfile/
-
-# 本地开发笔记(只给自己看,不上 GitHub)
-NOTES.md
-
-# 调试截图
-dbg*.png
-audit-*.png
-
-# 原始 xTools 软件(三方,参考用,不入库)
-xTools.exe
-xToolsRs.dll
-xToolsEx.dll
-pncrt.dll
-rmme3260.dll
-rmto3260.dll
-xTools.chm
-WhatsNew.txt
-Language/
-Add-ons/
-chm/
-
 # 书籍(扫描版/版权文件)
 *.epub
 
-# 杂项
+# ── 本地开发笔记(只给自己看,不上 GitHub)──────────────────
+NOTES.md
+
+# ── 本地私有目录(统一收纳,不再零散堆在仓库根)──────────────
+# _local/: 构建产物、运行态、临时截图、demo/csvtest 等开发草稿
+# _ref/  : 三方参考素材(原始 xTools 程序与帮助文档、外部设计规范)
+_local/
+_ref/
+
+# ── 杂项 ────────────────────────────────────────────────
+# 调试截图
+dbg*.png
+audit-*.png
+final_*.png
 *.log
 Thumbs.db
-*.exe~
-
-# 本地截图(临时渲染)
-final_*.png
