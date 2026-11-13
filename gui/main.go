@@ -268,6 +268,58 @@ func (a *app) statusBar(c *ui.Context) {
 	})
 }
 
+// intentCards fills the empty middle column with four "what am I trying to
+// do" cards. The catalog next door answers "which rule do I need" — 32
+// entries, in pipeline vocabulary. Someone who just wants "歌手 - 歌名"
+// should not have to work out that this means template=<META:artist> …
+//
+// Each card inserts a ready-made pipeline that stays editable, so this is a
+// starting point and not a mode: there is no "wizard" to escape from.
+func (a *app) intentCards(c *ui.Context) {
+	t := c.Theme()
+	pt := a.currentTheme().panes(a.isDark())
+	ui.Scroll(c).Grow(1).Children(func() {
+		ui.Column(c).FillWidth().Gap(8).Padding(2, 2).Children(func() {
+			ui.Text(c, "想做什么？点一个，我把步骤配好").FontSize(12).TextColor(t.TextMuted).Padding(0, 2)
+			for _, in := range intents {
+				// 卡片底与中栏底只差 0.005 的明度(0.995 vs 0.990),
+				// 不加描边就看不出这里有几张卡——实测截图里它们像四行
+				// 普通文字,点了才知道是按钮。
+				card := ui.Column(c).FillWidth().Gap(3).Padding(8, 10).Radius(10).
+					Background(pt.card).Border(1, t.Border)
+				if card.Hovered() {
+					card = card.Background(t.SurfaceHover).Border(1, t.Accent)
+				}
+				card.Children(func() {
+					ui.Text(c, in.label).FontSize(13).TextColor(t.Text).SingleLine()
+					ui.Text(c, in.desc).FontSize(11).TextColor(t.TextMuted).SingleLine().Ellipsis("…")
+				})
+				if card.Clicked() {
+					a.addIntent(in)
+				}
+			}
+			ui.Text(c, "或者从左栏“功能”里自己挑").FontSize(11).TextColor(t.TextMuted).Padding(4, 2)
+		})
+	})
+}
+
+// addIntent appends the intent's steps and selects the first one, so the
+// detail form below is already showing something to tweak.
+func (a *app) addIntent(in intent) {
+	steps := in.build()
+	if len(steps) == 0 {
+		return
+	}
+	for i := range steps {
+		a.stepUID++
+		steps[i].opUID = a.stepUID
+	}
+	a.steps = append(a.steps, steps...)
+	a.stepSel = len(a.steps) - len(steps)
+	a.palHint = in.desc
+	a.update()
+}
+
 // catalogHasMore reports whether the catalog still has rows below the
 // visible part, as the last frame laid it out: the fade at the bottom only
 // shows then, so the cue means something instead of being decoration.
@@ -454,9 +506,7 @@ func (a *app) stepsView(c *ui.Context) {
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
-			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, "从左侧“功能”里点一个，它就成为这一步").TextColor(t.TextMuted)
-			})
+			a.intentCards(c)
 		} else {
 			dt := a.currentTheme()
 			bars := a.stepRangeBars(dt)

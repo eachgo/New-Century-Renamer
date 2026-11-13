@@ -241,6 +241,68 @@ var catalog = []opDef{
 	}},
 }
 
+// stepFrom builds a task step from a catalog entry, label and all. The
+// catalog click handler and the intent cards share it, so a step created
+// either way looks and behaves the same in the list.
+func stepFrom(id string) (guiRule, bool) {
+	d, ok := opByID(id)
+	if !ok {
+		return guiRule{}, false
+	}
+	r := d.make()
+	r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
+	return r, true
+}
+
+// intent is one of the "我想做这件事" cards shown while the pipeline is
+// still empty. The catalog answers "which rule do I need"; these answer
+// "what am I trying to do", which is the question someone opening this app
+// for the first time actually has. Each expands to a ready-made pipeline
+// that stays fully editable — a starting point, not a mode.
+type intent struct {
+	label, desc string
+	build       func() []guiRule
+}
+
+var intents = []intent{
+	{
+		label: "用文件里的标题改名",
+		desc:  "读 EPUB、MP3、PDF 等文件自带的标题",
+		build: func() []guiRule { return stepsFromIDs("meta.title") },
+	},
+	{
+		label: "统一改成 序号 + 原名",
+		desc:  "01-原名，编号可补零、可分组重数",
+		build: func() []guiRule { return stepsFromIDs("seq.prefix") },
+	},
+	{
+		label: "改成 作者 - 标题",
+		desc:  "音乐读歌手，书读作者，接标题",
+		build: func() []guiRule { return stepsFromIDs("meta.author") },
+	},
+	{
+		label: "去掉括号和特殊字符",
+		desc:  "删掉（…）【…】这类尾巴，非法字符转全角",
+		build: func() []guiRule {
+			steps := stepsFromIDs("del.re")
+			if len(steps) == 1 {
+				steps[0].oldStr = `[（(\[【《][^）)\]】》]*[）)\]】》]`
+			}
+			return append(steps, stepsFromIDs("sanitize")...)
+		},
+	},
+}
+
+func stepsFromIDs(ids ...string) []guiRule {
+	out := make([]guiRule, 0, len(ids))
+	for _, id := range ids {
+		if r, ok := stepFrom(id); ok {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 func opByID(id string) (opDef, bool) {
 	for _, d := range catalog {
 		if d.id == id {
