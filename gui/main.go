@@ -767,45 +767,50 @@ func (a *app) stepsView(c *ui.Context) {
 							})
 						})
 					}).Gap(0) // 行相接,范围竖线连续;行距由行内 Padding 提供
-					// detail of the selected step — 选中即可编辑,无需解锁
-					if a.stepSel >= 0 && a.stepSel < len(a.steps) {
-						r := &a.steps[a.stepSel]
-						ui.Box(c).FillWidth().Height(1).Background(dt.panes(a.isDark()).outline)
-						ui.Text(c, r.opLabel).Bold()
-						if r.opDesc != "" {
-							ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
-						}
-						r.paramsEditor(c, t)
-						ui.Row(c).Gap(8).Children(func() {
-							if ui.Button(c, "上移").Disabled(a.stepSel == 0).Tooltip(shortcutTip("Alt+↑")).Clicked() {
-								a.swapSteps(a.stepSel-1, a.stepSel)
-							}
-							if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Tooltip(shortcutTip("Alt+↓")).Clicked() {
-								a.swapSteps(a.stepSel, a.stepSel+1)
-							}
-							// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
-							// 错误色 + 二次确认 + 确认态三秒自动收回。以前它和"复制"同款,
-							// 一个像不可逆、一个像随手,用户分不出轻重。
-							if a.confirmDelStep && a.confirmStale() {
-								a.dropConfirm()
-							}
-							if a.confirmDelStep {
-								confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
-								confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
-								if confirm.Clicked() {
-									a.deleteStep(a.stepSel)
-									a.dropConfirm()
-								}
-							} else if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
-								a.armConfirm("step")
-							}
-							if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
-								a.duplicateStep(a.stepSel)
-							}
-						})
-					}
 				})
 			})
+			// 选中步骤的参数悬浮在中栏下方,是一张压在列表上的小卡片。
+			// 以前它接在列表最后一行之后、跟着整块一起滚:列表长的时候要
+			// 滚到底才看得见,短的时候又和选中行隔着大半个空屏。它编辑的
+			// 永远是"当前选中的那一步",所以位置也该固定,不跟着列表跑。
+			if a.stepSel >= 0 && a.stepSel < len(a.steps) {
+				r := &a.steps[a.stepSel]
+				ui.Column(c).FillWidth().Gap(6).Padding(8, 10).Radius(10).
+					Background(dt.panes(a.isDark()).card).Children(func() {
+					ui.Text(c, r.opLabel).Bold()
+					if r.opDesc != "" {
+						ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
+					}
+					r.paramsEditor(c, t)
+					ui.Row(c).Gap(8).Children(func() {
+						if ui.Button(c, "上移").Disabled(a.stepSel == 0).Tooltip(shortcutTip("Alt+↑")).Clicked() {
+							a.swapSteps(a.stepSel-1, a.stepSel)
+						}
+						if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Tooltip(shortcutTip("Alt+↓")).Clicked() {
+							a.swapSteps(a.stepSel, a.stepSel+1)
+						}
+						// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
+						// 错误色 + 二次确认 + 确认态三秒自动收回。以前它和"复制"同款,
+						// 一个像不可逆、一个像随手,用户分不出轻重。
+						if a.confirmDelStep && a.confirmStale() {
+							a.dropConfirm()
+						}
+						if a.confirmDelStep {
+							confirm := ui.ButtonBase(c).Radius(16).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+							confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
+							if confirm.Clicked() {
+								a.deleteStep(a.stepSel)
+								a.dropConfirm()
+							}
+						} else if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
+							a.armConfirm("step")
+						}
+						if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
+							a.duplicateStep(a.stepSel)
+						}
+					})
+				})
+			}
 		}
 		// 多选(Ctrl+点击)时的批量操作
 		if a.chosen.Len() > 0 {
