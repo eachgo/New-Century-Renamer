@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -74,6 +75,13 @@ type app struct {
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
+	fileSel        int // 文件列表里选中的行(rows 下标,不是 a.files 下标),-1 = 没选
+	// pendingRemove 是"下一帧要移除的文件下标 + 1",0 表示没有。
+	// 不能在构建这一帧的途中直接删 a.files:列表正按旧长度逐行构建,
+	// 删掉一个会让后面每一行的下标越界(实测直接 panic)。
+	pendingRemove int
+	// fileFocus 记着"上一帧结束时文件列表是否拿着焦点",见 handleShortcuts
+	fileFocus bool
 }
 
 func (a *app) view(c *ui.Context) {
@@ -93,6 +101,12 @@ func (a *app) view(c *ui.Context) {
 		a.closeSettings(false)
 	}
 	a.handleShortcuts(c)
+	// 上一帧排下的移除,等这一帧开头再动 a.files
+	if a.pendingRemove > 0 {
+		i := a.pendingRemove - 1
+		a.pendingRemove = 0
+		a.removeFile(i)
+	}
 	// live preview on any change (AI steps need the explicit button)
 	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
 		if !strings.Contains(spec, "<AI:") {
@@ -142,6 +156,9 @@ func (a *app) view(c *ui.Context) {
 		a.statusBar(c)
 	})
 	a.settingsDialog(c)
+	// 焦点要等这一帧构建完才有值:列表在构建时才把行标成可聚焦,
+	// 所以记在帧尾,给下一帧的 handleShortcuts 用。
+	a.fileFocus = a.table.FocusWithin(c)
 }
 
 // statusBar 是整个应用底部的固定状态栏(所有窗格之下,横贯全宽)。
@@ -642,6 +659,77 @@ func (a *app) duplicateStep(i int) {
 	a.stepSel = len(a.steps) - 1
 }
 
+// removeFile 把第 i 个文件从清单里拿掉。这是"清空列表"的单文件版本:
+// 拖进 200 个文件、只有 3 个不想改时,以前唯一的办法是整表清空重来。
+//
+// a.files 与 a.ops 是按下标对齐的两个切片(ops[i] 永远是 files[i] 的预览
+// 结果),所以两边必须一起删,否则预览会整体错位一行——那比不删更糟。
+func (a *app) removeFile(i int) {
+	if i < 0 || i >= len(a.files) {
+		return
+	}
+	a.files = append(a.files[:i], a.files[i+1:]...)
+	if i < len(a.ops) {
+		a.ops = append(a.ops[:i], a.ops[i+1:]...)
+	}
+	// 选中位置跟着收缩,别指到不存在的行上
+	if n := len(buildRows(a.files)); a.fileSel >= n {
+		a.fileSel = n - 1
+	}
+	a.applied = false
+	if len(a.files) == 0 {
+		a.ops = nil
+		a.status = ""
+		return
+	}
+	// 删完重算:新名字可能依赖序号、分组计数这类"上下文",
+	// 只删一行也可能让后面每一行的预览都变。
+	a.preview()
+}
+
+// removeChosenFiles 移除当前选中的文件(Delete 键与右键菜单都走这里)。
+func (a *app) removeChosenFiles() {
+	if a.fileSel < 0 {
+		return
+	}
+	a.removeFile(a.rowFile(a.fileSel))
+}
+
+// rowFile 把列表行下标换成 a.files 下标。列表里除了文件卡还有分组头,
+// 两者混在同一个 rows 序列里,所以行号不能直接当文件号用。
+func (a *app) rowFile(ri int) int {
+	rows := buildRows(a.files)
+	if ri < 0 || ri >= len(rows) || rows[ri].header {
+		return -1
+	}
+	return rows[ri].file
+}
+
+// newNameFor 返回第 i 个文件的预览新名字;没有预览结果时返回空串
+// (右键菜单用它判断"复制新名字"要不要可点)。
+func newNameFor(a *app, i int) string {
+	if i < 0 || i >= len(a.ops) {
+		return ""
+	}
+	return a.ops[i].NewName
+}
+
+// revealInFileManager 在系统文件管理器里定位这个文件。
+// mygo 没有跨平台的"显示文件"接口(只有 OpenURL),所以各平台各叫各的。
+func revealInFileManager(path string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		// explorer 的 /select 后面直接跟路径,中间不能有空格
+		cmd = exec.Command("explorer", "/select,"+path)
+	case "darwin":
+		cmd = exec.Command("open", "-R", path)
+	default:
+		cmd = exec.Command("xdg-open", filepath.Dir(path))
+	}
+	_ = cmd.Start() // 打不开就算了:这不是改名流程的一环
+}
+
 // ---- right pane: file table with drop zone ----
 
 func (a *app) filesView(c *ui.Context) {
@@ -723,6 +811,10 @@ func (a *app) filesView(c *ui.Context) {
 			a.table.Header = func(ri int) bool {
 				return ri >= 0 && ri < len(rows) && rows[ri].header
 			}
+			// 选中一行文件:以前文件列表完全不可点,想删掉一个文件只能
+			// 清空整表重来。Selected 让点击/方向键选中,Delete 与右键菜单
+			// 都作用在选中的那一行上。
+			a.table.Selected = &a.fileSel
 			// 只有一个分组时,标题栏右侧已经在说「N 个文件」,组头再说一遍
 			// 就是同一句话并排出现两次;多组时才需要每组各说各的。
 			nGroups := 0
@@ -762,7 +854,31 @@ func (a *app) filesView(c *ui.Context) {
 				if f.group != "" {
 					indent = 14
 				}
-				ui.Row(c).Fill().Gap(8).PaddingStart(indent).Children(func() {
+				row := ui.Row(c).Fill().Gap(8).PaddingStart(indent)
+				// 右键菜单:mygo 的 ContextMenu 会在菜单打开时跑一次 build,
+				// 再在"某一项被选中"的那一帧跑第二次,用 Chosen() 判断。
+				// 所以每个 Item 都要先建、再问 Chosen——顺序不能反。
+				row.ContextMenu(func(m *ui.Menu) {
+					del := m.Item("从列表移除").Shortcut(0, ui.KeyDelete)
+					if del.Chosen() {
+						a.pendingRemove = i + 1
+					}
+					m.Separator()
+					reveal := m.Item("在文件管理器中显示")
+					if reveal.Chosen() {
+						revealInFileManager(f.path)
+					}
+					copyNew := m.Item("复制新名字").Disabled(newNameFor(a, i) == "")
+					if copyNew.Chosen() {
+						c.WriteClipboard(newNameFor(a, i))
+					}
+					m.Separator()
+					copyOld := m.Item("复制原文件名")
+					if copyOld.Chosen() {
+						c.WriteClipboard(filepath.Base(f.path))
+					}
+				})
+				row.Children(func() {
 					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
 						Background(dt.panes(a.isDark()).card)
 					card.Children(func() {
@@ -804,6 +920,23 @@ func (a *app) filesView(c *ui.Context) {
 								nameChips(nStem, nExt, nCol.Alpha(0.18), nExtBg, nExtFg)
 							}
 							ui.Spacer(c)
+							// 悬停出 ×:200 个文件里只有 3 个不想改时,不必
+							// 为这 3 个清空整表。画在卡片名字行右端而不是
+							// 卡片外面——飘在卡外的红点看着像错误标记。
+							// 宽度占位始终留着,否则一悬停整行就抖一下。
+							ui.Row(c).Width(18).AlignItems(ui.Center).Children(func() {
+								if !row.Hovered() {
+									return
+								}
+								x := ui.ButtonBase(c).Size(18, 18).Radius(9).Padding(0).
+									Background(t.Danger.Alpha(0.12)).Tooltip("从列表移除 (Delete)")
+								x.Children(func() {
+									ui.Text(c, "×").FontSize(12).TextColor(t.Danger)
+								})
+								if x.Clicked() {
+									a.pendingRemove = i + 1
+								}
+							})
 						})
 						// 下行:原始数据胶囊。
 						// 一个文件行里说同一件事两次是噪音:扩展名胶囊已经写着
@@ -1300,6 +1433,17 @@ func (a *app) handleShortcuts(c *ui.Context) {
 			a.armConfirm("undo")
 		}
 	}
+	// 文件列表拿着焦点时,Delete 删的是文件而不是步骤——同一个键在两处
+	// 各管各的,靠焦点区分,不靠用户记"现在删的是什么"。
+	// fileFocus 是上一帧结束时记下的"文件列表拿着焦点"。
+	// 不能用 a.table.FocusWithin(c):焦点在这一帧的构建过程中才被设上,
+	// 而 handleShortcuts 跑在构建之前,当场问永远是 false。
+	if a.fileFocus {
+		if c.Shortcut(0, ui.KeyDelete) {
+			a.removeChosenFiles()
+		}
+		return
+	}
 	if a.stepSel < 0 || a.stepSel >= len(a.steps) {
 		return
 	}
@@ -1591,7 +1735,7 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
-	a := &app{stepSel: -1, settings: LoadSettings()}
+	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings()}
 	a.syncSeedUI()
 	a.ApplySettings()
 	mygo.App.WhenReady(func() {
