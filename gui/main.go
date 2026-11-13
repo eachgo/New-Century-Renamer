@@ -103,6 +103,10 @@ type app struct {
 	// 不能在构建这一帧的途中直接删 a.files:列表正按旧长度逐行构建,
 	// 删掉一个会让后面每一行的下标越界(实测直接 panic)。
 	pendingRemove int
+	// pendingDrop 是拖放区收到的路径,排到下一帧开头再加——理由同上:
+	// 拖放是在构建这一帧的途中发现的,当场 append 会让正在逐行构建的
+	// 列表长度对不上。
+	pendingDrop []string
 	// fileFocus 记着"上一帧结束时文件列表是否拿着焦点",见 handleShortcuts
 	fileFocus bool
 }
@@ -131,6 +135,13 @@ func (a *app) view(c *ui.Context) {
 		i := a.pendingRemove - 1
 		a.pendingRemove = 0
 		a.removeFile(i)
+	}
+	// 上一帧拖放区收到的文件,同理排到帧首再加:拖放是在构建这一帧的
+	// 途中发现的,当场 append 会让正在逐行构建的列表长度对不上。
+	if len(a.pendingDrop) > 0 {
+		paths := a.pendingDrop
+		a.pendingDrop = nil
+		a.addPaths(paths)
 	}
 	// live preview on any change (AI steps need the explicit button)
 	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
@@ -289,7 +300,9 @@ func (a *app) statusBar(c *ui.Context) {
 		} else {
 			// 空态只陈述事实,不指挥用户点某个按钮——此刻"执行更名"是禁用的,
 			// 让文案指向它等于把人引到一堵墙上。
-			ui.Text(c, "拖入文件开始").FontSize(13).TextColor(t.TextMuted)
+			// 也不再说"先拖文件":中栏这时正摆着四张意图卡,两条路都通,
+			// 底栏再指定一条就等于和旁边那条打架。
+			ui.Text(c, "还没有文件").FontSize(13).TextColor(t.TextMuted)
 		}
 		ui.Spacer(c)
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
@@ -344,7 +357,11 @@ func (a *app) intentCards(c *ui.Context) {
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).FillWidth().Gap(8).Padding(2, 2).Children(func() {
-			ui.Text(c, "想做什么？点一个，我把步骤配好").FontSize(13).TextColor(t.TextMuted).Padding(0, 2)
+			ui.Text(c, "想改成什么样？点一张，我把步骤配好").FontSize(13).TextColor(t.TextMuted).Padding(0, 2)
+			// 明说两条路都行:中栏摆着"先配步骤",右栏摆着"先放文件",
+			// 两边都不说对方,用户就只能猜哪个才是"正确顺序"。
+			ui.Text(c, "还没放文件也可以先排——文件加进来时，这些步骤会立刻套上去。").
+				FontSize(12).TextColor(t.TextMuted).Padding(0, 2)
 			for _, in := range intents {
 				// 卡片底与中栏底只差 0.005 的明度(0.995 vs 0.990),
 				// 不加描边就看不出这里有几张卡——实测截图里它们像四行
@@ -1020,6 +1037,86 @@ func revealInFileManager(path string) {
 // 值,两处各写一个 64 的话,改一处忘另一处,表头就不再压在结果上方。
 const resultColW float32 = 64
 
+// dropZoneDash 是虚线拖放区的边框色。t.Border 直接压在卡片底上只有 2.4:1,
+// 低于 WCAG 对非文本界面元素要求的 3:1——而这个框是空态里唯一的落点提示,
+// 淡到看不见就等于没画。往文字色方向混一点,让它一眼能看出来,又不抢标题的黑。
+func dropZoneDash(t *ui.Theme) ui.Color {
+	return t.Border.Mix(t.Text, 0.35)
+}
+
+// dropZone 是右栏的空态:一个虚线拖放区 + 一个真正的"添加文件…"大按钮。
+//
+// 以前这里是两行居中灰字,写着"把文件拖进窗口"。两个问题:
+//  1. 整窗都能接文件(Window.OnFileDrop),于是"拖到哪儿"没有视觉答案——
+//     用户拖到半路不知道松手会发生什么,也不会为了试而真去松手。
+//  2. 空态里最该点的"添加文件…"只是工具栏上一个 14px 的次要按钮,而正文
+//     区那两行字反而更像装饰。
+//
+// 现在把落点画出来,并让它在拖拽经过时变色:mygo 的 Element.FileDragOver
+// 就是为这件事准备的("reports whether files dragged from another app are
+// over the element, which takes them if they are dropped, for showing it
+// would")。同一个元素上的 DroppedFiles 负责真正收下文件,而且它只认落点
+// 在框内的拖放——框外松手仍旧落到窗口级监听上,两条路不会重复添加。
+func (a *app) dropZone(c *ui.Context, availW float32) {
+	t := c.Theme()
+	pt := a.currentTheme().panes(a.isDark())
+	// 右栏能拖到只剩一百多 DIP:那时两行说明会把框撑得比内容还高,大号
+	// 按钮也放不下并排的第二个。窄了就只留标题和主按钮,其余收进 Tooltip。
+	narrow := availW < 240
+	dash := dropZoneDash(t)
+	// 顺序有讲究:DroppedFiles 只在"收到文件的那一帧"返回路径,所以必须
+	// 每帧无条件调用(它同时把这一帧的落点登记成接文件的元素)。
+	zone := ui.Column(c).Grow(1).FillWidth().Center().Gap(10).Padding(20).Radius(14).
+		Border(1, dash).BorderStyle(ui.BorderDashed)
+	if paths := zone.DroppedFiles(); len(paths) > 0 {
+		// 拖放是在构建这一帧的途中发现的,当场 append 会让正在逐行构建的
+		// 列表长度对不上,所以排到下一帧开头再加。
+		a.pendingDrop = append(a.pendingDrop, paths...)
+	}
+	over := zone.FileDragOver()
+	if over {
+		zone = zone.Background(t.Accent.Alpha(0.08)).Border(1, t.Accent)
+	} else {
+		zone = zone.Background(pt.card)
+	}
+	zone.Children(func() {
+		title := "把文件或文件夹拖到这里"
+		if over {
+			title = "松开就加进来"
+		}
+		ui.Text(c, title).FontSize(18).Bold().TextColor(t.Text).SingleLine()
+		if !narrow {
+			// 一句话说清两条路都行:这个软件既能先放文件也能先排步骤,把其中
+			// 一条说成"正确顺序"只会让人以为另一条走不通。
+			ui.Text(c, "也可以点下面的按钮挑。先放文件或先排步骤都行，两边会自动接上。").
+				FontSize(13).TextColor(t.TextMuted)
+		}
+		ui.Row(c).Gap(8).Wrap().Justify(ui.Center).Padding(4, 0).Children(func() {
+			// 大号:空态里这是唯一的主动作,不该和工具栏里那些次要按钮同尺寸。
+			add := ui.ButtonBase(c).Radius(10).Padding(10, 20).TextColor(accentInk(t)).
+				Background(t.Accent.Alpha(0.14))
+			if add.Hovered() {
+				add = add.Background(t.Accent.Alpha(0.22))
+			}
+			add.Children(func() { ui.Text(c, "添加文件…").FontSize(14).SingleLine() })
+			if add.Clicked() {
+				go a.addFilesDialog()
+			}
+			if !narrow {
+				// 拖文件夹能成,挑文件夹却只能挑文件,那条路等于没走通。
+				folder := outlinedButton(c, "添加文件夹…", true)
+				if folder.Clicked() {
+					go a.addFolderDialog()
+				}
+			}
+		})
+		if !narrow {
+			ui.Text(c, "拖文件夹会按文件夹分组，一个文件夹一组").
+				FontSize(12).TextColor(t.TextMuted)
+		}
+	})
+}
+
 func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
 	// 右栏自己有多宽:分隔缝能一路拖到几乎关闭,那时元数据行的三颗
@@ -1099,10 +1196,7 @@ func (a *app) filesView(c *ui.Context) {
 			})
 		}
 		if len(a.files) == 0 {
-			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-				ui.Text(c, "批量更名：左边挑处理步骤，这里放文件，改名会实时预览").FontSize(14).TextColor(t.Text)
-				ui.Text(c, "把文件或文件夹拖进窗口，或点“添加文件…”").FontSize(13).TextColor(t.TextMuted)
-			})
+			a.dropZone(c, innerW)
 		} else {
 			dt := a.currentTheme()
 			// 分组:文件夹拖入的文件按文件夹分组,用 List 内置的吸顶分组头
@@ -1472,22 +1566,27 @@ func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 	return "将更名", t.Accent
 }
 
-// tonalButton 是"次要动作"的浅填充(Tonal)按钮:用主色的一层低透明底,
-// 文字用同色相的深墨色,视觉上比主按钮弱、比纯文字强。用于文件列表上的
-// 操作(添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
+// accentInk 是"压在 12% 主色底上的主色文字"该用的颜色。
 //
-// 字色不能直接用 Accent:Accent 要够亮才承得住白字,拿它压自己的 12% 底
+// 不能直接用 Accent:Accent 要够亮才承得住白字,拿它压自己的 12% 底
 // 实测只有 3.50:1(默认绿)到 2.35:1(橙),低于 WCAG 4.5。亮色下改用
 // 同色相、L 0.44 的墨色;暗色下 Accent 本身就有 5.4 以上,继续用它,
 // 免得暗色按钮反而变闷。
+func accentInk(t *ui.Theme) ui.Color {
+	if t.Dark {
+		return t.Accent
+	}
+	// 同色相、L 0.44 的墨色;chroma 沿用 Accent 的(已被 seed 收敛过)
+	_, ac, ah := colorToOklch(t.Accent)
+	return oklchColor(0.44, ac, ah)
+}
+
+// tonalButton 是"次要动作"的浅填充(Tonal)按钮:用主色的一层低透明底,
+// 文字用同色相的深墨色,视觉上比主按钮弱、比纯文字强。用于文件列表上的
+// 操作(添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
 func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
-	ink := t.Accent
-	if !t.Dark {
-		// 同色相、L 0.44 的墨色;chroma 沿用 Accent 的(已被 seed 收敛过)
-		_, ac, ah := colorToOklch(t.Accent)
-		ink = oklchColor(0.44, ac, ah)
-	}
+	ink := accentInk(t)
 	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).TextColor(ink).
 		Background(t.Accent.Alpha(0.12))
 	if !enabled {
@@ -1653,12 +1752,29 @@ func (a *app) saveDialog(opts mygo.SaveDialogOptions) (string, error) {
 }
 
 func (a *app) addFilesDialog() {
-	a.busy = true
-	a.update()
-	paths, err := a.openDialog(mygo.OpenDialogOptions{
+	a.pickAndAdd(mygo.OpenDialogOptions{
 		Parent:   a.win,
+		Title:    "选择要改名的文件",
 		Multiple: true,
 	})
+}
+
+// addFolderDialog 挑一个文件夹,把它直接里面的文件都加进来(按文件夹分组)。
+// 拖文件夹早就支持,可"挑"这条路以前只能挑文件——同一个能力两种入口,
+// 一种有、一种没有,用户只会觉得后者坏了。
+func (a *app) addFolderDialog() {
+	a.pickAndAdd(mygo.OpenDialogOptions{
+		Parent:    a.win,
+		Title:     "选择文件夹（加它直接里面的文件）",
+		Directory: true,
+	})
+}
+
+// pickAndAdd 是上面两个对话框的共同后半段:开对话框、加文件、收尾。
+func (a *app) pickAndAdd(opts mygo.OpenDialogOptions) {
+	a.busy = true
+	a.update()
+	paths, err := a.openDialog(opts)
 	a.busy = false
 	if err != nil || len(paths) == 0 {
 		a.status = ""

@@ -102,7 +102,7 @@ func TestIntentStepsAreEditable(t *testing.T) {
 		t.Fatalf("模板不是详情表单编辑的那个字段: %q", a.steps[0].tpl)
 	}
 	// 加完卡片就消失,换成正常的步骤列表
-	if tt.HasText("想做什么？点一个，我把步骤配好") {
+	if tt.HasText("想改成什么样？点一张，我把步骤配好") {
 		t.Fatal("已经有步骤了,意图卡片应当让位给步骤列表")
 	}
 }
