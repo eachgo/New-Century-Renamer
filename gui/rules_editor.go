@@ -542,13 +542,21 @@ func numDecimals(step float64) int {
 // runs into the select above, and its digits sit left, not centered.
 // Here the field and the stepper are one height, the field's text is
 // centered, and the width is ours to set.
+// width is the whole control, stepper included: the stepper is a fixed
+// 20 DIP (Theme.Space(5)) plus the 6 DIP gap, and the field takes the rest.
+// Callers size the pair once instead of guessing the two parts separately.
 func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
 	const h = 32
+	const stepperW, gap = float32(20), float32(6)
+	fieldW := width - stepperW - gap
+	if fieldW < 28 {
+		fieldW = 28
+	}
 	format := func(v float64) string { return strconv.FormatFloat(v, 'f', numDecimals(float64(step)), 64) }
-	row := ui.Row(c).Gap(6).AlignItems(ui.Center)
+	row := ui.Row(c).Gap(gap).AlignItems(ui.Center)
 	text := ui.Local(row, "text", func() string { return format(*value) })
 	row.Children(func() {
-		in := ui.TextInput(c, text).Width(width).Height(h).TextAlign(ui.Center)
+		in := ui.TextInput(c, text).Width(fieldW).Height(h).TextAlign(ui.Center)
 		if in.Changed() {
 			if v, err := strconv.ParseFloat(strings.TrimSpace(*text), 64); err == nil {
 				*value = clamp(v, float64(lo), float64(hi))
@@ -570,15 +578,58 @@ func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
 }
 
 // paramsEditor builds the detail form of one step below the task list.
-// One parameter per line (fixed-width label + control): the middle pane
-// can be narrow, so nothing wraps into mismatched pairs.
-func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
+//
+// Every parameter is one row: a fixed-width label and the controls it names.
+// The rows are spaced, not packed — before, they were direct children of the
+// scroll box, so one row's control border sat exactly on the next one's and
+// the form read as a single striped block instead of a list of fields.
+//
+// w is the width the form really has. The divider between the panes can be
+// dragged almost shut, and at that point a 96 DIP label plus a 160 DIP select
+// no longer fit side by side: the control used to run off the pane's edge.
+// Below the breakpoint the label moves above its controls, which then take
+// the full width, so nothing is cut off at any pane width.
+func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme, w float32) {
+	const labelW, labelGap = float32(96), float32(8)
+	// Side by side needs the label, the gap, and room for a usable control.
+	stacked := w < labelW+labelGap+150
+	avail := w - labelW - labelGap
+	if stacked {
+		avail = w
+	}
+	// fit caps a control at the space the row really has. A select asked
+	// for 180 DIP in a 96 DIP pane used to keep 180 and run off the card;
+	// now it takes what is there and the pane never clips a control.
+	fit := func(req float32) float32 {
+		if req > avail {
+			return max(avail, 40)
+		}
+		return req
+	}
 	pline := func(label string, ctl func()) {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, label).FontSize(13).TextColor(t.TextMuted).Width(96)
+		if stacked {
+			// A column stretches its children, so the controls below the
+			// label get the whole width and the wide ones (a FillWidth
+			// input) are as usable here as in the side-by-side layout.
+			// Wrap lets a row of several controls (起始 / 步长) use two
+			// lines instead of overflowing.
+			ui.Column(c).Gap(4).Children(func() {
+				ui.Text(c, label).FontSize(13).TextColor(t.TextMuted)
+				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(ctl)
+			})
+			return
+		}
+		ui.Row(c).Gap(labelGap).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(13).TextColor(t.TextMuted).Width(labelW)
 			ctl()
 		})
 	}
+	ui.Column(c).FillWidth().Gap(10).Children(func() { r.paramsFields(c, t, pline, fit) })
+}
+
+// paramsFields is the per-kind body of the form: one pline call per
+// parameter. Split out so paramsEditor stays about layout.
+func (r *guiRule) paramsFields(c *ui.Context, t *ui.Theme, pline func(label string, ctl func()), fit func(float32) float32) {
 	key, _ := kindByLabel[r.kind]
 	switch key {
 	case "pinyin", "sanitize", "unfilter", "romaji":
@@ -587,7 +638,7 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 		pline("匹配通配符", func() { ui.TextInput(c, &r.pattern).Placeholder("如 *.mp3").FillWidth() })
 		pline("排除匹配项", func() { ui.Switch(c, &r.invert) })
 	case "scope":
-		pline("选取范围", func() { ui.Select(c, &r.scopeSel, []string{"文件名", "扩展名", "整体"}).Width(160) })
+		pline("选取范围", func() { ui.Select(c, &r.scopeSel, []string{"文件名", "扩展名", "整体"}).Width(fit(160)) })
 	case "replace":
 		pline("查找", func() { ui.TextInput(c, &r.oldStr).Placeholder("查找").FillWidth() })
 		pline("替换为", func() { ui.TextInput(c, &r.newStr).Placeholder("替换为").FillWidth() })
@@ -600,32 +651,36 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 			})
 		})
 	case "case":
-		pline("转换方式", func() { ui.Select(c, &r.caseMode, []string{"大写", "小写", "标题"}).Width(160) })
+		pline("转换方式", func() { ui.Select(c, &r.caseMode, []string{"大写", "小写", "标题"}).Width(fit(160)) })
 	case "insert":
-		pline("插入位置", func() { ui.Select(c, &r.insMode, []string{"文件名前", "文件名后", "指定位置"}).Width(160) })
+		pline("插入位置", func() {
+			ui.Select(c, &r.insMode, []string{"文件名前", "文件名后", "指定位置"}).Width(fit(160))
+		})
 		if r.insMode == "指定位置" {
-			pline("第几个字符", func() { numField(c, &r.pos, 1, 9999, 1, 90) })
+			pline("第几个字符", func() { numField(c, &r.pos, 1, 9999, 1, fit(90)) })
 		}
 		pline("插入文本", func() { ui.TextInput(c, &r.text).Placeholder("插入文本").FillWidth() })
 	case "delete":
-		pline("从第几个字符", func() { numField(c, &r.pos, 1, 9999, 1, 90) })
-		pline("删除数量", func() { numField(c, &r.count, 1, 9999, 1, 90) })
+		pline("从第几个字符", func() { numField(c, &r.pos, 1, 9999, 1, fit(90)) })
+		pline("删除数量", func() { numField(c, &r.count, 1, 9999, 1, fit(90)) })
 	case "truncate":
-		pline("保留长度", func() { numField(c, &r.maxLen, 1, 9999, 1, 90) })
+		pline("保留长度", func() { numField(c, &r.maxLen, 1, 9999, 1, fit(90)) })
 	case "ext":
 		pline("新扩展名", func() { ui.TextInput(c, &r.newExt).Placeholder("空=删除扩展名").FillWidth() })
 	case "seq":
-		pline("编号类型", func() { ui.Select(c, &r.numBase, []string{"数字", "字母"}).Width(120) })
+		pline("编号类型", func() { ui.Select(c, &r.numBase, []string{"数字", "字母"}).Width(fit(120)) })
 		if r.numBase == "字母" {
-			pline("大小写", func() { ui.Select(c, &r.numCase, []string{"大写", "小写"}).Width(120) })
+			pline("大小写", func() { ui.Select(c, &r.numCase, []string{"大写", "小写"}).Width(fit(120)) })
 		} else {
-			pline("不足位补齐", func() { numField(c, &r.seqWidth, 1, 9, 1, 90) })
+			pline("不足位补齐", func() { numField(c, &r.seqWidth, 1, 9, 1, fit(90)) })
 		}
-		pline("分组方式", func() { ui.Select(c, &r.numGroup, []string{"不分组", "按扩展名", "按文件夹"}).Width(180) })
+		pline("分组方式", func() {
+			ui.Select(c, &r.numGroup, []string{"不分组", "按扩展名", "按文件夹"}).Width(fit(180))
+		})
 		pline("起始 / 步长", func() {
-			numField(c, &r.seqStart, -9999, 999999, 1, 70)
+			numField(c, &r.seqStart, -9999, 999999, 1, fit(70))
 			ui.Text(c, "/").TextColor(t.TextMuted)
-			numField(c, &r.seqStep, -999, 999, 1, 70)
+			numField(c, &r.seqStep, -999, 999, 1, fit(70))
 		})
 		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>，空=追加").FillWidth() })
 	case "nfo":

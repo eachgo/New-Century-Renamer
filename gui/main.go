@@ -610,8 +610,11 @@ func (a *app) stepsView(c *ui.Context) {
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
 		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(14)
-			ui.Spacer(c)
+			// 标题吃剩余宽度并单行省略:中栏能拖到只剩一百多 DIP,那时
+			// "任务步骤（1）"会被压成一列单字("任务"/"步骤"/"（1）"),
+			// 比截断更难看,也让右侧的多选按钮跳来跳去。
+			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(14).
+				Grow(1).SingleLine().Ellipsis("…")
 			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
 			label := "多选"
 			if a.pickMode {
@@ -642,6 +645,12 @@ func (a *app) stepsView(c *ui.Context) {
 			// 以前是"列表 Grow(1) 吃满高度 + 详情钉底",结果是 1 步时选中行
 			// 与编辑器之间隔 290px 空白,12 步时第 8 行起被分隔线硬切——
 			// 列表没有自己的可视边界,行被排进详情区地盘然后整行 Clip 掉。
+			// 一行能放多少:中栏可以拖到只剩一百多 DIP,那时"编号 + 操作名 +
+			// 参数胶囊 + 类别胶囊 + 色条 + 多选圆点"六段并排必然溢出,胶囊被
+			// 切掉一半。按宽度分三档降级,先丢最不承载信息的:类别胶囊(颜色
+			// 仍由行首色条表达)、参数胶囊、再是编号。
+			rowW := a.splitM - 20
+			showGroupChip, showSummary := rowW >= 300, rowW >= 210
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
 					// 图例:色条只在真有范围时出现,所以图例也只列此刻生效的那几种。
@@ -690,7 +699,7 @@ func (a *app) stepsView(c *ui.Context) {
 										// 胶囊去省略。以前没有它,"追加序号"会被挤成"追…"、
 										// "AI 按内容命名"挤成"AI…"——名字比参数重要。
 										ui.Text(c, s.opLabel).FontSize(13).FontWeight(500).TextColor(labCol).SingleLine().Shrink(0)
-										if v := s.summary(); v != "" {
+										if v := s.summary(); v != "" && showSummary {
 											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
 											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(4).MaxWidth(150).SingleLine().Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text)
@@ -699,24 +708,28 @@ func (a *app) stepsView(c *ui.Context) {
 								} else {
 									ui.Row(c).Fill().Gap(6).Children(func() {
 										ui.Text(c, s.opLabel).FontSize(13).FontWeight(500).TextColor(labCol).SingleLine().Shrink(0)
-										if v := s.summary(); v != "" && v != s.opLabel {
+										if v := s.summary(); v != "" && v != s.opLabel && showSummary {
 											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(4).MaxWidth(150).SingleLine().Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text)
 										}
 									})
 								}
-								// 胶囊区:固定宽度单独管理,行内不再被挤
-								catBg, catFg := chipTones(cat, a.isDark())
-								ui.Row(c).Width(84).Gap(4).Children(func() {
-									ui.Spacer(c)
-									// 连续同类别:胶囊退化为同色圆点,换组才显示文字
-									if i > 0 && a.steps[i-1].opGroup == s.opGroup {
-										ui.Box(c).Size(9, 9).Background(catFg)
-									} else {
-										ui.Text(c, s.opGroup).FontSize(12).Padding(2, 8).Radius(4).
-											Background(catBg).TextColor(catFg)
-									}
-								})
+								// 胶囊区:固定宽度单独管理,行内不再被挤。
+								// 窄栏下整列收起——类别颜色由行尾色条与行底色承担,
+								// 挤着画只会把操作名压没。
+								if showGroupChip {
+									catBg, catFg := chipTones(cat, a.isDark())
+									ui.Row(c).Width(84).Gap(4).Children(func() {
+										ui.Spacer(c)
+										// 连续同类别:胶囊退化为同色圆点,换组才显示文字
+										if i > 0 && a.steps[i-1].opGroup == s.opGroup {
+											ui.Box(c).Size(9, 9).Background(catFg)
+										} else {
+											ui.Text(c, s.opGroup).FontSize(12).Padding(2, 8).Radius(4).
+												Background(catBg).TextColor(catFg)
+										}
+									})
+								}
 								// 色条保留区:两条竖线永远画在这里,不压胶囊
 								ui.Box(c).Width(12)
 								// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
@@ -767,8 +780,14 @@ func (a *app) stepsView(c *ui.Context) {
 					if r.opDesc != "" {
 						ui.Text(c, r.opDesc).FontSize(13).TextColor(t.TextMuted)
 					}
-					ui.Scroll(c).Grow(1).Children(func() { r.paramsEditor(c, t) })
-					ui.Row(c).Gap(8).Children(func() {
+					// 参数表单要知道自己实际有多宽:中栏的分隔缝可以一路拖到
+					// 几乎关闭,固定 96 的标签加上控件在那种宽度下会顶出栏外。
+					// 减去卡片左右各 10 的内边距,再留出滚动条的余量。
+					formW := a.splitM - 20 - 12
+					ui.Scroll(c).Grow(1).Children(func() { r.paramsEditor(c, t, formW) })
+					// Wrap:中栏拖窄时四个按钮横排必然出界,"复制"会被卡片
+					// 右缘裁掉一半。宁可换行,也不能让按钮消失。
+					ui.Row(c).Gap(8).Wrap().Children(func() {
 						if ui.Button(c, "上移").Disabled(a.stepSel == 0).Tooltip(shortcutTip("Alt+↑")).Clicked() {
 							a.swapSteps(a.stepSel-1, a.stepSel)
 						}
@@ -1122,10 +1141,13 @@ func (a *app) filesView(c *ui.Context) {
 			// 列头:结果列离名字有几百像素,没有表头的话右边那列只是
 			// "一个小圆点加两个字",用户得自己猜那是结果。表头只在有文件时
 			// 出现——空列表时它只是一行噪音。
-			ui.Row(c).FillWidth().Gap(8).PaddingStart(10).Children(func() {
-				ui.Text(c, "原名 → 新名").FontSize(12).TextColor(t.TextMuted)
+			// Wrap + SingleLine:右栏能被拖到只剩一百多 DIP,那时"原名 → 新名"
+			// 会被压成一列竖排单字("原"/"名"/"→"...),比截断更难看。
+			// 宁可把"结果"表头换到第二行。
+			ui.Row(c).FillWidth().Gap(8).PaddingStart(10).Wrap().Children(func() {
+				ui.Text(c, "原名 → 新名").FontSize(12).TextColor(t.TextMuted).SingleLine()
 				ui.Spacer(c)
-				ui.Text(c, "结果").FontSize(12).TextColor(t.TextMuted).Width(64).TextAlign(ui.End)
+				ui.Text(c, "结果").FontSize(12).TextColor(t.TextMuted).Width(64).TextAlign(ui.End).SingleLine()
 			})
 			ui.List(c, &a.table, len(rows), func(ri int) {
 				r := rows[ri]

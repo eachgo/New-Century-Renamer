@@ -249,6 +249,10 @@ func accAt(t *ui.Theme, l, c, h float64) {
 	t.Accent = oklchColor(l, c, h)
 	t.AccentHover = oklchColor(l-0.05, c, h)
 	t.AccentPressed = oklchColor(l-0.10, c, h)
+	// 失焦不变灰:mygo 0.8 起窗口不活跃时把 Accent 换成 InactiveAccent,
+	// 留空时按 AccentText 混出一层灰——切到别的窗口,整屏的主题色就褪掉,
+	// 看起来像"这个程序被禁用了"。主色是用户选的,不该由焦点决定。
+	t.InactiveAccent = t.Accent
 }
 
 func clamp(v, lo, hi float64) float64 {
