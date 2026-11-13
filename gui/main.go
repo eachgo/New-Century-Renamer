@@ -44,7 +44,11 @@ type app struct {
 	busyAI    bool      // busy because an AI (network) call is in flight — show spinner
 	busyStart time.Time // when the current busy op began (for the elapsed timer)
 	applied   bool      // true after 执行/回滚, until steps or files change
-	lastSpec  string
+	// appliedAt/appliedCount 是"刚才这一批"的时间与成功数,执行完的横幅用它。
+	// 一个 applied 布尔量说明不了"什么时候改了哪一批"。
+	appliedAt    time.Time
+	appliedCount int
+	lastSpec     string
 
 	settings          Settings
 	settingsOpen      bool
@@ -676,7 +680,7 @@ func (a *app) removeFile(i int) {
 	if n := len(buildRows(a.files)); a.fileSel >= n {
 		a.fileSel = n - 1
 	}
-	a.applied = false
+	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	if len(a.files) == 0 {
 		a.ops = nil
 		a.status = ""
@@ -762,6 +766,7 @@ func (a *app) filesView(c *ui.Context) {
 				confirm.Children(func() { ui.Text(c, "确认清空?").SingleLine() })
 				if confirm.Clicked() {
 					a.files, a.ops, a.applied = nil, nil, false
+					a.appliedAt, a.appliedCount = time.Time{}, 0
 					a.dropConfirm()
 				}
 			} else {
@@ -822,6 +827,20 @@ func (a *app) filesView(c *ui.Context) {
 				if r.header {
 					nGroups++
 				}
+			}
+			// 执行完之后,右栏顶部要说清"刚才发生了什么、还能不能退":
+			// 以前只有左下角一行 12px 灰字,而改名是当天最重要的事。
+			if a.applied && a.appliedCount > 0 && !a.appliedAt.IsZero() {
+				ui.Row(c).FillWidth().Gap(8).Padding(5, 10).Radius(8).
+					Background(t.Success.Alpha(0.12)).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, fmt.Sprintf("已执行 · %s · %d 个文件",
+						a.appliedAt.Format("01-02 15:04"), a.appliedCount)).
+						FontSize(11).TextColor(t.Text)
+					ui.Spacer(c)
+					if outlinedButton(c, "撤销这次", !a.busy && a.journalExists()).Clicked() {
+						go a.undo()
+					}
+				})
 			}
 			// 失败的聚合条:60 个文件里 5 个失败时,逐行扫描找红字
 			// 是不可能完成的任务。顶部说一句"有几个没法改",比让用户
@@ -1026,7 +1045,9 @@ func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 	case op.Err != nil:
 		return "失败", t.Danger
 	case op.Applied:
-		return "成功", t.Success
+		// 执行之后这一行的名字就是磁盘上的名字,"成功"是结果而不是状态;
+		// 说"已更名"才能和上面那些还没执行的"将更名"分开。
+		return "已更名", t.Success
 	case a.applied:
 		return "跳过", t.TextMuted
 	case op.OldName == op.NewName:
@@ -1172,7 +1193,7 @@ func (a *app) addPaths(paths []string) {
 	a.assignExtColors(a.currentTheme())
 	a.status = fmt.Sprintf("已添加,共 %d 个文件", len(a.files))
 	a.confirmClear = false
-	a.applied = false
+	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	// AI 步骤不能在这里自动预览:preview() 是同步的,一旦含 <AI:…> 就会在
 	// 主线程里联网阻塞几十秒,加入文件的瞬间 UI 卡死。AI 只走显式"预览"按钮。
 	// 这与 view() 里的实时预览判断保持一致;否则清空列表后再加文件会立刻
@@ -1292,7 +1313,7 @@ func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
 		fi.group = filepath.Base(op.Dir)
 		a.files = append(a.files, fi)
 	}
-	a.applied = false
+	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	a.status = fmt.Sprintf("已导入 %d 行,%d 个将更名", len(plan), countChanges(plan))
 	if len(errs) > 0 {
 		a.status += fmt.Sprintf(",%d 个有问题", len(errs))
@@ -1665,6 +1686,10 @@ func (a *app) apply() {
 				a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].NewName), a.files[i].group)
 			}
 		}
+		if ok > 0 {
+			a.appliedAt = time.Now()
+			a.appliedCount = ok
+		}
 		a.assignExtColors(a.currentTheme())
 	}
 	a.update()
@@ -1704,7 +1729,8 @@ func (a *app) undo() {
 			}
 		}
 		a.assignExtColors(a.currentTheme())
-		a.applied = true
+		// 回滚之后那一批已经不存在了:横幅不该继续说"已执行 N 个文件"
+		a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	}
 	a.update()
 }
