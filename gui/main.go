@@ -1091,24 +1091,32 @@ func (a *app) filesView(c *ui.Context) {
 							// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
 							// 四行,把 54px 的卡片撑到 95px,整列节奏全乱
 							ui.Text(c, stem).FontSize(13).Padding(2, 10).Radius(8).
-								Background(stemBg).MaxWidth(170).SingleLine().Ellipsis("…")
+								Background(stemBg).MinWidth(70).MaxWidth(170).SingleLine().Ellipsis("…")
 							if ext != "" {
 								ui.Text(c, ".").FontSize(13).TextColor(t.TextMuted)
 								ui.Text(c, strings.TrimPrefix(ext, ".")).FontSize(13).Padding(2, 10).Radius(8).
 									Background(extBg).TextColor(extFg)
 							}
 						}
-						ui.Row(c).Gap(4).Children(func() {
+						// Wrap:窗口窄到放不下「原名 → 新名」时换行,而不是把
+						// 文件名压成「…」。名字是这个软件唯一要看的东西,
+						// 宁可卡片长高一点,也不能让名字读不出来。
+						ui.Row(c).Gap(4).Wrap().Children(func() {
 							// 原文件名:胶囊文件名 . 胶囊扩展名(原类型色,淡)
 							nameChips(oStem, oExt, oCol.Alpha(0.10), oCol.Alpha(0.30), t.Text)
 							if changed {
-								ui.Text(c, "→").TextColor(t.TextMuted)
-								// 预览:胶囊文件名 . 胶囊扩展名(新类型色,实)。
-								// 以前这里用饱和色底 + 白字,实测只有 3.1–3.6,
-								// 和上面那排类别胶囊是同一个毛病;改成同色相浅底深字,
-								// 比原名胶囊重一档即可——要的是"能读出来",不是"很显眼"。
-								nExtBg, nExtFg := chipTonesEmph(nCol, a.isDark())
-								nameChips(nStem, nExt, nCol.Alpha(0.18), nExtBg, nExtFg)
+								// 「→ 新名」包成一组:Wrap 换行时箭头要跟着新名字
+								// 一起换到下一行,否则窄窗下箭头孤零零挂在行尾,
+								// 读起来像"改成了空"。
+								ui.Row(c).Gap(4).Children(func() {
+									ui.Text(c, "→").TextColor(t.TextMuted)
+									// 预览:胶囊文件名 . 胶囊扩展名(新类型色,实)。
+									// 以前这里用饱和色底 + 白字,实测只有 3.1–3.6,
+									// 和上面那排类别胶囊是同一个毛病;改成同色相浅底深字,
+									// 比原名胶囊重一档即可——要的是"能读出来",不是"很显眼"。
+									nExtBg, nExtFg := chipTonesEmph(nCol, a.isDark())
+									nameChips(nStem, nExt, nCol.Alpha(0.18), nExtBg, nExtFg)
+								})
 							}
 							ui.Spacer(c)
 							// 悬停出 ×:200 个文件里只有 3 个不想改时,不必
