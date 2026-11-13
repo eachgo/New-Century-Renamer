@@ -202,12 +202,17 @@ func (a *app) view(c *ui.Context) {
 		// 三栏之间留空缝,不画分隔线:见 panes.go 里 splitPanes 的注释——
 		// mygo 的 Split 把线色写死成 Theme.Border,而 Border 要留给输入框
 		// 的边框,深了以后那两条线比它们分隔的内容还显眼。
+		// 中/右栏那一层要知道自己实际有多宽:外层减掉两侧内边距与缝、
+		// 再减掉左栏,剩下的才是它能分的。用窗口宽度做夹紧会把右栏
+		// 压到几十 DIP。
+		winW, _ := c.Size()
+		secondW := winW - 2*8 - 10 - a.splitL
 		a.splitPanes(c, &a.splitL,
 			func() { a.catalogView(c) },
 			func() {
 				// pad=0:内边距已经由外层加过,这一层再缩进就会让中/右
 				// 两栏的卡片顶边比左栏低 8px,三栏不在同一条水平线上。
-				a.splitPanesInset(c, &a.splitM, 0,
+				a.splitPanesInset(c, &a.splitM, 0, secondW,
 					func() { a.stepsView(c) },
 					func() { a.filesView(c) })
 			})
@@ -1011,8 +1016,32 @@ func revealInFileManager(path string) {
 
 // ---- right pane: file table with drop zone ----
 
+// resultColW 是右缘"结果"那一列的固定宽度:表头与每行卡片共用同一个
+// 值,两处各写一个 64 的话,改一处忘另一处,表头就不再压在结果上方。
+const resultColW float32 = 64
+
 func (a *app) filesView(c *ui.Context) {
 	t := c.Theme()
+	// 右栏自己有多宽:分隔缝能一路拖到几乎关闭,那时元数据行的三颗
+	// 胶囊并排必然折行。外层 splitPanes 减两侧 8 的内边距与 10 的缝,
+	// 内层 splitPanesInset 再减中栏与另一条 10 的缝。
+	winW, _ := c.Size()
+	rightW := winW - 2*8 - 10 - a.splitL - 10 - a.splitM
+	innerW := rightW - 20 // 卡片左右各 10 的内边距
+	// 结果列要 64 DIP 加 8 的间隔,再留给名字组至少一百:低于这条线
+	// 就把结果词换成 Tooltip,只留状态点(实测 194 DIP 时"将更名"被
+	// 挤到视口外,只剩 9.9 DIP 宽的一截)。
+	showResultText := innerW >= 200
+	// 再窄下去连「名字 + . + 扩展名」都排不下:文件名胶囊的 MinWidth(70)
+	// 加上扩展名就超了可用宽度,扩展名会被压成 9px 宽的一列(实测 114
+	// DIP 时「flac」竖排)。那时只留文件名,扩展名收进 Tooltip。
+	showExt := innerW >= 124
+	// 只剩状态点时那一列不需要 64:还占 64 的话,极窄的右栏里名字组
+	// 只剩几个像素,连「…」都画不出来。收窄到状态点 + 间隔。
+	resultW := resultColW
+	if !showResultText {
+		resultW = 14
+	}
 	// 右边栏:结果空间,浮在基底之上的一张浅卡片(比中栏低一阶),也是圆角。
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.right).Clip().
@@ -1147,8 +1176,14 @@ func (a *app) filesView(c *ui.Context) {
 			ui.Row(c).FillWidth().Gap(8).PaddingStart(10).Wrap().Children(func() {
 				ui.Text(c, "原名 → 新名").FontSize(12).TextColor(t.TextMuted).SingleLine()
 				ui.Spacer(c)
-				ui.Text(c, "结果").FontSize(12).TextColor(t.TextMuted).Width(64).TextAlign(ui.End).SingleLine()
+				// 与行内同一套降级:结果词收起来时表头也跟着收,否则
+				// 表头说"结果"而下面只剩一个圆点,反而更费解。
+				if showResultText {
+					ui.Text(c, "结果").FontSize(12).TextColor(t.TextMuted).Width(resultW).TextAlign(ui.End).SingleLine()
+				}
 			})
+			// 元数据行的两档降级:先丢日期(信息量最小),再丢大小。
+			showDate, showSize := innerW >= 200, innerW >= 120
 			ui.List(c, &a.table, len(rows), func(ri int) {
 				r := rows[ri]
 				// 分组头独立一行:吸顶的文件夹名 + 组内文件数
@@ -1231,6 +1266,9 @@ func (a *app) filesView(c *ui.Context) {
 						// 整组包在一个不换行的 Row 里:否则外层 Wrap 会把
 						// 中间的「.」留在上一行、扩展名胶囊掉到下一行,
 						// 读起来像文件名后面多了个孤零零的句点。
+						// 压缩由文件名胶囊独自承担:它有 MinWidth(70) + Ellipsis,
+						// 压到极限也只是省略号。扩展名胶囊 Shrink(0),四个字母
+						// 本来就不该被挤——实测被压时会缩成 9px 宽的一列。
 						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
 							ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 								// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
@@ -1239,8 +1277,10 @@ func (a *app) filesView(c *ui.Context) {
 									Background(stemBg).MinWidth(70).MaxWidth(170).SingleLine().Ellipsis("…")
 								if ext != "" {
 									ui.Text(c, ".").FontSize(14).TextColor(t.TextMuted)
+									// Shrink(0):扩展名是最短的一颗胶囊,允许它收缩时
+									// 最先塌掉(实测「flac」被挤成 9px 宽)。
 									ui.Text(c, strings.TrimPrefix(ext, ".")).FontSize(14).Padding(2, 10).Radius(6).
-										Background(extBg).TextColor(extFg)
+										Background(extBg).TextColor(extFg).SingleLine().Shrink(0)
 								}
 							})
 						}
@@ -1249,7 +1289,11 @@ func (a *app) filesView(c *ui.Context) {
 						// 宁可卡片长高一点,也不能让名字读不出来。
 						ui.Row(c).Gap(4).Wrap().Children(func() {
 							// 原文件名:胶囊文件名 . 胶囊扩展名(原类型色,淡)
-							nameChips(oStem, oExt, oCol.Alpha(0.10), oCol.Alpha(0.30), t.Text)
+							if showExt {
+								nameChips(oStem, oExt, oCol.Alpha(0.10), oCol.Alpha(0.30), t.Text)
+							} else {
+								nameChips(oStem, "", oCol.Alpha(0.10), oCol.Alpha(0.30), t.Text)
+							}
 							if changed {
 								// 「→ 新名」包成一组:Wrap 换行时箭头要跟着新名字
 								// 一起换到下一行,否则窄窗下箭头孤零零挂在行尾,
@@ -1261,7 +1305,11 @@ func (a *app) filesView(c *ui.Context) {
 									// 和上面那排类别胶囊是同一个毛病;改成同色相浅底深字,
 									// 比原名胶囊重一档即可——要的是"能读出来",不是"很显眼"。
 									nExtBg, nExtFg := chipTonesEmph(nCol, a.isDark())
-									nameChips(nStem, nExt, nCol.Alpha(0.18), nExtBg, nExtFg)
+									if showExt {
+										nameChips(nStem, nExt, nCol.Alpha(0.18), nExtBg, nExtFg)
+									} else {
+										nameChips(nStem, "", nCol.Alpha(0.18), nExtBg, nExtFg)
+									}
 								})
 							}
 							ui.Spacer(c)
@@ -1326,10 +1374,18 @@ func (a *app) filesView(c *ui.Context) {
 										Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 								}
 							}
-							ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(4).
-								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
-							ui.Text(c, humanSize(f.size)).FontSize(12).Padding(1, 6).Radius(4).
-								Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
+							// 日期与大小是补充信息,按宽度优先级让位:名字和
+							// 结果列才是这个软件唯一要看的东西。阈值来自实测
+							// 胶囊宽度(日期 73 DIP、大小最长「12.0 MB」55 DIP,
+							// 每颗前后各 6 的间隔),再留出名字胶囊的余地。
+							if showDate {
+								ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(4).
+									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
+							}
+							if showSize {
+								ui.Text(c, humanSize(f.size)).FontSize(12).Padding(1, 6).Radius(4).
+									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
+							}
 							ui.Spacer(c)
 						})
 						// 失败原因直接写在卡片里:只写"失败"等于不说。
@@ -1344,13 +1400,24 @@ func (a *app) filesView(c *ui.Context) {
 						// 结果是"状态",不是"类别":用状态点 + 纯文字,
 						// 不用胶囊形状,免得和类别胶囊混成一种语言
 						res, col := a.resultChip(a.ops[i])
-						ui.Row(c).Width(64).Gap(4).AlignItems(ui.Center).Children(func() {
+						// 极窄的右栏放不下"状态点 + 三个字":整列会被挤到
+						// 视口外,只剩半个字被裁掉。那时只留状态点,词收进
+						// Tooltip——颜色和位置仍然能一眼分辨成功/失败。
+						ui.Row(c).Width(resultW).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
 							ui.Spacer(c)
-							ui.Box(c).Size(7, 7).Radius(4).Background(col)
-							txt := ui.Text(c, res).FontSize(13).TextColor(col)
-							if a.ops[i].Err != nil {
-								txt.Tooltip(a.ops[i].Err.Error())
+							dot := ui.Box(c).Size(7, 7).Radius(4).Background(col)
+							if showResultText {
+								txt := ui.Text(c, res).FontSize(13).TextColor(col).SingleLine()
+								if a.ops[i].Err != nil {
+									txt.Tooltip(a.ops[i].Err.Error())
+								}
+								return
 							}
+							tip := res
+							if a.ops[i].Err != nil {
+								tip = res + "：" + a.ops[i].Err.Error()
+							}
+							dot.Tooltip(tip)
 						})
 					}
 				})

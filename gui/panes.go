@@ -18,10 +18,16 @@ import "github.com/egoist/mygo/ui"
 // 第二层又缩进 8px，中/右栏的卡片顶边会比左栏低 8px——三栏就不再
 // 站在同一条水平线上了。
 func (a *app) splitPanes(c *ui.Context, size *float32, first, second func()) {
-	a.splitPanesInset(c, size, 8, first, second)
+	a.splitPanesInset(c, size, 8, 0, first, second)
 }
 
-func (a *app) splitPanesInset(c *ui.Context, size *float32, pad float32, first, second func()) {
+// splitPanesInset 里的 availW 是**这一层真正能用的宽度**。嵌套调用必须
+// 由调用方算好传进来：c.Size() 返回的始终是整个窗口的尺寸，不是父级
+// 那一栏的宽度。以前中/右栏那一层也拿窗口宽度做夹紧，于是把 splitM
+// 一路拖到 330 时右栏只剩几十 DIP，卡片里的名字被压成一列竖排——
+// 夹紧看上去生效了，其实上限比实际可用宽度大了两倍多。
+// availW <= 0 表示"就用窗口宽度"（最外层）。
+func (a *app) splitPanesInset(c *ui.Context, size *float32, pad, availW float32, first, second func()) {
 	t := c.Theme()
 	w, _ := c.Size()
 	// 缝宽与内边距同值：拖拽热区只有 1 DIP 时几乎点不中，这里给足
@@ -29,6 +35,9 @@ func (a *app) splitPanesInset(c *ui.Context, size *float32, pad float32, first, 
 	gripW := float32(10)
 	minPane := t.Space(32) // 再窄就放不下工具栏，宁可不让拖
 	avail := w - 2*pad - gripW
+	if availW > 0 {
+		avail = availW - gripW
+	}
 	if maxSize := avail - minPane; maxSize > minPane {
 		if *size < minPane {
 			*size = minPane
