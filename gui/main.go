@@ -48,7 +48,11 @@ type app struct {
 	// 一个 applied 布尔量说明不了"什么时候改了哪一批"。
 	appliedAt    time.Time
 	appliedCount int
-	lastSpec     string
+	// flashUntil 是"刚改名的那几行"高亮结束的时刻。执行成功是当天最重要
+	// 的事,却只有一个静态的结果词——让改过的行亮一下再淡出,是唯一一处
+	// 值得动的动效。
+	flashUntil time.Time
+	lastSpec   string
 
 	settings          Settings
 	settingsOpen      bool
@@ -928,6 +932,13 @@ func (a *app) filesView(c *ui.Context) {
 					if i < len(a.ops) && a.ops[i].Err != nil {
 						card.Border(1, t.Danger.Alpha(0.55))
 					}
+					// 刚改名的那几行亮一下再淡出:执行成功是当天最重要的事,
+					// 以前只有左下角一行 12px 灰字。
+					if i < len(a.ops) && a.ops[i].Applied {
+						if k := a.flashAlpha(); k > 0 {
+							card.Border(1, t.Success.Alpha(0.55*k)).Background(t.Success.Alpha(0.16 * k))
+						}
+					}
 					card.Children(func() {
 						oldName := filepath.Base(f.path)
 						newName := oldName
@@ -1041,6 +1052,31 @@ func (a *app) filesView(c *ui.Context) {
 			}).Gap(10).Grow(1)
 		}
 	})
+}
+
+// startFlash 让刚改名的行亮一下再淡出。界面只在有事件时重画,所以
+// 这里自己排几次重画——不排的话高亮会停在第一帧上永远不淡出。
+func (a *app) startFlash() {
+	a.flashUntil = time.Now().Add(flashDuration)
+	go func() {
+		for time.Now().Before(a.flashUntil) {
+			time.Sleep(flashStep)
+			a.update()
+		}
+		a.update()
+	}()
+}
+
+// flashAlpha 是这一帧高亮的强度:从 1 线性淡到 0,过了时间就是 0。
+func (a *app) flashAlpha() float32 {
+	if a.flashUntil.IsZero() {
+		return 0
+	}
+	left := time.Until(a.flashUntil)
+	if left <= 0 {
+		return 0
+	}
+	return float32(left) / float32(flashDuration)
 }
 
 // resultChip gives the outcome text and its color.
@@ -1697,6 +1733,7 @@ func (a *app) apply() {
 		if ok > 0 {
 			a.appliedAt = time.Now()
 			a.appliedCount = ok
+			a.startFlash()
 		}
 		a.assignExtColors(a.currentTheme())
 	}
@@ -1873,3 +1910,11 @@ func (a *app) commitAIConcurrency() {
 func (a *app) commitAIPrompt() {
 	a.liveSettings().AI.Prompt = strings.TrimSpace(a.aiPromptText)
 }
+
+const (
+	// flashDuration 是一行"刚改完"高亮的总时长。报告建议 120–160ms,
+	// 那是单行的节奏;这里整批行同时亮,需要更长一点才看得出
+	// "这些一起变了",所以取 320ms。
+	flashDuration = 320 * time.Millisecond
+	flashStep     = 40 * time.Millisecond
+)
