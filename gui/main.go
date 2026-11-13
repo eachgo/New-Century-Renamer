@@ -48,6 +48,9 @@ type app struct {
 	// 一个 applied 布尔量说明不了"什么时候改了哪一批"。
 	appliedAt    time.Time
 	appliedCount int
+	// busyDone/busyTotal 是批量执行走到第几个:500 个文件时一个转圈
+	// 说明不了还要多久。
+	busyDone, busyTotal int
 	// flashUntil 是"刚改名的那几行"高亮结束的时刻。执行成功是当天最重要
 	// 的事,却只有一个静态的结果词——让改过的行亮一下再淡出,是唯一一处
 	// 值得动的动效。
@@ -190,6 +193,15 @@ func (a *app) statusBar(c *ui.Context) {
 				}
 			}
 			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
+			// 批量执行时给一条真进度:一个转圈说不出"还要多久",
+			// 而 500 个文件能跑十几秒。
+			if a.busyTotal > 0 {
+				frac := float32(a.busyDone) / float32(a.busyTotal)
+				ui.Box(c).Width(120).Height(4).Radius(2).Background(t.Border).Children(func() {
+					ui.Box(c).FillWidth().Height(4).Radius(2).Background(t.Accent).Width(120 * frac)
+				})
+				ui.Text(c, fmt.Sprintf("%d/%d", a.busyDone, a.busyTotal)).FontSize(11).TextColor(t.TextMuted)
+			}
 		} else if a.status != "" {
 			ui.Text(c, a.status).FontSize(12).TextColor(a.statusColor(t)).SingleLine().Ellipsis("…")
 		} else {
@@ -1699,9 +1711,14 @@ func (a *app) apply() {
 	a.busy = true
 	a.busyStart = time.Now()
 	a.update()
-	err := core.ApplyPlan(a.ops, a.settings.Journal)
+	a.busyDone, a.busyTotal = 0, len(a.ops)
+	err := core.ApplyPlanProgress(a.ops, a.settings.Journal, func(done, total int) {
+		a.busyDone, a.busyTotal = done, total
+		a.update()
+	})
 	a.busy = false
 	a.busyStart = time.Time{}
+	a.busyDone, a.busyTotal = 0, 0
 	a.applied = true
 	if err != nil {
 		a.status = "执行出错: " + err.Error()

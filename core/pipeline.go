@@ -365,8 +365,19 @@ func indexByte(s string, b byte) int {
 
 // ApplyPlan performs the renames and writes an undo journal.
 func ApplyPlan(plan []RenameOp, journal string) error {
+	return ApplyPlanProgress(plan, journal, nil)
+}
+
+// ApplyPlanProgress is ApplyPlan with a progress callback: it is called once
+// per file, with done counting every file looked at and total the length of
+// the plan, so a UI can show how far along a long batch is. A nil progress
+// behaves exactly like ApplyPlan.
+func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, total int)) error {
 	var ops []RenameOp
 	for i := range plan {
+		if progress != nil {
+			progress(i, len(plan))
+		}
 		op := &plan[i]
 		if op.Err != nil || op.OldName == op.NewName {
 			continue
@@ -392,6 +403,9 @@ func ApplyPlan(plan []RenameOp, journal string) error {
 		op.Applied = true
 		ops = append(ops, *op)
 		fmt.Printf("* %s => %s\n", old, op.NewName)
+	}
+	if progress != nil {
+		progress(len(plan), len(plan))
 	}
 	// 只有真的改了东西才写日志。全失败时照常写会覆盖上一批的回滚记录,
 	// 用户既被"成功 0 失败 7"之外什么也没发生安抚,又失去了唯一的退路。

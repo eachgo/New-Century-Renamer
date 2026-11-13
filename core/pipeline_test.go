@@ -743,3 +743,61 @@ func runRulesNoFail(t *testing.T, specs []string, files []string) []RenameOp {
 	plan, _ := RunPipeline(rules, files)
 	return plan
 }
+
+// 批量执行要能报进度:500 个文件时一个转圈说不出"还要多久"。
+func TestApplyPlanProgressReportsEveryFile(t *testing.T) {
+	dir := t.TempDir()
+	var files []string
+	for i := 0; i < 5; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("F%d.TXT", i))
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, p)
+	}
+	rules, err := ParseRules([]string{"case=lower"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := RunPipeline(rules, files)
+	var got []int
+	total := -1
+	err = ApplyPlanProgress(plan, filepath.Join(dir, "j.json"), func(done, all int) {
+		got = append(got, done)
+		total = all
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 5 {
+		t.Fatalf("总数不对: %d", total)
+	}
+	if len(got) != 6 {
+		t.Fatalf("应当报 5 次 + 收尾 1 次, got %v", got)
+	}
+	for i, v := range got {
+		if v != i {
+			t.Fatalf("进度不连续: %v", got)
+		}
+	}
+}
+
+// nil 进度回调必须和 ApplyPlan 行为一致。
+func TestApplyPlanProgressNilIsSameAsApplyPlan(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "A.TXT")
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rules, err := ParseRules([]string{"case=lower"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := RunPipeline(rules, []string{p})
+	if err := ApplyPlanProgress(plan, filepath.Join(dir, "j.json"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if plan[0].NewName != "a.txt" {
+		t.Fatalf("没改名: %q", plan[0].NewName)
+	}
+}
