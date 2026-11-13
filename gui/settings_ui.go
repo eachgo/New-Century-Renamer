@@ -85,7 +85,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 			// 一点痕迹都没有——用户以为功能不存在。
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).Gap(12).Padding(2, 4).Children(func() {
-					card("AI 接口(OpenAI 兼容)", func() {
+					card("AI 接口（OpenAI 兼容）", func() {
 						row("接口地址", func() {
 							ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
 						})
@@ -93,22 +93,25 @@ func (a *app) settingsDialog(c *ui.Context) {
 							ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
 						})
 						row("API Key", func() {
-							ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…(留空用环境变量 NCREAMER_AI_KEY)").Fill()
+							ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Fill()
 						})
 						row("等待秒数", func() {
-							ui.TextInput(c, &a.aiTimeoutText).Placeholder("300(默认;本地慢模型可调大)").Fill()
+							ui.Row(c).Gap(10).Children(func() {
+								ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
+								ui.Text(c, "本地慢模型可调大").FontSize(12).TextColor(t.TextMuted).Grow(1)
+							})
 						})
 						row("并发路数", func() {
 							ui.Row(c).Gap(10).Children(func() {
-								ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4(默认)")
-								ui.Text(c, "云端 API 常限流填 1;本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
+								ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
+								ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(12).TextColor(t.TextMuted).Grow(1)
 							})
 						})
 						row("默认提示词", func() {
 							ui.Column(c).Gap(4).Fill().Children(func() {
 								ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
-									Placeholder("留空用内置默认:根据文件内容起一个简短的名字")
-								ui.Text(c, "新建「AI 按内容命名」步骤时用它;只写要求,不必重复\"只输出文件名\"这类约束(程序会自动带上)。").
+									Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
+								ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
 									FontSize(11).TextColor(t.TextMuted)
 							})
 						})
@@ -170,7 +173,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 						})
 					})
 					card("设置文件", func() {
-						ui.Text(c, "设置保存在程序目录 "+settingsFile+",可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+						ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
 						ui.Row(c).Gap(8).Children(func() {
 							if ui.Button(c, "导出设置…").Radius(16).Clicked() {
 								go a.exportSettings()
@@ -205,9 +208,9 @@ func (a *app) settingsDialog(c *ui.Context) {
 					if err := SaveSettings(a.settingsDraft); err != nil {
 						// keep the dialog open: the error must be where the
 						// user is looking, not on the covered window behind
-						a.saveErr = "保存失败: " + err.Error()
+						a.saveErr = "保存失败：" + err.Error()
 					} else {
-						a.status = "设置已保存(" + settingsPath() + ")"
+						a.status = "设置已保存（" + settingsPath() + ")"
 						a.saveErr = ""
 						a.closeSettings(true)
 					}
@@ -231,7 +234,7 @@ func (a *app) exportSettings() {
 		return
 	}
 	if err := ExportSettingsTo(out, a.settings); err != nil {
-		a.status = "导出设置失败: " + err.Error()
+		a.status = "导出设置失败：" + err.Error()
 	} else {
 		a.status = "设置已导出到 " + out
 	}
@@ -252,7 +255,7 @@ func (a *app) importSettings() {
 	}
 	s, err := ImportSettingsFrom(paths[0])
 	if err != nil {
-		a.status = fmt.Sprintf("导入设置失败: %v", err)
+		a.status = fmt.Sprintf("导入设置失败：%v", err)
 		a.update()
 		return
 	}

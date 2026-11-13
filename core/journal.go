@@ -84,7 +84,7 @@ type UndoError struct {
 }
 
 func (e *UndoError) Error() string {
-	return fmt.Sprintf("已回滚 %d 个,%d 个失败: %s", e.Done, len(e.Failed), strings.Join(e.Failed, "; "))
+	return fmt.Sprintf("已回滚 %d 个，%d 个失败：%s", e.Done, len(e.Failed), strings.Join(e.Failed, "; "))
 }
 
 func UndoJournal(path string) error {
@@ -119,7 +119,7 @@ func UndoJournal(path string) error {
 	if n > 0 {
 		// 标记为已回滚:再点一次"回滚上次"不该把已经退回去的文件重放一遍。
 		if err := writeJournalFile(path, j); err != nil {
-			return fmt.Errorf("已回滚 %d 个,但日志未能更新: %w", n, err)
+			return fmt.Errorf("已回滚 %d 个，但日志未能更新：%w", n, err)
 		}
 	}
 	if len(failed) > 0 {

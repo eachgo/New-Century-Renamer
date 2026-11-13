@@ -43,7 +43,7 @@ func TestPreviewAsync502ClearsBusy(t *testing.T) {
 	a.steps = []guiRule{r}
 
 	tt := ui.NewTester(a.view, 1280, 720)
-	if err := tt.Click("预览(AI 联网命名)"); err != nil {
+	if err := tt.Click("预览（AI 联网命名）"); err != nil {
 		t.Fatalf("点击预览: %v", err)
 	}
 	// 点击会 go previewAsync();它一进来就把 busyAI 置 true。但在超快机器上

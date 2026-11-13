@@ -367,18 +367,18 @@ func (r nfoRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 	if r.file != "" {
 		info = loadNFOAt(r.file)
 		if info == nil {
-			return name, fmt.Errorf("指定的 NFO 文件读不出内容: %s", r.file)
+			return name, fmt.Errorf("指定的 NFO 文件读不出内容：%s", r.file)
 		}
 	} else {
 		info = loadNFO(dir)
 		if info == nil {
-			return name, fmt.Errorf("文件夹里没有 .nfo 文件,无法按编号命名")
+			return name, fmt.Errorf("文件夹里没有 .nfo 文件，无法按编号命名")
 		}
 	}
 	stem, _ := splitExt(name)
 	num, kind, ok := fileNumber(stem)
 	if !ok {
-		return name, fmt.Errorf("文件名里没有可用的%s,无法与 NFO 对应", "编号")
+		return name, fmt.Errorf("文件名里没有可用的%s，无法与 NFO 对应", "编号")
 	}
 	ep, isEp := info.episodes[num]
 	season := info.season
@@ -396,7 +396,7 @@ func (r nfoRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 	case isEp:
 		title = ep.title
 	case hasEpisodes:
-		return name, fmt.Errorf("NFO 里没有第 %d %s的标题(编号必须与 NFO 准确对应)", num, kind)
+		return name, fmt.Errorf("NFO 里没有第 %d %s的标题（编号必须与 NFO 准确对应）", num, kind)
 	default:
 		title = info.title
 		if title == "" {
@@ -404,7 +404,7 @@ func (r nfoRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 		}
 	}
 	if title == "" {
-		return name, fmt.Errorf("NFO 里找不到对应%s %d 的标题(编号必须与 NFO 准确对应)", kind, num)
+		return name, fmt.Errorf("NFO 里找不到对应%s %d 的标题（编号必须与 NFO 准确对应）", kind, num)
 	}
 	vars := map[string]string{
 		"title":     title,
@@ -510,13 +510,13 @@ func nfoSummary(dir string) string {
 	}
 	var parts []string
 	if info.showtitle != "" {
-		parts = append(parts, "剧名: "+info.showtitle)
+		parts = append(parts, "剧名："+info.showtitle)
 	}
 	if info.title != "" {
-		parts = append(parts, "标题: "+info.title)
+		parts = append(parts, "标题："+info.title)
 	}
 	if info.year != "" {
-		parts = append(parts, "年份: "+info.year)
+		parts = append(parts, "年份："+info.year)
 	}
 	if len(info.episodes) > 0 {
 		parts = append(parts, fmt.Sprintf("NFO 含 %d 集标题", len(info.episodes)))

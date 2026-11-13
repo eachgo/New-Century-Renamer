@@ -55,7 +55,7 @@ func TestPreviewAsyncShowsSpinner(t *testing.T) {
 	// Click the preview button. It must return promptly (async), not block for
 	// the 1.2s model call.
 	start := time.Now()
-	if err := tt.Click("预览(AI 联网命名)"); err != nil {
+	if err := tt.Click("预览（AI 联网命名）"); err != nil {
 		t.Fatalf("点击预览: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {

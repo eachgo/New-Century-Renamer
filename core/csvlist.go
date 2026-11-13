@@ -78,7 +78,7 @@ func ImportCSV(path string) (plan []RenameOp, errs []error) {
 	r.FieldsPerRecord = 4
 	rows, err := r.ReadAll()
 	if err != nil {
-		return nil, []error{fmt.Errorf("CSV 格式: %w", err)}
+		return nil, []error{fmt.Errorf("CSV 格式：%w", err)}
 	}
 	if len(rows) == 0 || strings.EqualFold(rows[0][0], "sha256") {
 		rows = rows[1:] // header
@@ -92,7 +92,7 @@ func ImportCSV(path string) (plan []RenameOp, errs []error) {
 			claimed[filepath.Join(dir, found)] = true
 		}
 		if err != nil {
-			op.Err = fmt.Errorf("第 %d 行: %w", i+2, err)
+			op.Err = fmt.Errorf("第 %d 行：%w", i+2, err)
 			op.ErrText = op.Err.Error()
 			errs = append(errs, op.Err)
 			plan = append(plan, op)
@@ -100,7 +100,7 @@ func ImportCSV(path string) (plan []RenameOp, errs []error) {
 		}
 		op.OldName = found
 		if newName == "" {
-			op.Err = fmt.Errorf("第 %d 行: new_name 为空(留空不改名请与 name 相同)", i+2)
+			op.Err = fmt.Errorf("第 %d 行：new_name 为空（留空不改名请与 name 相同）", i+2)
 			op.ErrText = op.Err.Error()
 			errs = append(errs, op.Err)
 		}
@@ -130,7 +130,7 @@ func locateByFingerprint(sum, dir, name string, claimed map[string]bool) (string
 	}
 	ents, err := os.ReadDir(dir)
 	if err != nil {
-		return "", fmt.Errorf("目录不可读 %s: %w", dir, err)
+		return "", fmt.Errorf("目录不可读 %s：%w", dir, err)
 	}
 	for _, e := range ents {
 		if e.IsDir() {
@@ -144,5 +144,5 @@ func locateByFingerprint(sum, dir, name string, claimed map[string]bool) (string
 			return e.Name(), nil
 		}
 	}
-	return "", fmt.Errorf("找不到指纹 %s… 的文件(内容已改动?)", sum[:12])
+	return "", fmt.Errorf("找不到指纹 %s… 的文件（内容已改动？）", sum[:12])
 }

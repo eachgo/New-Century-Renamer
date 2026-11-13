@@ -32,7 +32,7 @@ func TestUndoButtonShowsWhatItWillUndo(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	if !tt.HasText("回滚上次(3 个)") {
+	if !tt.HasText("回滚上次（3 个）") {
 		t.Fatalf("回滚按钮没说明要回滚几个文件: %v", tt.Texts())
 	}
 }
@@ -58,7 +58,7 @@ func TestUndoNeedsConfirm(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	if err := tt.Click("回滚上次(1 个)"); err != nil {
+	if err := tt.Click("回滚上次（1 个）"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

@@ -102,36 +102,36 @@ func baseRule(kind string) guiRule {
 // catalog is the grouped palette of the left pane. Each entry is a full,
 // named operation ("大小转换 · 全部小写"), not a type plus sub-dropdowns.
 var catalog = []opDef{
-	{id: "filter", icon: "filter", group: "筛选/范围", flow: true, label: "筛选文件", desc: "之后步骤只作用于匹配通配符的文件(如 *.mp3),其余原样通过", make: func() guiRule {
+	{id: "filter", icon: "filter", group: "筛选/范围", flow: true, label: "筛选文件", desc: "之后步骤只作用于匹配通配符的文件（如 *.mp3），其余原样通过", make: func() guiRule {
 		return baseRule("filter")
 	}},
-	{id: "filter.out", icon: "filter.out", group: "筛选/范围", flow: true, label: "排除文件", desc: "排除匹配的文件,其余文件继续被后续步骤处理", make: func() guiRule {
+	{id: "filter.out", icon: "filter.out", group: "筛选/范围", flow: true, label: "排除文件", desc: "排除匹配的文件，其余文件继续被后续步骤处理", make: func() guiRule {
 		r := baseRule("filter")
 		r.invert = true
 		return r
 	}},
-	{id: "unfilter", icon: "unfilter", group: "筛选/范围", flow: true, label: "清除筛选", desc: "取消筛选,恢复全部文件参与后续步骤", make: func() guiRule {
+	{id: "unfilter", icon: "unfilter", group: "筛选/范围", flow: true, label: "清除筛选", desc: "取消筛选，恢复全部文件参与后续步骤", make: func() guiRule {
 		return baseRule("unfilter")
 	}},
-	{id: "scope.name", icon: "scope.name", group: "筛选/范围", flow: true, label: "选取文件名", desc: "之后步骤只改文件名主体,不动扩展名", make: func() guiRule {
+	{id: "scope.name", icon: "scope.name", group: "筛选/范围", flow: true, label: "选取文件名", desc: "之后步骤只改文件名主体，不动扩展名", make: func() guiRule {
 		r := baseRule("scope")
 		r.scopeSel = "文件名"
 		return r
 	}},
-	{id: "scope.ext", icon: "scope.ext", group: "筛选/范围", flow: true, label: "选取扩展名", desc: "之后步骤只改扩展名,不动文件名主体", make: func() guiRule {
+	{id: "scope.ext", icon: "scope.ext", group: "筛选/范围", flow: true, label: "选取扩展名", desc: "之后步骤只改扩展名，不动文件名主体", make: func() guiRule {
 		r := baseRule("scope")
 		r.scopeSel = "扩展名"
 		return r
 	}},
-	{id: "scope.all", icon: "scope.all", group: "筛选/范围", flow: true, label: "恢复整体", desc: "之后步骤作用于完整文件名(默认)", make: func() guiRule {
+	{id: "scope.all", icon: "scope.all", group: "筛选/范围", flow: true, label: "恢复整体", desc: "之后步骤作用于完整文件名（默认）", make: func() guiRule {
 		r := baseRule("scope")
 		r.scopeSel = "整体"
 		return r
 	}},
-	{id: "pinyin", icon: "pinyin", group: "转换", label: "文件名转拼音", desc: "汉字转拼音,全角字母数字自动转半角", make: func() guiRule {
+	{id: "pinyin", icon: "pinyin", group: "转换", label: "文件名转拼音", desc: "汉字转拼音，全角字母数字自动转半角", make: func() guiRule {
 		return baseRule("pinyin")
 	}},
-	{id: "sanitize", icon: "sanitize", group: "转换", label: "非法字符转全角", desc: "Windows 保留字符(如 : / ? *)转为全角,信息不丢失", make: func() guiRule {
+	{id: "sanitize", icon: "sanitize", group: "转换", label: "非法字符转全角", desc: "Windows 保留字符（如 : / ? *）转为全角，信息不丢失", make: func() guiRule {
 		return baseRule("sanitize")
 	}},
 	{id: "cc.s2t", icon: "cc.s2t", group: "转换", label: "简体转繁体", desc: "用 OpenCC 词典把文件名转为繁体", make: func() guiRule {
@@ -144,7 +144,7 @@ var catalog = []opDef{
 		r.ccSel = "繁体→简体"
 		return r
 	}},
-	{id: "romaji", icon: "romaji", group: "转换", label: "假名转罗马音", desc: "平假名/片假名转拉丁字母(汉字保留)", make: func() guiRule {
+	{id: "romaji", icon: "romaji", group: "转换", label: "假名转罗马音", desc: "平假名/片假名转拉丁字母（汉字保留）", make: func() guiRule {
 		return baseRule("romaji")
 	}},
 	{id: "case.upper", icon: "case.upper", group: "大小写", label: "全部转大写", desc: "文件名所有字母转大写", make: func() guiRule {
@@ -157,7 +157,7 @@ var catalog = []opDef{
 		r.caseMode = "小写"
 		return r
 	}},
-	{id: "case.title", icon: "case.title", group: "大小写", label: "单词首字母大写", desc: "每个单词首字母大写(标题式)", make: func() guiRule {
+	{id: "case.title", icon: "case.title", group: "大小写", label: "单词首字母大写", desc: "每个单词首字母大写（标题式）", make: func() guiRule {
 		r := baseRule("case")
 		r.caseMode = "标题"
 		return r
@@ -180,7 +180,7 @@ var catalog = []opDef{
 		r.insMode = "front"
 		return r
 	}},
-	{id: "ins.end", icon: "ins.end", group: "结构", label: "文件名后添加", desc: "在文件名主体末尾(扩展名之前)插入文字", make: func() guiRule {
+	{id: "ins.end", icon: "ins.end", group: "结构", label: "文件名后添加", desc: "在文件名主体末尾（扩展名之前）插入文字", make: func() guiRule {
 		r := baseRule("insert")
 		r.insMode = "end"
 		return r
@@ -194,7 +194,7 @@ var catalog = []opDef{
 	{id: "truncate", icon: "truncate", group: "结构", label: "截断长度", desc: "文件名主体最多保留 N 个字符", make: func() guiRule {
 		return baseRule("truncate")
 	}},
-	{id: "ext", icon: "ext", group: "扩展名", label: "修改扩展名", desc: "替换扩展名;填空则删除扩展名", make: func() guiRule {
+	{id: "ext", icon: "ext", group: "扩展名", label: "修改扩展名", desc: "替换扩展名；填空则删除扩展名", make: func() guiRule {
 		return baseRule("ext")
 	}},
 	{id: "ext.del", icon: "ext.del", group: "扩展名", label: "删除扩展名", desc: "去掉文件的扩展名", make: func() guiRule {
@@ -202,25 +202,25 @@ var catalog = []opDef{
 		r.newExt = ""
 		return r
 	}},
-	{id: "seq", icon: "seq", group: "编号", label: "追加序号", desc: "文件名末尾追加编号;可分组重新计数、补零、用字母", make: func() guiRule {
+	{id: "seq", icon: "seq", group: "编号", label: "追加序号", desc: "文件名末尾追加编号；可分组重新计数、补零、用字母", make: func() guiRule {
 		return baseRule("seq")
 	}},
-	{id: "seq.prefix", icon: "seq.prefix", group: "编号", label: "序号前缀", desc: "编号放文件名前面,如 01-原名", make: func() guiRule {
+	{id: "seq.prefix", icon: "seq.prefix", group: "编号", label: "序号前缀", desc: "编号放文件名前面，如 01-原名", make: func() guiRule {
 		r := baseRule("seq")
 		r.numTpl = "<N>-<NAME><.EXT>"
 		return r
 	}},
-	{id: "meta.title", icon: "meta.title", group: "元数据", label: "用标题命名", desc: "用元数据标题(EPUB/MP4/PDF)作为文件名", make: func() guiRule {
+	{id: "meta.title", icon: "meta.title", group: "元数据", label: "用标题命名", desc: "用元数据标题（EPUB/MP4/PDF）作为文件名", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<META:title><.EXT>"
 		return r
 	}},
-	{id: "meta.author", icon: "meta.author", group: "元数据", label: "作者 - 标题", desc: "用元数据的作者和标题命名,如 作者 - 书名", make: func() guiRule {
+	{id: "meta.author", icon: "meta.author", group: "元数据", label: "作者 - 标题", desc: "用元数据的作者和标题命名，如 作者 - 书名", make: func() guiRule {
 		r := baseRule("template")
 		r.tpl = "<META:author> - <META:title><.EXT>"
 		return r
 	}},
-	{id: "meta.nfo", icon: "meta.nfo", group: "元数据", label: "按 NFO 编号命名", desc: "读同文件夹的 .nfo,按文件编号匹配该集的标题来命名(适合剧集/压制包)", make: func() guiRule {
+	{id: "meta.nfo", icon: "meta.nfo", group: "元数据", label: "按 NFO 编号命名", desc: "读同文件夹的 .nfo，按文件编号匹配该集的标题来命名（适合剧集/压制包）", make: func() guiRule {
 		r := baseRule("nfo")
 		r.tpl = ""
 		return r
@@ -230,17 +230,17 @@ var catalog = []opDef{
 		r.tpl = "<NAME>_<DATE><.EXT>"
 		return r
 	}},
-	{id: "ai", icon: "ai", group: "智能", label: "AI 按内容命名", desc: "调用 AI 接口读文件内容,按内容起名(需在设置里配置)", make: func() guiRule {
+	{id: "ai", icon: "ai", group: "智能", label: "AI 按内容命名", desc: "调用 AI 接口读文件内容，按内容起名（需在设置里配置）", make: func() guiRule {
 		r := baseRule("template")
 		// 用用户在设置里保存的默认提示词;没有就用内置默认。
 		r.tpl = "<AI:" + core.DefaultAIPrompt() + "><.EXT>"
 		return r
 	}},
-	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名,可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
+	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名，可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
 		return baseRule("template")
 	}},
-	{id: "act.import-csv", icon: "act.import-csv", group: "高级", label: "导入编辑好的CSV改名", desc: "按导出的 CSV 列表(new_name 列)批量改名;点击立即执行,不加入步骤", act: "import-csv"},
-	{id: "act.settings", icon: "act.settings", group: "高级", label: "设置", desc: "AI 接口、主题颜色、日志位置;点击打开设置窗口,不加入步骤", act: "settings"},
+	{id: "act.import-csv", icon: "act.import-csv", group: "高级", label: "导入编辑好的CSV改名", desc: "按导出的 CSV 列表（new_name 列）批量改名；点击立即执行，不加入步骤", act: "import-csv"},
+	{id: "act.settings", icon: "act.settings", group: "高级", label: "设置", desc: "AI 接口、主题颜色、日志位置；点击打开设置窗口，不加入步骤", act: "settings"},
 }
 
 func opByID(id string) (opDef, bool) {
@@ -404,9 +404,9 @@ func (r *guiRule) summary() string {
 		if r.numBase == "字母" {
 			unit = r.numCase + "字母"
 		}
-		desc := fmt.Sprintf("%s,从 %d 起,步长 %d,补 %d 位,%s", unit, int(r.seqStart), int(r.seqStep), int(r.seqWidth), r.numGroup)
+		desc := fmt.Sprintf("%s，从 %d 起，步长 %d，补 %d 位，%s", unit, int(r.seqStart), int(r.seqStep), int(r.seqWidth), r.numGroup)
 		if r.numTpl != "" {
-			desc += ",模板 " + r.numTpl
+			desc += "，模板 " + r.numTpl
 		}
 		return desc
 	case "nfo":
@@ -415,7 +415,7 @@ func (r *guiRule) summary() string {
 			base = t
 		}
 		if f := strings.TrimSpace(r.nfoFile); f != "" {
-			base += " (指定 NFO)"
+			base += "（指定 NFO）"
 		}
 		return base
 	}
@@ -475,13 +475,13 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme) {
 			ui.Text(c, "/").TextColor(t.TextMuted)
 			ui.NumberInput(c, &r.seqStep, -999, 999, 1).Width(70)
 		})
-		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>,空=追加").FillWidth() })
+		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>，空=追加").FillWidth() })
 	case "nfo":
 		pline("命名模板", func() {
-			ui.TextInput(c, &r.tpl).Placeholder("空=<剧名 - S01E01 - 标题>;可用 <NFO:title> <NFO:showtitle> <NFO:year> <NFO:episode>").FillWidth()
+			ui.TextInput(c, &r.tpl).Placeholder("空=<剧名 - S01E01 - 标题>；可用 <NFO:title> <NFO:showtitle> <NFO:year> <NFO:episode>").FillWidth()
 		})
 		pline("NFO 文件", func() {
-			ui.TextInput(c, &r.nfoFile).Placeholder("留空=同文件夹的 .nfo;或填某个 .nfo 的完整路径").FillWidth()
+			ui.TextInput(c, &r.nfoFile).Placeholder("留空=同文件夹的 .nfo；或填某个 .nfo 的完整路径").FillWidth()
 		})
 	}
 }

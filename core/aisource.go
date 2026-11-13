@@ -622,14 +622,14 @@ func epubText(path string) string {
 func zipListing(path string) string {
 	zr, err := zip.OpenReader(path)
 	if err != nil {
-		return "(压缩包打不开, 仅凭文件名和大小推断)"
+		return "（压缩包打不开，仅凭文件名和大小推断）"
 	}
 	defer zr.Close()
 
 	var b strings.Builder
 	b.WriteString("压缩包内有 ")
 	b.WriteString(itoa(len(zr.File)))
-	b.WriteString(" 个条目:\n")
+	b.WriteString(" 个条目：\n")
 	shown := 0
 	for _, f := range zr.File {
 		if shown >= zipListMax {
@@ -642,7 +642,7 @@ func zipListing(path string) string {
 		name := filepath.Base(f.Name)
 		if f.NonUTF8 {
 			// GBK 名字在 Go 眼里是乱码,标出来,别让模型照着乱码编。
-			name = filepath.Base(f.Name) + "(编码非 UTF-8)"
+			name = filepath.Base(f.Name) + "（编码非 UTF-8）"
 		}
 		if len(name) > zipListName {
 			name = name[:zipListName] + "…"
@@ -663,7 +663,7 @@ func zipListing(path string) string {
 				c, _ := io.ReadAll(io.LimitReader(rc, 1200))
 				rc.Close()
 				if t := cleanSnippet(string(c)); t != "" {
-					b.WriteString("\n附带说明文字:\n")
+					b.WriteString("\n附带说明文字：\n")
 					b.WriteString(t)
 					b.WriteByte('\n')
 				}
@@ -688,12 +688,12 @@ func exifSummary(path string) string {
 
 	i := bytes.Index(head, []byte("Exif\x00\x00"))
 	if i < 0 {
-		return "(图片, 无 EXIF)"
+		return "（图片，无 EXIF）"
 	}
 	tiff := head[i+6:]
 	consts := exifFields(tiff)
 	if len(consts) == 0 {
-		return "(图片, EXIF 里没有可读字段)"
+		return "（图片，EXIF 里没有可读字段）"
 	}
 	var parts []string
 	for _, k := range []string{"Model", "Make", "DateTimeOriginal", "DateTime"} {
@@ -702,7 +702,7 @@ func exifSummary(path string) string {
 		}
 	}
 	if len(parts) == 0 {
-		return "(图片, EXIF 里没有拍摄信息)"
+		return "（图片，EXIF 里没有拍摄信息）"
 	}
 	return "EXIF: " + strings.Join(parts, "; ")
 }

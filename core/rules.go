@@ -41,7 +41,7 @@ func ParseRules(specs []string) ([]Rule, error) {
 		if rest, ok := strings.CutPrefix(spec, "if:"); ok {
 			pat, inner, ok := strings.Cut(rest, ">>")
 			if !ok {
-				return nil, fmt.Errorf("规则 %d: if: 前缀缺少 >> 分隔符", i+1)
+				return nil, fmt.Errorf("规则 %d：if 前缀缺少 >> 分隔符", i+1)
 			}
 			filter, spec = pat, inner
 		}
@@ -52,7 +52,7 @@ func ParseRules(specs []string) ([]Rule, error) {
 		switch name {
 		case "template":
 			if len(args) < 1 {
-				return nil, fmt.Errorf("规则 %d: template 需要模板参数", i+1)
+				return nil, fmt.Errorf("规则 %d：template 需要模板参数", i+1)
 			}
 			r = templateRule(spec[strings.Index(spec, "=")+1:])
 		case "replace":
@@ -80,7 +80,7 @@ func ParseRules(specs []string) ([]Rule, error) {
 			r = unfilterStep{}
 		case "cc":
 			if argstr != "s2t" && argstr != "t2s" {
-				return nil, fmt.Errorf("规则 %d: cc 需要 s2t 或 t2s", i+1)
+				return nil, fmt.Errorf("规则 %d：cc 需要 s2t 或 t2s", i+1)
 			}
 			r = ccRule(argstr)
 		case "romaji":
@@ -95,10 +95,10 @@ func ParseRules(specs []string) ([]Rule, error) {
 			// folder's own.
 			r, err = newNFORule(argstr)
 		default:
-			return nil, fmt.Errorf("规则 %d: 未知规则 %q", i+1, name)
+			return nil, fmt.Errorf("规则 %d：未知规则 %q", i+1, name)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("规则 %d (%s): %w", i+1, name, err)
+			return nil, fmt.Errorf("规则 %d（%s）：%w", i+1, name, err)
 		}
 		if filter != "" {
 			r = filteredRule{pattern: filter, inner: r}
@@ -205,7 +205,7 @@ func (t templateRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 	// 必须走两个出口:前者是错误,后者是正常跳过。混在一起时界面只会说
 	// "0 个将更名",用户以为程序坏了却找不到原因——变化视盲的教科书案例。
 	if bad := badMetaRefs(tpl); len(bad) > 0 {
-		return name, fmt.Errorf("模板里的变量写错了: %s", strings.Join(bad, "、"))
+		return name, fmt.Errorf("模板里的变量写错了：%s", strings.Join(bad, "、"))
 	}
 	// 模板里用到的 META 变量若全部为空(文件没有元数据),跳过该文件:
 	// 否则 "作者 - 标题" 会退化成 " - ",把所有无元数据的文件改名成同一个
@@ -225,7 +225,7 @@ func (t templateRule) Apply(ctx *Ctx, dir, name string) (string, error) {
 	// 展开之后还留着 <…> 形状的,是不认识的变量名。不报错的话它会原样
 	// 进到文件名里(或者被后面 sanitize 悄悄删掉),用户完全看不出哪里错了。
 	if unknown := unknownVars(out); len(unknown) > 0 {
-		return name, fmt.Errorf("模板里有不认识的变量: %s", strings.Join(unknown, "、"))
+		return name, fmt.Errorf("模板里有不认识的变量：%s", strings.Join(unknown, "、"))
 	}
 	if strings.TrimSpace(out) == "" || strings.TrimSpace(splitExtStem(out)) == "" {
 		return name, nil
@@ -312,7 +312,7 @@ type replaceRule struct {
 
 func newReplaceRule(args []string) (Rule, error) {
 	if len(args) < 2 {
-		return nil, fmt.Errorf("需要 OLD,NEW 参数")
+		return nil, fmt.Errorf("需要 OLD、NEW 参数")
 	}
 	r := &replaceRule{old: args[0], new: args[1]}
 	if val(args, 2) == "regex" {
@@ -372,7 +372,7 @@ type insertRule struct {
 
 func newInsertRule(args []string) (Rule, error) {
 	if len(args) < 2 {
-		return nil, fmt.Errorf("需要 POS,TEXT 参数")
+		return nil, fmt.Errorf("需要 POS、TEXT 参数")
 	}
 	if args[0] == "end" {
 		return insertRule{end: true, text: args[1]}, nil
@@ -400,12 +400,12 @@ type deleteRule struct {
 
 func newDeleteRule(args []string) (Rule, error) {
 	if len(args) < 2 {
-		return nil, fmt.Errorf("需要 POS,LEN 参数")
+		return nil, fmt.Errorf("需要 POS、LEN 参数")
 	}
 	pos, err1 := strconv.Atoi(args[0])
 	n, err2 := strconv.Atoi(args[1])
 	if err1 != nil || err2 != nil {
-		return nil, fmt.Errorf("POS,LEN 需为整数")
+		return nil, fmt.Errorf("POS、LEN 需为整数")
 	}
 	return deleteRule{pos, n}, nil
 }

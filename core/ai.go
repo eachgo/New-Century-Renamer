@@ -101,7 +101,7 @@ func describeAIError(err error) error {
 	}
 	var nerr net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout()) {
-		return fmt.Errorf("AI 接口超时(服务器无响应): %w", err)
+		return fmt.Errorf("AI 接口超时（服务器无响应）：%w", err)
 	}
 	return err
 }
@@ -135,7 +135,9 @@ func isFatalAIError(err error) bool {
 	// (429), and auth (401/403). Any of these means waiting on the other files
 	// is pointless — stop the task now.
 	for _, code := range []string{" 500", " 502", " 503", " 504", " 429", " 401", " 403"} {
-		if strings.Contains(msg, code+":") {
+		// Both colons: the message is Chinese prose now ("AI 接口 502：…"),
+		// and a full-width colon must not silently disable the breaker.
+		if strings.Contains(msg, code+":") || strings.Contains(msg, code+"：") {
 			return true
 		}
 	}
@@ -192,9 +194,9 @@ func DefaultAIPrompt() string {
 // the user has saved a custom instruction it is appended as their preference so
 // the model still gets the hard constraints it must not break.
 func aiSystemPrompt() string {
-	base := "你是文件更名助手。根据用户给出的文件名、类型、内容片段和指示,只输出一个适合用作文件名的简短文本片段(不要引号、不要解释、不要文件扩展名、不要换行,保留关键信息,可用中文)。"
+	base := "你是文件更名助手。根据用户给出的文件名、类型、内容片段和指示，只输出一个适合用作文件名的简短文本片段（不要引号、不要解释、不要文件扩展名、不要换行，保留关键信息，可用中文）。"
 	if p := strings.TrimSpace(aiPromptOverride); p != "" {
-		base += "用户另有要求,须优先遵守: " + p
+		base += "用户另有要求，须优先遵守：" + p
 	}
 	return base
 }
@@ -205,7 +207,7 @@ func aiGenerate(path, instruction string) (string, error) {
 		return "", fmt.Errorf("未设置 NCREAMER_AI_KEY")
 	}
 	snippet := contentSnippet(path)
-	user := fmt.Sprintf("文件名: %s\n文件类型: %s\n%s\n文件内容片段:\n%s",
+	user := fmt.Sprintf("文件名：%s\n文件类型：%s\n%s\n文件内容片段：\n%s",
 		filepath.Base(path), strings.TrimPrefix(filepath.Ext(path), "."), instruction, snippet)
 	body, _ := json.Marshal(map[string]any{
 		"model":       model,
@@ -230,7 +232,7 @@ func aiGenerate(path, instruction string) (string, error) {
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("AI 接口 %d: %s", resp.StatusCode, truncate(string(rb), 200))
+		return "", fmt.Errorf("AI 接口 %d：%s", resp.StatusCode, truncate(string(rb), 200))
 	}
 	var out struct {
 		Choices []struct {
@@ -287,7 +289,7 @@ func contentSnippet(path string) string {
 		case "mkv", "webm", "mka", "mks":
 			parts = append(parts, mkvSummary(path))
 		case "tar", "gz", "tgz", "bz2", "xz", "7z", "rar":
-			parts = append(parts, "(压缩包, 无法解出目录: 仅凭文件名和大小推断)")
+			parts = append(parts, "（压缩包，无法解出目录：仅凭文件名和大小推断）")
 		case "jpg", "jpeg", "tif", "tiff", "webp", "heic", "png":
 			parts = append(parts, exifSummary(path))
 		}
@@ -307,14 +309,14 @@ func contentSnippet(path string) string {
 			}
 		}
 		if len(kv) > 0 {
-			parts = append(parts, "元数据: "+strings.Join(kv, "; "))
+			parts = append(parts, "元数据："+strings.Join(kv, "; "))
 		}
 	}
 
 	joined := strings.TrimSpace(strings.Join(parts, "\n"))
 	if joined == "" {
 		// Nothing readable: say so, so the model leans on the name and type.
-		return fmt.Sprintf("(无可用文本, 文件大小 %s)", humanSize(path))
+		return fmt.Sprintf("（无可用文本，文件大小 %s）", humanSize(path))
 	}
 	return truncate(joined, 6000)
 }
@@ -380,13 +382,13 @@ func mkvSummary(path string) string {
 	m := mkvMeta(path)
 	var parts []string
 	if v := m["title"]; v != "" {
-		parts = append(parts, "Matroska 标题: "+v)
+		parts = append(parts, "Matroska 标题："+v)
 	}
 	if v := m["muxer"]; v != "" {
-		parts = append(parts, "封装工具: "+v)
+		parts = append(parts, "封装工具："+v)
 	}
 	if len(parts) == 0 {
-		return "(视频容器, 无内嵌标题: 仅凭文件名推断)"
+		return "（视频容器，无内嵌标题：仅凭文件名推断）"
 	}
 	return strings.Join(parts, "; ")
 }

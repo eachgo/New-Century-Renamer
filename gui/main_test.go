@@ -612,7 +612,7 @@ func TestCatalogHintIsActionable(t *testing.T) {
 	if tt.HasText("把鼠标停在功能上,这里会说明它做什么") {
 		t.Fatal("默认文案要求悬停,键盘/触摸用户拿不到说明")
 	}
-	if !tt.HasText("点一个功能,它就加入中栏;步骤从上到下依次执行") {
+	if !tt.HasText("点一个功能，它就加入中栏；步骤从上到下依次执行") {
 		t.Error("缺少行动指引")
 	}
 }
@@ -787,7 +787,7 @@ func TestSettingsCardsReachableAtAnyHeight(t *testing.T) {
 				tt.Frame()
 			}
 		}
-		for _, want := range []string{"AI 接口(OpenAI 兼容)", "文件"} {
+		for _, want := range []string{"AI 接口（OpenAI 兼容）", "文件"} {
 			if !visible(want) {
 				t.Errorf("h=%d 开头看不到卡片 %q", h, want)
 			}

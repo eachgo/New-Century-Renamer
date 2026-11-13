@@ -37,8 +37,8 @@ func fakeAI(t *testing.T, content func(name string) string) (*httptest.Server, *
 		name := ""
 		if len(req.Messages) > 1 {
 			for _, line := range strings.Split(req.Messages[1].Content, "\n") {
-				if strings.HasPrefix(line, "文件名: ") {
-					name = strings.TrimPrefix(line, "文件名: ")
+				if strings.HasPrefix(line, "文件名：") {
+					name = strings.TrimPrefix(line, "文件名：")
 				}
 			}
 		}
@@ -106,9 +106,9 @@ func TestAIBatchRunsConcurrently(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&req)
 		if len(req.Messages) > 1 {
 			for _, line := range strings.Split(req.Messages[1].Content, "\n") {
-				if strings.HasPrefix(line, "文件名: ") {
+				if strings.HasPrefix(line, "文件名：") {
 					mu.Lock()
-					seen[strings.TrimPrefix(line, "文件名: ")] = true
+					seen[strings.TrimPrefix(line, "文件名：")] = true
 					mu.Unlock()
 				}
 			}
@@ -269,8 +269,8 @@ func TestAIEmptyAnswerDoesNotTripBreaker(t *testing.T) {
 		name := ""
 		if len(req.Messages) > 1 {
 			for _, line := range strings.Split(req.Messages[1].Content, "\n") {
-				if strings.HasPrefix(line, "文件名: ") {
-					name = strings.TrimPrefix(line, "文件名: ")
+				if strings.HasPrefix(line, "文件名：") {
+					name = strings.TrimPrefix(line, "文件名：")
 				}
 			}
 		}

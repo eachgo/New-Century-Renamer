@@ -71,7 +71,7 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 		for ri, rule := range rules {
 			next, err := applyRule(ctx, dir, cur, rule)
 			if err != nil {
-				op.Err = fmt.Errorf("规则 %d (%T): %w", ri+1, rule, err)
+				op.Err = fmt.Errorf("规则 %d（%T）：%w", ri+1, rule, err)
 				break
 			}
 			cur = next
@@ -153,7 +153,7 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 			defer func() { <-sem }()
 			if atomic.LoadInt32(&aborted) != 0 {
 				mu.Lock()
-				aiErrs[j.file] = fmt.Errorf("%s: AI: 已跳过(服务器无响应,批量已中止)", j.file)
+				aiErrs[j.file] = fmt.Errorf("%s：AI 已跳过（服务器无响应，批量已中止）", j.file)
 				delete(cache, j.key)
 				mu.Unlock()
 				return
@@ -246,7 +246,7 @@ func preflight(plan []RenameOp) {
 		}
 		k := [2]string{op.Dir, op.NewName}
 		if targets[k].count > 1 {
-			op.Err = fmt.Errorf("新名字与其他 %d 个文件相同,批量执行会互相覆盖", targets[k].count-1)
+			op.Err = fmt.Errorf("新名字与其他 %d 个文件相同，批量执行会互相覆盖", targets[k].count-1)
 			op.ErrText = op.Err.Error()
 			continue
 		}
@@ -269,7 +269,7 @@ func preflight(plan []RenameOp) {
 			continue
 		}
 		if strings.ContainsAny(op.NewName, `/\`) {
-			op.Err = fmt.Errorf("新名字里有路径分隔符,会把文件移动到别的目录;更名器只改名不移动文件")
+			op.Err = fmt.Errorf("新名字里有路径分隔符，会把文件移动到别的目录；更名器只改名不移动文件")
 			op.ErrText = op.Err.Error()
 		}
 	}
@@ -390,7 +390,7 @@ func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, tota
 				// 只报文件名,不报绝对路径:界面上一行放不下整条路径,
 				// 省略号会从右边吃掉——被截掉的恰好是文件名本身,
 				// 于是错误等于没写。
-				op.Err = fmt.Errorf("目标已存在同名文件: %s", op.NewName)
+				op.Err = fmt.Errorf("目标已存在同名文件：%s", op.NewName)
 				op.ErrText = op.Err.Error()
 				continue
 			}

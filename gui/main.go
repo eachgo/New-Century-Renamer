@@ -185,7 +185,7 @@ func (a *app) statusBar(c *ui.Context) {
 			ui.Spinner(c)
 			label := "处理中…"
 			if a.busyAI {
-				label = "正在联网命名,模型思考中…"
+				label = "正在联网命名，模型思考中…"
 			}
 			if !a.busyStart.IsZero() {
 				if sec := int(time.Since(a.busyStart).Seconds()); sec >= 1 {
@@ -231,7 +231,7 @@ func (a *app) statusBar(c *ui.Context) {
 		} else {
 			undoLabel := "回滚上次"
 			if canUndo {
-				undoLabel = fmt.Sprintf("回滚上次(%d 个)", len(sum.Names))
+				undoLabel = fmt.Sprintf("回滚上次（%d 个）", len(sum.Names))
 			}
 			undoBtn := outlinedButton(c, undoLabel, !a.busy && canUndo).Tooltip(a.undoTip(sum))
 			if undoBtn.Clicked() {
@@ -337,7 +337,7 @@ func (a *app) catalogView(c *ui.Context) {
 			if a.palHint != "" {
 				ui.Text(c, a.palHint).FontSize(12).TextColor(t.TextMuted)
 			} else {
-				ui.Text(c, "点一个功能,它就加入中栏;步骤从上到下依次执行").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "点一个功能，它就加入中栏；步骤从上到下依次执行").FontSize(12).TextColor(t.TextMuted)
 			}
 		})
 	})
@@ -392,7 +392,7 @@ func (a *app) stepsView(c *ui.Context) {
 	ui.Column(c).Fill().Gap(8).Padding(10, 10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, fmt.Sprintf("任务步骤(%d)", len(a.steps))).Bold().FontSize(13)
+			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(13)
 			ui.Spacer(c)
 			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
 			label := "多选"
@@ -410,7 +410,7 @@ func (a *app) stepsView(c *ui.Context) {
 		// 选中时行内的彩色胶囊必须保持可读
 		if len(a.steps) == 0 {
 			ui.Column(c).Grow(1).Center().Children(func() {
-				ui.Text(c, "从左侧“功能”里点一个,它就成为这一步").TextColor(t.TextMuted)
+				ui.Text(c, "从左侧“功能”里点一个，它就成为这一步").TextColor(t.TextMuted)
 			})
 		} else {
 			dt := a.currentTheme()
@@ -803,7 +803,7 @@ func (a *app) filesView(c *ui.Context) {
 		// ② AI 预览:也是"文件列表"上的操作(对清单里的文件联网起名),留在顶部
 		if a.hasAIStep() {
 			ui.Row(c).Gap(8).Wrap().Children(func() {
-				previewLabel := "预览(AI 联网命名)"
+				previewLabel := "预览（AI 联网命名）"
 				if a.busyAI {
 					previewLabel = "联网命名中…"
 				}
@@ -814,8 +814,8 @@ func (a *app) filesView(c *ui.Context) {
 		}
 		if len(a.files) == 0 {
 			ui.Column(c).Grow(1).Center().Gap(10).Children(func() {
-				ui.Text(c, "批量更名:左边挑处理步骤,这里放文件,改名会实时预览").FontSize(13).TextColor(t.Text)
-				ui.Text(c, "把文件或文件夹拖进窗口,或点“添加文件…”").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "批量更名：左边挑处理步骤，这里放文件，改名会实时预览").FontSize(13).TextColor(t.Text)
+				ui.Text(c, "把文件或文件夹拖进窗口，或点“添加文件…”").FontSize(12).TextColor(t.TextMuted)
 			})
 		} else {
 			dt := a.currentTheme()
@@ -999,7 +999,7 @@ func (a *app) filesView(c *ui.Context) {
 									return
 								}
 								x := ui.ButtonBase(c).Size(18, 18).Radius(9).Padding(0).
-									Background(t.Danger.Alpha(0.12)).Tooltip("从列表移除 (Delete)")
+									Background(t.Danger.Alpha(0.12)).Tooltip("从列表移除（Delete）")
 								x.Children(func() {
 									ui.Text(c, "×").FontSize(12).TextColor(t.Danger)
 								})
@@ -1028,7 +1028,7 @@ func (a *app) filesView(c *ui.Context) {
 							if f.realType != "" && !realMatchesExt(extNoDot, f.realType) {
 								ui.Text(c, "内容为 "+f.realType+" 容器").FontSize(11).Padding(1, 6).Radius(6).
 									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).
-									Tooltip("扩展名是 ." + extNoDot + ",但文件内容像 " + f.realType)
+									Tooltip("扩展名是 ." + extNoDot + "，但文件内容像 " + f.realType)
 							} else if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
 								ui.Text(c, f.typ).FontSize(11).Padding(1, 6).Radius(6).
 									Background(t.SurfaceHover).TextColor(t.TextMuted)
@@ -1187,7 +1187,7 @@ func filepathSplitName(name string) (stem, ext string) {
 func (a *app) resultText(op core.RenameOp) string {
 	switch {
 	case op.Err != nil:
-		return "失败: " + op.Err.Error()
+		return "失败：" + op.Err.Error()
 	case op.Applied:
 		return "成功"
 	case a.applied:
@@ -1247,7 +1247,7 @@ func (a *app) addPaths(paths []string) {
 		}
 	}
 	a.assignExtColors(a.currentTheme())
-	a.status = fmt.Sprintf("已添加,共 %d 个文件", len(a.files))
+	a.status = fmt.Sprintf("已添加，共 %d 个文件", len(a.files))
 	a.confirmClear = false
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	// AI 步骤不能在这里自动预览:preview() 是同步的,一旦含 <AI:…> 就会在
@@ -1319,7 +1319,7 @@ func (a *app) exportCSV() {
 func (a *app) exportTo(path string) error {
 	f, err := os.Create(path)
 	if err != nil {
-		a.status = "导出失败: " + err.Error()
+		a.status = "导出失败：" + err.Error()
 		a.update()
 		return err
 	}
@@ -1329,11 +1329,11 @@ func (a *app) exportTo(path string) error {
 		paths[i] = a.files[i].path
 	}
 	if err := core.ExportCSV(f, paths); err != nil {
-		a.status = "导出失败: " + err.Error()
+		a.status = "导出失败：" + err.Error()
 		a.update()
 		return err
 	}
-	a.status = fmt.Sprintf("已导出 %d 行到 %s;编辑 new_name 列后点“导入CSV”", len(a.files), path)
+	a.status = fmt.Sprintf("已导出 %d 行到 %s；编辑 new_name 列后点“导入CSV”", len(a.files), path)
 	a.update()
 	return nil
 }
@@ -1370,9 +1370,9 @@ func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
 		a.files = append(a.files, fi)
 	}
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
-	a.status = fmt.Sprintf("已导入 %d 行,%d 个将更名", len(plan), countChanges(plan))
+	a.status = fmt.Sprintf("已导入 %d 行，%d 个将更名", len(plan), countChanges(plan))
 	if len(errs) > 0 {
-		a.status += fmt.Sprintf(",%d 个有问题", len(errs))
+		a.status += fmt.Sprintf("，%d 个有问题", len(errs))
 	}
 	a.update()
 	return plan, errs
@@ -1446,7 +1446,7 @@ func (a *app) previewAsync() {
 	a.busy = true
 	a.busyAI = true
 	a.busyStart = time.Now()
-	a.status = "正在联网命名,模型思考中…"
+	a.status = "正在联网命名，模型思考中…"
 	a.update()
 	// Tick the UI once a second so the wait shows live elapsed seconds instead of
 	// a frozen spinner. The user can tell it's working, not hung.
@@ -1487,7 +1487,7 @@ func (a *app) preview() {
 	a.ops = ops
 	a.status = fmt.Sprintf("%d 个将更名", countChanges(ops))
 	if n := countErrs(ops); n > 0 {
-		a.status += fmt.Sprintf(",%d 个有问题", n)
+		a.status += fmt.Sprintf("，%d 个有问题", n)
 		// 把第一个原因也说出来。只说"有问题"时用户要自己一行行找红字,
 		// 而模板写错这类问题是所有文件同一个原因,说一次就够了。
 		if msg := firstErrText(ops); msg != "" {
@@ -1495,7 +1495,7 @@ func (a *app) preview() {
 		}
 	}
 	if a.hasAIStep() && strings.Contains(strings.Join(a.stepSpecs(), ""), "<AI:") {
-		a.status += " ·含 AI 步骤,点“预览”联网获取命名"
+		a.status += " ·含 AI 步骤，点“预览”联网获取命名"
 	}
 	// no update() here: preview usually runs inside the view pass (live
 	// preview), and updating mid-pass rebuilds the tree and loses scroll
@@ -1721,7 +1721,7 @@ func (a *app) apply() {
 	a.busyDone, a.busyTotal = 0, 0
 	a.applied = true
 	if err != nil {
-		a.status = "执行出错: " + err.Error()
+		a.status = "执行出错：" + err.Error()
 	} else {
 		ok, failed := 0, 0
 		for _, op := range a.ops {
@@ -1735,12 +1735,12 @@ func (a *app) apply() {
 		// 只报告这一次真的发生了什么:"失败"不该把"名字没变化、无需处理"
 		// 的文件也算进去,那会让一次干净的批量看起来像出了很多错。
 		if ok == 0 {
-			a.status = fmt.Sprintf("没有文件被更名,失败 %d", failed)
+			a.status = fmt.Sprintf("没有文件被更名，失败 %d", failed)
 			if failed == 0 {
 				a.status = "没有文件需要更名"
 			}
 		} else {
-			a.status = fmt.Sprintf("成功 %d,失败 %d;可用“回滚上次”撤销", ok, failed)
+			a.status = fmt.Sprintf("成功 %d，失败 %d；可用“回滚上次”撤销", ok, failed)
 		}
 		for i := range a.files {
 			if i < len(a.ops) && a.ops[i].Applied {
@@ -1769,7 +1769,7 @@ func (a *app) undo() {
 		// 而不是一句"回滚失败"让用户以为文件没动过。
 		var ue *core.UndoError
 		if errors.As(err, &ue) && ue.Done > 0 {
-			a.status = "回滚部分完成: " + ue.Error()
+			a.status = "回滚部分完成：" + ue.Error()
 			for i := range a.files {
 				if i < len(a.ops) && a.ops[i].Applied {
 					a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
@@ -1780,7 +1780,7 @@ func (a *app) undo() {
 			a.update()
 			return
 		}
-		a.status = "回滚失败: " + err.Error()
+		a.status = "回滚失败：" + err.Error()
 	} else {
 		a.status = "已回滚"
 		for i := range a.files {

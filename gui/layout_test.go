@@ -25,7 +25,7 @@ func TestLayoutTitlebarNoOverlap(t *testing.T) {
 	titleBottom := brand.Y + brand.H
 
 	// 三栏各自的第一个内容元素都要在标题栏下方
-	checks := []string{"功能 · 点击加入步骤", "任务步骤(1)", "文件"}
+	checks := []string{"功能 · 点击加入步骤", "任务步骤（1）", "文件"}
 	for _, label := range checks {
 		r, ok := tt.Find(label)
 		if !ok {

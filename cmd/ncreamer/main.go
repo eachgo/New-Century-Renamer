@@ -49,7 +49,7 @@ func usage() {
   NFO 规则专用: <NFO:title> <NFO:showtitle> <NFO:year> <NFO:season> <NFO:episode> <NFOName>
 
 选项:
-  -r rule        一条规则, 可重复
+  -r rule        一条规则，可重复
   -p preset.json 从 JSON 文件读规则(格式: {"rules":["pinyin", ...]})
   -apply         实际执行(默认只预览)
   -journal F     指定日志文件(默认 .ncreamer-journal.json; 仅 -apply 时写入)
@@ -65,10 +65,10 @@ AI 配置(环境变量): NCREAMER_AI_BASE / NCREAMER_AI_KEY / NCREAMER_AI_MODEL
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "export" {
 		fs := flag.NewFlagSet("export", flag.ExitOnError)
-		out := fs.String("o", "", "输出 CSV 文件(默认 stdout)")
+		out := fs.String("o", "", "输出 CSV 文件（默认 stdout）")
 		fs.Parse(os.Args[2:])
 		if fs.NArg() == 0 {
-			fatal(fmt.Errorf("用法: ncreamer export [-o list.csv] 文件..."))
+			fatal(fmt.Errorf("用法：ncreamer export [-o list.csv] 文件..."))
 		}
 		files, err := expandInputs(fs.Args(), false)
 		if err != nil {
@@ -87,7 +87,7 @@ func main() {
 			fatal(err)
 		}
 		if *out != "" {
-			fmt.Printf("已导出 %d 个文件到 %s(new_name 列编辑后用 ncreamer import 导回)\n", len(files), *out)
+			fmt.Printf("已导出 %d 个文件到 %s（new_name 列编辑后用 ncreamer import 导回）\n", len(files), *out)
 		}
 		return
 	}
@@ -97,11 +97,11 @@ func main() {
 		journal := fs.String("journal", ".ncreamer-journal.json", "日志文件")
 		fs.Parse(os.Args[2:])
 		if fs.NArg() != 1 {
-			fatal(fmt.Errorf("用法: ncreamer import [-apply] list.csv"))
+			fatal(fmt.Errorf("用法：ncreamer import [-apply] list.csv"))
 		}
 		plan, errs := core.ImportCSV(fs.Arg(0))
 		for _, e := range errs {
-			fmt.Fprintln(os.Stderr, "问题:", e)
+			fmt.Fprintln(os.Stderr, "问题：", e)
 		}
 		n := 0
 		for _, op := range plan {
@@ -115,15 +115,15 @@ func main() {
 			}
 			fmt.Printf("%s %s => %s\n", mark, filepath.Join(op.Dir, op.OldName), op.NewName)
 		}
-		fmt.Printf("%d 行,%d 个将更名\n", len(plan), n)
+		fmt.Printf("%d 行，%d 个将更名\n", len(plan), n)
 		if !*apply {
-			fmt.Println("(预览模式, 加 -apply 执行)")
+			fmt.Println("（预览模式，加 -apply 执行）")
 			return
 		}
 		if err := core.ApplyPlan(plan, *journal); err != nil {
 			fatal(err)
 		}
-		fmt.Printf("已执行, 日志 %s; 可用 ncreamer undo -journal %s 回滚\n", *journal, *journal)
+		fmt.Printf("已执行，日志 %s；可用 ncreamer undo -journal %s 回滚\n", *journal, *journal)
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "undo" {
@@ -148,7 +148,7 @@ func main() {
 		recursive bool
 	)
 	fs := flag.NewFlagSet("ncreamer", flag.ExitOnError)
-	fs.Var(&ruleArgs, "r", "规则, 可重复")
+	fs.Var(&ruleArgs, "r", "规则，可重复")
 	fs.StringVar(&preset, "p", "", "预设 JSON 文件")
 	fs.BoolVar(&apply, "apply", false, "实际执行")
 	fs.StringVar(&journal, "journal", ".ncreamer-journal.json", "日志文件")
@@ -165,7 +165,7 @@ func main() {
 			Rules []string `json:"rules"`
 		}
 		if err := json.Unmarshal(b, &p); err != nil {
-			fatal(fmt.Errorf("预设文件 %s: %w", preset, err))
+			fatal(fmt.Errorf("预设文件 %s：%w", preset, err))
 		}
 		ruleArgs = append(ruleArgs, p.Rules...)
 	}
@@ -203,19 +203,19 @@ func main() {
 		}
 		fmt.Printf("%s %s  =>  %s\n", mark, filepath.Join(op.Dir, op.OldName), op.NewName)
 		if op.Err != nil {
-			fmt.Printf("    错误: %v\n", op.Err)
+			fmt.Printf("    错误：%v\n", op.Err)
 		}
 	}
-	fmt.Printf("%d 个文件, %d 个将更名, %d 个有问题\n", len(plan), countOK(plan), countErr(plan))
+	fmt.Printf("%d 个文件，%d 个将更名，%d 个有问题\n", len(plan), countOK(plan), countErr(plan))
 
 	if !apply {
-		fmt.Println("(预览模式, 加 -apply 执行)")
+		fmt.Println("（预览模式，加 -apply 执行）")
 		return
 	}
 	if err := core.ApplyPlan(plan, journal); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("已执行, 日志写入 %s; 可用 `ncreamer undo -journal %s` 回滚\n", journal, journal)
+	fmt.Printf("已执行，日志写入 %s；可用 `ncreamer undo -journal %s` 回滚\n", journal, journal)
 }
 
 func countOK(plan []core.RenameOp) (n int) {
@@ -237,7 +237,7 @@ func countErr(plan []core.RenameOp) (n int) {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "错误:", err)
+	fmt.Fprintln(os.Stderr, "错误：", err)
 	os.Exit(1)
 }
 
