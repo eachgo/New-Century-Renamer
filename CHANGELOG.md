@@ -153,13 +153,27 @@
 - **标红文案不再误导**。以前 `.mp3` 里装着 m4a 会写「内容为 MP4 容器」——听着
   像里面是视频。容器类改用自己的名字(「MP4 容器」「Matroska 容器」「Ogg 容器」
   「ZIP 容器」「OLE 复合文档」),非容器才用格式标签。
+- **内联 `<svg>` 不再被认成 SVG 文件**。SVG 不是魔数,以前用
+  `bytes.Contains(b, "<svg")` 判——那是一次子串搜索,于是任何在前 512 字节
+  里内联了一段 `<svg>` 图标的 `.html`/`.md` 都会被嗅探成 SVG,`contentCheck`
+  再据此报红「内容为 SVG 图片」。这是二阶假警报:第一个判断(这文件是 SVG 吗)
+  就已经错了,后面那个红胶囊只是它的回声。SVG 的定义是"根元素为 `<svg>` 的
+  XML 文档",现在按这个判:跳过 BOM、空白、XML 声明、注释、DOCTYPE,再看第一
+  个标签是不是 `<svg` 且后面紧跟空白/`>`/`/`(所以 `<svgfoo>` 不算)。
+  另外,文本格式之间互不构成矛盾——`html`/`md`/`xml` 里内联 SVG 是合法的,
+  这类格式本来就没有魔数,嗅探认出的只是"内容里出现了什么",不是"这个文件
+  是什么";`magiclessExts` 里的格式两两相比一律算无从判断,但文本 vs 二进制
+  (一个叫 `.html` 的 PNG)仍然报红。
 - **新增回归测试**守住这几处:`TestSniffMagicRecognizesContainers` 用真实魔数
   开头的临时文件验 16 种格式(含三种 ftyp 变体,专门盯偏移)、
   `TestContentCheckThreeWay` 验三档判断的 11 个组合、
   `TestSniffResultsHaveLabels` 验每个嗅探结果都有展示名且 `containerExts`
   的键都在表里(这条一写就抓出 oga/mka/spx 三个漏登记)、
   `TestContentChipsRenderThreeStates` 渲染三个文件确认红胶囊/中性胶囊/不画
-  三种状态各自出现。
+  三种状态各自出现、`TestInlineSVGInHTMLIsNotAMismatch` 验内联 SVG 的
+  html/md 不被嗅探成 svg 且不报矛盾(同时验真 SVG、带 XML 声明与注释的
+  SVG、`<svgfoo>` 三种边界)、`TestMagiclessFormatsNeverContradictEachOther`
+  验文本格式两两不互报、但文本 vs 二进制仍报。
 
 ### 修复 · 文档
 - **CHANGELOG 里三处与代码不符的说法已按实测改正**(见 0.1.3 节末尾的复核说明),

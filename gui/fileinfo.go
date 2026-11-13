@@ -208,6 +208,13 @@ func contentCheck(ext, real string, size int64) contentVerdict {
 				return contentOK
 			}
 		}
+		// 文本格式之间的"嗅探结果"不构成矛盾:html、md、xml 里可以合法地
+		// 内联一段 <svg>,反过来 .svg 也常常就是被 XML 声明包着。这类格式
+		// 本来就没有魔数,嗅探器能认出来的只是"内容里出现了什么",不是
+		// "这个文件是什么"。拿它去报警,就成了二阶假警报。
+		if magiclessExts[ext] && magiclessExts[real] {
+			return contentNoOpinion
+		}
 		return contentMismatch
 	}
 	if magiclessExts[ext] {
@@ -291,10 +298,72 @@ func sniffMagic(path string) string {
 		return "mobi" // mobi/azw3
 	case len(b) >= 262 && string(b[257:262]) == "ustar":
 		return "tar"
-	case bytes.Contains(b, []byte("<svg")):
+	case looksLikeSVG(b):
 		return "svg"
 	}
 	return ""
+}
+
+// svgProlog 剥掉 SVG 文档开头允许出现的东西,让调用方只看"第一个真元素
+// 是不是 <svg>"。
+//
+// 不能用 bytes.Contains 判 SVG:那不是魔数,是一次子串搜索,于是任何在
+// 前 512 字节里内联了一段 <svg> 图标的 .html / .md 都会被认成 SVG,
+// contentCheck 再据此报红「内容为 SVG 图片」——一个二阶假警报。
+// SVG 的定义是"根元素为 <svg> 的 XML 文档",按这个判就对了:
+// 跳过 BOM、空白、XML 声明、注释和 DOCTYPE,再看第一个标签。
+func svgProlog(b []byte) []byte {
+	// UTF-8 BOM
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
+	for {
+		b = bytes.TrimLeft(b, " \t\r\n")
+		switch {
+		case bytes.HasPrefix(b, []byte("<?")):
+			// <?xml version="1.0"?> 之类的处理指令,到 ?> 为止
+			end := bytes.Index(b, []byte("?>"))
+			if end < 0 {
+				return nil
+			}
+			b = b[end+2:]
+		case bytes.HasPrefix(b, []byte("<!--")):
+			end := bytes.Index(b, []byte("-->"))
+			if end < 0 {
+				return nil
+			}
+			b = b[end+3:]
+		case len(b) > 9 && bytes.HasPrefix(bytes.ToLower(b[:9]), []byte("<!doctype")):
+			end := bytes.IndexByte(b, '>')
+			if end < 0 {
+				return nil
+			}
+			b = b[end+1:]
+		default:
+			return b
+		}
+	}
+}
+
+// looksLikeSVG 判断内容是不是一个 SVG 文档:根元素为 <svg>。
+func looksLikeSVG(b []byte) bool {
+	rest := svgProlog(b)
+	if len(rest) < 4 {
+		return false
+	}
+	if rest[0] != '<' {
+		return false
+	}
+	// <svg 后面必须紧跟空白、'>' 或 '/'——否则 <svgfoo> 也会命中。
+	if !bytes.HasPrefix(bytes.ToLower(rest), []byte("<svg")) {
+		return false
+	}
+	if len(rest) == 4 {
+		return true
+	}
+	switch rest[4] {
+	case ' ', '\t', '\r', '\n', '>', '/':
+		return true
+	}
+	return false
 }
 
 // commonExts 按序占用色相环:同一扩展名在色彩管线下永远同色,

@@ -1237,3 +1237,60 @@ func TestContentChipsRenderThreeStates(t *testing.T) {
 		t.Errorf("相符的文件不该挂提示,却渲染出 %.0f×%.0f 的胶囊", r.W, r.H)
 	}
 }
+
+// SVG 不是魔数,是"根元素为 <svg> 的 XML 文档"。以前用 bytes.Contains 判,
+// 于是前 512 字节里内联了一段 <svg> 图标的 .html / .md 也被认成 SVG,
+// contentCheck 再据此报红「内容为 SVG 图片」——一个二阶假警报:
+// 第一个判断(这文件是 SVG 吗)就已经错了,后面那个红胶囊只是它的回声。
+func TestInlineSVGInHTMLIsNotAMismatch(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		real string
+		want contentVerdict
+	}{
+		// 内联图标的 html:嗅探不该说是 svg
+		{"page.html", "<!DOCTYPE html>\n<html><body><svg viewBox=\"0 0 10 10\"><circle r=\"5\"/></svg></body></html>", "", contentNoOpinion},
+		// 内联图标的 markdown:同上
+		{"note.md", "# 标题\n\n图标: <svg width=\"16\"><path d=\"M0 0h16v16z\"/></svg>\n", "", contentNoOpinion},
+		// 真的 SVG:根元素就是 <svg>
+		{"icon.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"8\" height=\"8\"/></svg>", "svg", contentOK},
+		// 带 XML 声明与注释的真 SVG
+		{"decl.svg", "<?xml version=\"1.0\"?>\n<!-- 生成 -->\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>", "svg", contentOK},
+		// <svgfoo> 不是 <svg>
+		{"odd.svg", "<svgfoo/>", "", contentNoOpinion},
+		// 扩展名说是 html、内容真的是 html:不该报警
+		{"plain.html", "<!DOCTYPE html>\n<html><body>hello</body></html>", "", contentNoOpinion},
+	}
+	for _, c := range cases {
+		p := filepath.Join(t.TempDir(), c.name)
+		if err := os.WriteFile(p, []byte(c.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		real := sniffMagic(p)
+		if c.real != "" && real != c.real {
+			t.Errorf("%s 嗅探 = %q, want %q", c.name, real, c.real)
+		}
+		if c.real == "" && real != "" {
+			t.Errorf("%s 嗅探 = %q, 但内联的 <svg> 不是 SVG 文档", c.name, real)
+		}
+		ext := strings.TrimPrefix(filepath.Ext(c.name), ".")
+		if got := contentCheck(ext, real, int64(len(c.body))); got != c.want {
+			t.Errorf("%s contentCheck = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// 文本格式之间互不算矛盾:html 里内联 svg、svg 里带 XML 声明都是合法的,
+// 这类格式本来就没有魔数,嗅探认出的只是"内容里出现了什么"。
+func TestMagiclessFormatsNeverContradictEachOther(t *testing.T) {
+	for _, ext := range []string{"html", "htm", "md", "xml", "txt"} {
+		if got := contentCheck(ext, "svg", 4096); got != contentNoOpinion {
+			t.Errorf("contentCheck(%q, svg) = %d, want %d(文本格式不该互报矛盾)", ext, got, contentNoOpinion)
+		}
+	}
+	// 但文本 vs 二进制仍然要报:一个叫 .html 的文件其实是 PNG
+	if got := contentCheck("html", "png", 4096); got != contentMismatch {
+		t.Errorf("contentCheck(html, png) = %d, want %d", got, contentMismatch)
+	}
+}
