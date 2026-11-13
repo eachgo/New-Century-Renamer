@@ -823,6 +823,21 @@ func (a *app) filesView(c *ui.Context) {
 					nGroups++
 				}
 			}
+			// 失败的聚合条:60 个文件里 5 个失败时,逐行扫描找红字
+			// 是不可能完成的任务。顶部说一句"有几个没法改",比让用户
+			// 自己数快得多。
+			if nFail := countErrs(a.ops); nFail > 0 {
+				ui.Row(c).FillWidth().Gap(6).Padding(4, 8).Radius(8).
+					Background(t.Danger.Alpha(0.10)).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, fmt.Sprintf("%d 个文件无法更名", nFail)).FontSize(11).TextColor(t.Danger)
+					ui.Spacer(c)
+					msg := firstErrText(a.ops)
+					if msg != "" {
+						ui.Text(c, msg).FontSize(11).TextColor(t.Danger).MaxWidth(240).
+							SingleLine().Ellipsis("…").Tooltip(msg)
+					}
+				})
+			}
 			// 列头:结果列离名字有几百像素,没有表头的话右边那列只是
 			// "一个小圆点加两个字",用户得自己猜那是结果。表头只在有文件时
 			// 出现——空列表时它只是一行噪音。
@@ -881,6 +896,11 @@ func (a *app) filesView(c *ui.Context) {
 				row.Children(func() {
 					card := ui.Column(c).Fill().Gap(4).Padding(6, 10).Radius(8).
 						Background(dt.panes(a.isDark()).card)
+					// 失败的行要能一眼从"将更名"里挑出来:整卡降饱和太狠会
+					// 连文件名都读不清,所以只加一道危险色描边,文字保持原样。
+					if i < len(a.ops) && a.ops[i].Err != nil {
+						card.Border(1, t.Danger.Alpha(0.55))
+					}
 					card.Children(func() {
 						oldName := filepath.Base(f.path)
 						newName := oldName
@@ -969,9 +989,11 @@ func (a *app) filesView(c *ui.Context) {
 								Background(t.SurfaceHover).TextColor(t.TextMuted)
 							ui.Spacer(c)
 						})
-						// 失败原因直接写在卡片里:只写"失败"等于不说
+						// 失败原因直接写在卡片里:只写"失败"等于不说。
+						// 允许折两行——单行 + 省略号会把最有信息量的
+						// 后半句吃掉,而失败原因往往后半句才是关键。
 						if i < len(a.ops) && a.ops[i].Err != nil {
-							ui.Text(c, a.ops[i].Err.Error()).FontSize(11).TextColor(t.Danger).SingleLine().Ellipsis("…")
+							ui.Text(c, a.ops[i].Err.Error()).FontSize(12).TextColor(t.Danger).MaxLines(2)
 						}
 					})
 					// 右缘结果:成功/失败/将更名/不变

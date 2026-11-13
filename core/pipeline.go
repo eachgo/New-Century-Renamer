@@ -376,7 +376,10 @@ func ApplyPlan(plan []RenameOp, journal string) error {
 		self := samePathAsSource(op.Dir, op.OldName, op.NewName)
 		if !self {
 			if _, err := os.Lstat(new); err == nil {
-				op.Err = fmt.Errorf("目标已存在: %s", new)
+				// 只报文件名,不报绝对路径:界面上一行放不下整条路径,
+				// 省略号会从右边吃掉——被截掉的恰好是文件名本身,
+				// 于是错误等于没写。
+				op.Err = fmt.Errorf("目标已存在同名文件: %s", op.NewName)
 				op.ErrText = op.Err.Error()
 				continue
 			}
