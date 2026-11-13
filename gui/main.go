@@ -73,18 +73,22 @@ type app struct {
 	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
 	aiPromptText      string              // 设置里"默认提示词"多行输入框的缓冲
 
-	steps     []guiRule // ordered task steps
-	stepSel   int       // selected step, -1 = none
-	stepList  ui.ListState
-	palSel    string            // last catalog op added, highlighted in the list
-	stepUID   int               // 自增步骤身份
-	chosen    ui.Selection[int] // multi-selected step uids
-	pickMode  bool              // 显示行内多选圆点(触摸入口)
-	pickOpen  bool              // 设置里的主色选择器是否展开
-	dialogs   dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
-	palHint   string            // hovered/selected catalog entry's explanation
-	palQuery  string            // 目录过滤框的内容;空=不过滤
-	palScroll ui.ScrollState    // 目录滚动位置;用来判断"下面还有没有"
+	steps    []guiRule // ordered task steps
+	stepSel  int       // selected step, -1 = none
+	stepList ui.ListState
+	palSel   string            // last catalog op added, highlighted in the list
+	stepUID  int               // 自增步骤身份
+	chosen   ui.Selection[int] // multi-selected step uids
+	pickMode bool              // 显示行内多选圆点(触摸入口)
+	pickOpen bool              // 设置里的主色选择器是否展开
+	dialogs  dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
+	palHint  string            // hovered/selected catalog entry's explanation
+	palQuery string            // 目录过滤框的内容;空=不过滤
+	// 目录里被折起来的分组。默认全展开:第一次打开就把 26 项规则藏进
+	// 11 次点击后面,等于换个方式让人找不到;折叠是给"我已经知道要
+	// 什么、只是嫌长"的人用的。
+	folded    map[string]bool
+	palScroll ui.ScrollState // 目录滚动位置;用来判断"下面还有没有"
 
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
@@ -363,7 +367,29 @@ func (a *app) catalogView(c *ui.Context) {
 				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
 			}
 			for _, g := range groups {
-				ui.Text(c, g).FontSize(12).TextColor(t.TextMuted).Padding(8, 3)
+				// 组标题本身就是折叠开关:11 组收起后一屏放得下,而且
+				// 分组名("编号""元数据")比 34 条规则名更好认。
+				open := !a.folded[g]
+				arrow := "▾"
+				if !open {
+					arrow = "▸"
+				}
+				head := ui.ButtonBase(c).Fill().Radius(6).Padding(8, 2)
+				if head.Hovered() {
+					head.Background(t.SurfaceHover)
+				}
+				head.Children(func() {
+					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).SingleLine()
+				})
+				if head.Clicked() {
+					if a.folded == nil {
+						a.folded = map[string]bool{}
+					}
+					a.folded[g] = open
+				}
+				if !open {
+					continue
+				}
 				for _, d := range shown {
 					if d.group != g {
 						continue
