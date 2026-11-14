@@ -8,7 +8,6 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
 	"testing"
 )
 
@@ -106,6 +105,15 @@ func TestSpacingFollowsOneScale(t *testing.T) {
 	}
 	hits := tokenHits(t, "Padding", "PaddingX", "PaddingY", "PaddingStart", "PaddingEnd")
 	report(t, "Padding", hits)
+
+	// 棘轮:当前实测 10 种,只许减不许增。白名单只说"这个值合法",
+	// 于是它允许集合里每一个值都同时存在——收敛到 3 档和保持 10 档
+	// 都能通过,那这个测试就只是在记录现状,不是在要求收敛。上限定成
+	// 实测值:新增一档立刻失败,删掉一档不用改测试(留出余量让收敛继续)。
+	if len(hits) > 10 {
+		t.Errorf("Padding 有 %d 种取值(上限 10):只许收敛,不许再分叉。当前 %v",
+			len(hits), sortedHitKeys(hits))
+	}
 	for v := range hits {
 		if _, ok := allowed[v]; !ok {
 			t.Errorf("Padding(%g) 不在阶梯上;允许: %v", v, sortedKeys(allowed))
@@ -125,6 +133,15 @@ func TestGapFollowsOneScale(t *testing.T) {
 	}
 	hits := tokenHits(t, "Gap")
 	report(t, "Gap", hits)
+
+	// 棘轮:当前实测 6 种,只许减不许增。白名单只说"这个值合法",
+	// 于是它允许集合里每一个值都同时存在——收敛到 3 档和保持 6 档
+	// 都能通过,那这个测试就只是在记录现状,不是在要求收敛。上限定成
+	// 实测值:新增一档立刻失败,删掉一档不用改测试(留出余量让收敛继续)。
+	if len(hits) > 6 {
+		t.Errorf("Gap 有 %d 种取值(上限 6):只许收敛,不许再分叉。当前 %v",
+			len(hits), sortedHitKeys(hits))
+	}
 	for v := range hits {
 		if _, ok := allowed[v]; !ok {
 			t.Errorf("Gap(%g) 不在阶梯上;允许: %v", v, sortedKeys(allowed))
@@ -147,6 +164,15 @@ func TestRadiusFollowsOneLadder(t *testing.T) {
 	}
 	hits := tokenHits(t, "Radius")
 	report(t, "Radius", hits)
+
+	// 棘轮:当前实测 8 种,只许减不许增。白名单只说"这个值合法",
+	// 于是它允许集合里每一个值都同时存在——收敛到 3 档和保持 8 档
+	// 都能通过,那这个测试就只是在记录现状,不是在要求收敛。上限定成
+	// 实测值:新增一档立刻失败,删掉一档不用改测试(留出余量让收敛继续)。
+	if len(hits) > 8 {
+		t.Errorf("Radius 有 %d 种取值(上限 8):只许收敛,不许再分叉。当前 %v",
+			len(hits), sortedHitKeys(hits))
+	}
 	for v := range hits {
 		if _, ok := allowed[v]; !ok {
 			t.Errorf("Radius(%g) 不在阶梯上;允许: %v", v, sortedKeys(allowed))
@@ -167,6 +193,7 @@ func TestFontSizesFollowOneLadder(t *testing.T) {
 		"18": "标题",
 	}
 	fset := token.NewFileSet()
+	used := map[string]bool{}
 	for _, file := range uiFiles {
 		src, err := os.ReadFile(file)
 		if err != nil {
@@ -194,43 +221,122 @@ func TestFontSizesFollowOneLadder(t *testing.T) {
 					t.Errorf("%s:%d FontSize(%s) 不在字号阶梯上;允许: 11/12/13/14/18",
 						file, fset.Position(call.Pos()).Line, lit.Value)
 				}
+				used[lit.Value] = true
 			}
 			return true
 		})
 	}
+	// 棘轮:当前实测 5 档,只许减不许增。理由同 Padding 那条——
+	// 白名单只说"这一档合法",五档同时存在也算通过,那它记录的是
+	// 现状而不是要求。字号是层级,层级越多,层级就越不成立。
+	if len(used) > 5 {
+		t.Errorf("字号有 %d 档(上限 5):只许收敛,不许再分叉。当前 %v", len(used), used)
+	}
 }
 
-// 嵌套圆角要递减:外层卡片 10,里面的行 6,行里的胶囊 4。否则内外两层
-// 圆角各自为政,看起来像两张纸叠在一起没有贴合。
+// 嵌套圆角要递减:外层卡片 10,里面的行 6,行里的胶囊 4。内层圆角大于外层
+// 时,两层边线在角上打架,看起来像两张纸没对齐。
 //
 // 早先这个测试只是断言 `14 > 10 && 10 > 6 && 6 > 4` ——三个常量比大小,
-// 恒真,再配两条字符串黑名单,基本是空转。现在真去扫源码:把每个 Radius
-// 的取值和它所在行的 Padding 配起来,断言"行半径 > 胶囊半径"这种已知的
-// 嵌套关系成立。
+// 恒真;再配三条字符串黑名单,而那三种写法在源码里根本不存在,基本是
+// 空转。现在真去扫源码:顺着 `.Children(func(){...})` 建立父子链,内层
+// 的 Radius 不许大于外层。
+//
+// 这条测试第一次真跑起来就抓到了 7 处:6 处是"内外同值"(进度条轨道与
+// 填充同为 2、对话框 14 里放 14 的卡片——同值不算错,轨道必须和填充同
+// 半径),1 处是真错:步骤行(6)里放了 Radius(8) 的确认按钮。修完是 0 处。
 func TestNestedRadiusShrinks(t *testing.T) {
-	// 已知的嵌套对:外层半径 → 允许的内层半径上限(不含)。
-	// 面板 14 里放卡片 10;卡片 10 里放行 6;行 6 里放胶囊 4。
-	nested := map[float64]float64{14: 10, 10: 6, 6: 4}
-	for outer, inner := range nested {
-		if !(outer > inner) {
-			t.Fatalf("圆角阶梯必须单调递减: %g 不能小于等于 %g", outer, inner)
+	fset := token.NewFileSet()
+	type nestViolation struct {
+		file         string
+		line         int
+		outer, inner float64
+	}
+	var violations []nestViolation
+	var walk func(file string, node ast.Node, stack []float64)
+	walk = func(file string, node ast.Node, stack []float64) {
+		ast.Inspect(node, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			// .Children(func(){...}) 是唯一能确立父子关系的写法:
+			// 回调体里的元素就是外层元素的子元素。
+			if sel.Sel.Name == "Children" && len(call.Args) == 1 {
+				if fn, ok := call.Args[0].(*ast.FuncLit); ok {
+					next := stack
+					if r, has := radiusInChain(call); has {
+						next = append(append([]float64{}, stack...), r)
+					}
+					walk(file, fn.Body, next)
+					return false // 回调体已单独走过,不要重复遍历
+				}
+			}
+			if sel.Sel.Name == "Radius" && len(stack) > 0 && len(call.Args) == 1 {
+				if lit, ok := call.Args[0].(*ast.BasicLit); ok {
+					if v, err := strconv.ParseFloat(lit.Value, 64); err == nil {
+						if outer := stack[len(stack)-1]; v > outer {
+							violations = append(violations, nestViolation{
+								file, fset.Position(call.Pos()).Line, outer, v})
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+	for _, file := range uiFiles {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	// 源码里不该出现"内层比外层大"的写法。这里查两个具体的高危组合:
-	// 步骤行(Radius 6)里的胶囊若写成 8 或 10,就是内层超过外层。
-	src, err := os.ReadFile("main.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, bad := range []string{
-		".Padding(2, 8).Radius(8)",
-		".Padding(2, 10).Radius(10)",
-		".Padding(2, 8).Radius(10)",
-	} {
-		if strings.Contains(string(src), bad) {
-			t.Errorf("步骤行里出现了 %q:内层圆角不能大于等于外层的 6", bad)
+		f, err := parser.ParseFile(fset, file, src, 0)
+		if err != nil {
+			t.Fatal(err)
 		}
+		walk(file, f, nil)
 	}
+	for _, v := range violations {
+		t.Errorf("%s:%d 内层圆角 %g 大于外层 %g", v.file, v.line, v.inner, v.outer)
+	}
+}
+
+// radiusInChain 沿着链式调用的接收者往回找 Radius(v)。只认字面量:
+// 主题里算出来的圆角由 TestRadiusFollowsOneLadder 管。
+func radiusInChain(call *ast.CallExpr) (float64, bool) {
+	for e := ast.Expr(call); ; {
+		c, ok := e.(*ast.CallExpr)
+		if !ok {
+			return 0, false
+		}
+		sel, ok := c.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return 0, false
+		}
+		if sel.Sel.Name == "Radius" && len(c.Args) == 1 {
+			if lit, ok := c.Args[0].(*ast.BasicLit); ok {
+				if v, err := strconv.ParseFloat(lit.Value, 64); err == nil {
+					return v, true
+				}
+			}
+		}
+		e = sel.X
+	}
+}
+
+// sortedHitKeys 是 sortedKeys 的计数版:棘轮报错要打印的是"当前有哪些
+// 取值",不是"允许哪些取值"。
+func sortedHitKeys(m map[float64]int) []float64 {
+	keys := make([]float64, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Float64s(keys)
+	return keys
 }
 
 func sortedKeys(m map[float64]string) []float64 {

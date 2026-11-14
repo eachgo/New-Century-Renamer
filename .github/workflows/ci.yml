@@ -62,8 +62,10 @@ jobs:
         working-directory: gui
         run: go build .
 
-      # 端到端测试(TestE2E*)要读 testfile/ 里的真实音频/PDF,
-      # 那个目录体积约 200MB,不入库,因此这里跳过;本地有素材时会照常跑。
-      - name: 测试 GUI(无头)
+      # 端到端测试(TestE2E*)以前要读 testfile/ 里的真实音频/PDF,那个目录
+      # 约 200MB、不入库,于是这里 -skip '^TestE2E' —— 六个端到端测试在 CI
+      # 上从来没跑过,测试绿只是因为它们被跳过了。现在 resetCopy 在没有
+      # 素材时会当场生成最小夹具(见 gui/e2e_fixtures_test.go),所以全部跑。
+      - name: 测试 GUI(无头 + 端到端)
         working-directory: gui
-        run: go test . -count=1 -skip '^TestE2E'
+        run: go test . -count=1

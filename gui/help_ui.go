@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/egoist/mygo/ui"
 )
 
@@ -30,7 +32,7 @@ func (a *app) helpDialog(c *ui.Context) {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "五步就够").Bold().FontSize(18)
 				ui.Spacer(c)
-				if ui.Button(c, "知道了").Radius(14).Clicked() {
+				if ui.Button(c, "知道了").Radius(8).Clicked() {
 					a.helpOpen = false
 				}
 			})
@@ -77,13 +79,20 @@ func (a *app) helpDialog(c *ui.Context) {
 					})
 					// 键盘这一节要把"焦点在哪"说清楚,因为同一个 Delete 在两处
 					// 管不同的事。只列按键不列前提,等于让用户猜。
-					ui.Text(c, "快捷键：Ctrl+O 添加 · Ctrl+Enter 执行 · Ctrl+Z 回滚 · Ctrl+逗号 设置 · F1 帮助").
+					//
+					// 组合键一律走 shortcutTip:这里以前把 "Ctrl+O" 写死,
+					// 而 macOS 上真正的修饰键是 ⌘——同一份说明在苹果机器上
+					// 教的是一个按不出来的键。
+					ui.Text(c, fmt.Sprintf("快捷键：%s 添加 · %s 执行 · %s 回滚 · %s 设置 · %s 帮助",
+						shortcutTip("Ctrl+O"), shortcutTip("Ctrl+Enter"), shortcutTip("Ctrl+Z"),
+						shortcutTip("Ctrl+,"), "F1")).
 						FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, "Tab / Shift+Tab 换区域，方向键在区域内移动（左栏目录是一整块，进去后用上下键挑条目）").
 						FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, "Delete 删除：焦点在文件列表时删文件，在步骤列表时删步骤（都要按两次确认）").
 						FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "Ctrl+D 复制步骤 · Alt+↑↓ 把步骤上移/下移（改的是执行顺序，底栏会说移到第几位）").
+					ui.Text(c, fmt.Sprintf("%s 复制步骤 · %s 把步骤上移/下移（改的是执行顺序，底栏会说移到第几位）",
+						shortcutTip("Ctrl+D"), shortcutTip("Alt+↑↓"))).
 						FontSize(12).TextColor(t.TextMuted)
 				})
 			})

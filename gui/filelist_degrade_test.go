@@ -32,25 +32,45 @@ func degradeApp(t *testing.T) *app {
 
 func TestFileListNeverSqueezesTextVertical(t *testing.T) {
 	// splitL 从宽到极窄,覆盖 showResultText/showExt 两条降级线的两侧。
-	for _, splitL := range []float32{220, 280, 300, 320, 340, 380, 400, 420, 460} {
+	// 步长 2:溢出窗口只发生在很窄的一段(实测 innerW 124~154,即
+	// "扩展名胶囊刚被画出来、整组名字已经放不下"之间),步长 20 会整个
+	// 跨过去。webm 是最宽的扩展名(胶囊 57.7 DIP),必须包含。
+	for _, splitL := range []float32{210, 220, 240, 260, 280, 300, 320, 340, 360, 370, 380, 390, 400, 410, 420, 430, 440, 460, 470} {
 		a := degradeApp(t)
 		a.splitL, a.splitM = splitL, 330
 		tt := ui.NewTester(a.view, 900, 480)
 		for i := 0; i < 4; i++ {
 			tt.Frame()
 		}
-		for _, s := range tt.Texts() {
-			r, ok := tt.Find(s)
-			if !ok || r.H <= 0.5 {
+		// 走 AccessAll 而不是 tt.Texts()+tt.Find:Find 只返回第一个同名
+		// 匹配(左栏目录与详情区常有同名条目),而这里要检查的是"每一个
+		// 文本节点"。以前用 Find,同一段文字出现两次时只看得到一处,
+		// 另一处被压成竖排也发现不了。
+		seen := 0
+		for _, n := range tt.AccessAll() {
+			if n.Role != ui.RoleText || n.Name == "" {
 				continue
 			}
-			// 多字符文本被压成一列:宽小于高
-			if len([]rune(s)) > 1 && r.W < r.H-0.5 {
-				t.Fatalf("splitL=%v: %q 被压成竖排 %.1f×%.1f", splitL, s, r.W, r.H)
+			seen++
+			// 被压到没有面积:文字被挤出了存在。以前 H<=0.5 直接
+			// continue,这类"整段文字消失"的情况反而是最不容易被
+			// 看见的——它连竖排都算不上。
+			if n.Bounds.W <= 0.5 || n.Bounds.H <= 0.5 {
+				t.Fatalf("splitL=%v: 文本 %q 被压到 %.1f×%.1f(整段消失)",
+					splitL, n.Name, n.Bounds.W, n.Bounds.H)
 			}
-			if r.X < -1 || r.X+r.W > 901 {
-				t.Fatalf("splitL=%v: %q 顶出窗口 x=%.1f right=%.1f", splitL, s, r.X, r.X+r.W)
+			// 多字符文本被压成一列:宽小于高。
+			if len([]rune(n.Name)) > 1 && n.Bounds.W < n.Bounds.H-0.5 {
+				t.Fatalf("splitL=%v: %q 被压成竖排 %.1f×%.1f",
+					splitL, n.Name, n.Bounds.W, n.Bounds.H)
 			}
+			if n.Bounds.X < -1 || n.Bounds.X+n.Bounds.W > 901 {
+				t.Fatalf("splitL=%v: %q 顶出窗口 x=%.1f right=%.1f",
+					splitL, n.Name, n.Bounds.X, n.Bounds.X+n.Bounds.W)
+			}
+		}
+		if seen < 10 {
+			t.Fatalf("splitL=%v: 只看到 %d 个文本节点,遍历本身可能失效了", splitL, seen)
 		}
 	}
 }

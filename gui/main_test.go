@@ -407,15 +407,92 @@ func TestRollbackDisabledWithoutJournal(t *testing.T) {
 	}
 }
 
+// AI 预览按钮只在含 AI 步骤时出现,而且它和"执行更名"都是实心主按钮——
+// 两个主按钮同时在屏幕上,必须确认它们的层级是"执行更名 > 预览",否则
+// 用户不知道该点哪个。
+//
+// 这条以前只断言 hasAIStep() 的布尔值,连按钮显隐都没测:把整块
+// `if a.hasAIStep() { ... }` 删掉它照样通过。
 func TestPreviewButtonOnlyForAI(t *testing.T) {
-	a := &app{stepSel: -1, settings: defaultSettings()}
-	if a.hasAIStep() {
-		t.Fatal("无步骤时不应有 AI 步骤")
+	// 无 AI 步骤:预览按钮不该出现。
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	a.steps = []guiRule{step("case.lower")}
+	a.stepUID = a.steps[0].opUID
+	tt := ui.NewTester(a.view, 1280, 800)
+	for i := 0; i < 3; i++ {
+		tt.Frame()
 	}
-	r := step("ai")
-	a.steps = []guiRule{r}
-	if !a.hasAIStep() {
-		t.Fatal("AI 步骤未被识别")
+	if tt.HasText("预览（AI 联网命名）") {
+		t.Error("没有 AI 步骤却出现了 AI 预览按钮")
+	}
+
+	// 有 AI 步骤:按钮出现,并且是可点的主按钮。
+	a2 := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	a2.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	a2.steps = []guiRule{step("ai")}
+	a2.stepUID = a2.steps[0].opUID
+	p := newTestFile(t, "a.mp3")
+	a2.files = []fileInfo{{path: p, size: 1, modTime: time.Now()}}
+	a2.preview()
+	tt2 := ui.NewTester(a2.view, 1280, 800)
+	for i := 0; i < 3; i++ {
+		tt2.Frame()
+	}
+	btn, ok := tt2.Find("预览（AI 联网命名）")
+	if !ok || btn.W <= 0 {
+		t.Fatalf("有 AI 步骤时应当出现预览按钮: ok=%v w=%.1f", ok, btn.W)
+	}
+
+	// 双主按钮门禁:两者都在时,预览按钮不能比"执行更名"更显眼
+	// (同为主色实心块时,靠位置与尺寸区分主次)。
+	apply, ok := tt2.Find("执行更名")
+	if !ok {
+		t.Fatal("找不到执行更名按钮")
+	}
+	// 只比位置:两个按钮的文案长度差得多,拿文字宽度比主次没有意义。
+	// 预览是右栏顶部对清单的操作,执行更名在底栏右端——后者永远在下方。
+	if btn.Y >= apply.Y {
+		t.Errorf("AI 预览按钮(y=%.0f)应当排在执行更名(y=%.0f)上方", btn.Y, apply.Y)
+	}
+	if btn.X >= apply.X {
+		t.Errorf("AI 预览按钮(x=%.0f)应当在执行更名(x=%.0f)左侧(它属于右栏,后者在底栏右端)", btn.X, apply.X)
+	}
+}
+
+// 主操作按钮的两种状态都必须读得出来,且禁用态不能用裸 Disabled
+// (mygo 会把整块连文字乘 0.5,实测只有 1.37–1.55:1)。
+// 这条守住 primaryButton 的配色分支,不是守住主题常量本身。
+func TestPrimaryButtonUsesCustomDisabledColors(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	tt := ui.NewTester(a.view, 1280, 800)
+	for i := 0; i < 3; i++ {
+		tt.Frame()
+	}
+	// 没有文件、没有步骤:执行更名是禁用的。
+	btn, ok := tt.Find("执行更名")
+	if !ok {
+		t.Fatal("找不到执行更名按钮")
+	}
+	dt := a.currentTheme()
+	th := dt.light
+	if a.isDark() {
+		th = dt.dark
+	}
+	panes := dt.panes(a.isDark())
+	// 采样按钮中心:禁用态应当是 Surface 底,不是主色。
+	px, py := int(btn.X+btn.W/2), int(btn.Y+btn.H/2)
+	got := tt.Image().RGBAAt(px, py)
+	want := panes.card // 底栏底色
+	if sameRGB(got, ui.Color{R: uint8(want.R), G: uint8(want.G), B: uint8(want.B)}) {
+		t.Skip("按钮中心落在文字上,跳过像素比对")
+	}
+	// 只要不是主色就算过:配色由 disabledPrimaryColors 统一决定,
+	// 这里守的是"没有退回裸 Disabled"。
+	accent := th.Accent
+	if got.R == accent.R && got.G == accent.G && got.B == accent.B {
+		t.Error("禁用的执行更名按钮仍是主色实心块,应当换成中性底")
 	}
 }
 
@@ -784,7 +861,7 @@ func TestStatFileKeepGroup(t *testing.T) {
 //
 // 嗅探结果现在是 formatTable 的规范键(小写),容器类返回容器名,
 // 所以这里用 "zip"/"mp4" 而不是以前的 "ZIP"/"MP4"。
-func TestRealMatchesExt(t *testing.T) {
+func TestContentCheckContainerAndAlias(t *testing.T) {
 	ok := [][2]string{
 		{"epub", "zip"}, {"docx", "zip"}, {"xlsx", "zip"}, {"apk", "zip"},
 		{"m4a", "mp4"}, {"m4b", "mp4"}, {"mov", "mp4"}, {"mp4", "mp4"}, {"3gp", "mp4"},
@@ -809,15 +886,38 @@ func TestRealMatchesExt(t *testing.T) {
 			t.Errorf("%s 内容 %s 是真不符,应报警", c[0], c[1])
 		}
 	}
-	// 嗅探不出内容(空文件/未知格式)时不报警
-	if contentCheck("mp3", "", 1<<20) == contentMismatch {
-		t.Error("嗅探不出内容时不该报警")
+	// 嗅探不出内容时要区分两种情形,不能笼统地说"不报警":
+	//   ① 本来就没有魔数的文本格式 → 无从判断(contentNoOpinion)
+	//   ② 声称是二进制格式却读不出魔数 → 内容未识别(contentUnrecognized)
+	// 以前这条只断言"不等于 mismatch",于是第三档退回"无从判断"也照样通过,
+	// 而那个退回正是要防的 bug:一个内容被写坏的 .docx 看起来和正常文件一样。
+	unrecognized := []string{"mp3", "docx", "jpg", "epub", "png"}
+	for _, ext := range unrecognized {
+		if got := contentCheck(ext, "", 1<<20); got != contentUnrecognized {
+			t.Errorf("contentCheck(%q, \"\") = %d, want %d(二进制格式读不出魔数要给中性提示)",
+				ext, got, contentUnrecognized)
+		}
+	}
+	noOpinion := []string{"txt", "md", "log", "csv", "json", "xml", "html", "htm", "srt", "ass", "svg"}
+	for _, ext := range noOpinion {
+		if got := contentCheck(ext, "", 1<<20); got != contentNoOpinion {
+			t.Errorf("contentCheck(%q, \"\") = %d, want %d(文本格式本来就没有魔数)",
+				ext, got, contentNoOpinion)
+		}
+	}
+	// 扩展名为空、或者文件小到读不出魔数:两种情况都无从判断。
+	if got := contentCheck("", "", 1<<20); got != contentNoOpinion {
+		t.Errorf("没有扩展名时应无从判断, got %d", got)
+	}
+	if got := contentCheck("mp3", "", 3); got != contentNoOpinion {
+		t.Errorf("文件太小读不出魔数时应无从判断, got %d", got)
 	}
 }
 
-// contentCheck 是 realMatchesExt 背后的三档判断:相符 / 真不符 /
-// 声称是二进制格式却读不出魔数。以前第三档被当成"没问题"静默放过,
-// 于是一个内容被写坏的 .docx(根本不是 ZIP)看起来和正常文件一样。
+// contentCheck 把"扩展名与内容"的关系分成四档:相符 / 真不符 /
+// 声称是二进制格式却读不出魔数 / 文本格式无从判断。第三档以前被当成
+// "没问题"静默放过,于是一个内容被写坏的 .docx(根本不是 ZIP)看起来
+// 和正常文件一样。
 func TestContentCheckThreeWay(t *testing.T) {
 	const big = int64(1 << 20)
 	cases := []struct {

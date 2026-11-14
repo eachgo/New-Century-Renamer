@@ -377,7 +377,7 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		if a.confirmUndo {
 			label := fmt.Sprintf("确认回滚 %d 个?", len(sum.Names))
-			confirm := ui.ButtonBase(c).Radius(8).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+			confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 			if confirm.Hovered() {
 				confirm = confirm.Background(t.Danger.Alpha(0.85))
 			}
@@ -707,7 +707,7 @@ func (a *app) stepsView(c *ui.Context) {
 			if a.pickMode {
 				label = "完成"
 			}
-			if ui.Button(c, label).Radius(14).Clicked() {
+			if ui.Button(c, label).Radius(8).Clicked() {
 				a.pickMode = !a.pickMode
 				if !a.pickMode {
 					a.chosen.Clear()
@@ -888,7 +888,7 @@ func (a *app) stepsView(c *ui.Context) {
 							a.dropConfirm()
 						}
 						if a.confirmDelStep {
-							confirm := ui.ButtonBase(c).Radius(8).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+							confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 							confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
 							if confirm.Clicked() {
 								a.deleteStep(a.stepSel)
@@ -915,7 +915,7 @@ func (a *app) stepsView(c *ui.Context) {
 					a.dropConfirm()
 				}
 				if a.confirmChosen {
-					confirm := ui.ButtonBase(c).Radius(8).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+					confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 					confirm.Children(func() { ui.Text(c, "确认删除所选?").SingleLine() })
 					if confirm.Clicked() {
 						a.deleteChosen()
@@ -1261,7 +1261,7 @@ func (a *app) filesView(c *ui.Context) {
 			}
 			if a.confirmClear {
 				// 二次确认态:换成红色实心,明确告诉用户"再点就真删了"
-				confirm := ui.ButtonBase(c).Radius(8).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+				confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 				if confirm.Hovered() {
 					confirm = confirm.Background(t.Danger.Alpha(0.85))
 				}
@@ -1358,7 +1358,7 @@ func (a *app) filesView(c *ui.Context) {
 					}
 					if a.confirmUndo {
 						label := fmt.Sprintf("确认回滚 %d 个?", len(a.journalInfoNames()))
-						confirm := ui.ButtonBase(c).Radius(8).Padding(6, 14).
+						confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).
 							Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 						if confirm.Hovered() {
 							confirm = confirm.Background(t.Danger.Alpha(0.85))
@@ -1531,7 +1531,14 @@ func (a *app) filesView(c *ui.Context) {
 						// 压到极限也只是省略号。扩展名胶囊 Shrink(0),四个字母
 						// 本来就不该被挤——实测被压时会缩成 9px 宽的一列。
 						nameChips := func(stem, ext string, stemBg, extBg, extFg ui.Color) {
-							ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+							// Wrap:这一组自己也允许换行。外层那个 Wrap 只能把
+							// "整组"挪到下一行,组内溢出时它管不了——实测右栏
+							// 内宽 124~154 这一档,文件名胶囊的 MinWidth(70) 加上
+							// 扩展名胶囊的 Shrink(0)(webm 就有 57.7 宽)必然超过
+							// 可用宽度,于是「webm」被顶到窗口外 936.8 > 900。
+							// 组内换行让扩展名掉到第二行,虽然多占一行,但至少
+							// 还在窗口里。
+							ui.Row(c).Gap(4).Wrap().AlignItems(ui.Center).Children(func() {
 								// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
 								// 四行,把 54px 的卡片撑到 95px,整列节奏全乱
 								ui.Text(c, stem).FontSize(14).Padding(2, 10).Radius(6).

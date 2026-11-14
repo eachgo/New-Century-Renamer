@@ -7,6 +7,62 @@
 0.1.3 发出去之后的用户反馈。都是"看着不对劲但说不清哪不对"的那类问题,
 根因一条条量出来才清楚。
 
+### 修复 · 测试真的在测东西
+
+这一轮是拿八条测试质量反馈逐条核对的结果。八条全部成立，其中三条抓到的是
+**测试本身在固化 bug**——它们绿着，但守的东西和名字说的不是一回事。
+
+- **`TestPreviewButtonOnlyForAI` 只断言了一个布尔**。它查 `hasAIStep()`，
+  既没查按钮出没出现，也没查样式，于是"有 AI 步骤却没渲染预览按钮"能通过。
+  现在它查渲染：无 AI 步骤时 `HasText` 必须为 false，有则 `Find` 必须命中且
+  宽度 > 0；另加位置断言（预览按钮在「执行更名」上方且靠左）与
+  `TestPrimaryButtonUsesCustomDisabledColors`（无文件时采样「执行更名」的
+  像素，断言不是主色实心块）。
+- **`tokens_test.go` 的白名单是在记录现状，不是在要求收敛**。允许 10 个
+  Padding 值、6 个 Gap、8 个圆角、5 档字号——恰好等于当时实测的集合，
+  于是"收敛到 3 档"和"保持 10 档"都能通过。现在四个阶梯测试各带一条
+  **棘轮**：`len(hits) > 上限` 即失败，上限取当前实测值，只许减不许增。
+- **`TestNestedRadiusShrinks` 的注释自称"真去扫源码"，实现却只是
+  `14 > 10 && 10 > 6 && 6 > 4` 三个常量比大小加三条字符串黑名单**，而那三
+  种写法在源码里根本不存在，纯空转。重写成真 AST 扫描：顺
+  `.Children(func(){...})` 建父子链，内层 `Radius` 不得大于外层。**这条测试
+  第一次真跑起来就抓到 1 处真错**：步骤行（圆角 6）里放了 `Radius(8)` 的
+  确认按钮；同时暴露按钮圆角同时用了 8/10/14 三种（`14` 有 4 处，全在对话框
+  里）。统一成 8（空态那个大号主按钮留 10，尺寸不同不算错档），严格违规归零。
+- **`TestRealMatchesExt` 名字和注释都引用已删除的 `realMatchesExt`**，且只断言
+  `contentCheck("mp3","",big) != mismatch`——第三档若退回"无从判断"它照样通过。
+  改名 `TestContentCheckContainerAndAlias`，尾部改成精确断言：5 个二进制格式
+  必须 `contentUnrecognized`、11 个文本格式必须 `contentNoOpinion`、空扩展名
+  与过小文件必须 `contentNoOpinion`。
+- **端到端链路中间断了一环**：胶囊那三条测试直接把 `"webp"/""/"mp3"` 写进
+  `fileInfo.realType`，绕过了嗅探。新增 `gui/fileinfo_e2e_test.go`：从磁盘上
+  的真实字节出发 → `statFile` → `sniffMagic` → 查映射表 → `contentCheck` →
+  渲染 → 找胶囊，任何一环改了行为都会红。反向验证时发现第一版只查
+  `contentLabel != ""`，而它在查不到表项时会退回 `strings.ToUpper(real)`，
+  删掉 `formatTable["flac"]` 仍然绿——改成直接查表项才守得住。
+- **`detail_pos_test.go` 断言 `field.Y >= 500`，把"参数区贴底"这个实现固化成
+  契约**：将来改成紧贴选中行它必 FAIL，而它想守的东西（详情不随列表滚）根本
+  没变。改为断言"滚动前后详情的 Y 不变"，位置坐标不再进入契约。
+- **`help_test.go` 把整行 `"Ctrl+D 复制步骤 · Alt+↑↓ …"` 写进 `HasText`，等于把
+  帮助页硬编码 Ctrl 的跨平台 bug 钉死**。帮助页改用 `shortcutTip()` 拼文案
+  （macOS 上是 ⌘/⌥），测试也改成用 `shortcutTip()` 拼断言片段——两边同源，
+  修跨平台显示时测试不会先红。
+- **`TestFileListNeverSqueezesTextVertical` 有检测盲区，而且真漏了一个 bug**。
+  它用 `tt.Texts()` + `tt.Find(s)`，而 `Find` 只返回第一个同名匹配（左栏目录
+  与详情区常有同名条目）；被压到零面积的文本又被 `H <= 0.5` 直接 `continue`。
+  改用 `AccessAll()` 遍历每一个文本节点，并把零面积当作失败。**新测试立刻
+  抓到**：右栏内宽 124~154 这一段（扩展名胶囊刚画出来、整组名字已放不下），
+  「flac」被顶到窗口外 `right=910.5 > 900`，`webm` 更远到 936.8。根因是外层
+  `Wrap` 只能把**整组**换行，组内溢出它管不了；给 `nameChips` 内层 Row 也加
+  `Wrap`，扩展名掉到第二行，虽然多占一行但还在窗口里。测试网格从步长 20 加密
+  到步长 2 并补上最宽的 `webm`——原来那个步长正好整个跨过了溢出区间。
+- **CI 上六个 `TestE2E*` 恒不执行**：它们依赖约 200MB 的 `testfile/`，而那个
+  目录被 `.gitignore` 排除，`resetCopy` 找不到就 `t.Skip`。新增
+  `gui/e2e_fixtures_test.go` 当场生成最小夹具（ID3 的 MP3、Vorbis comment 的
+  FLAC、真 zip 的 EPUB、带 Info 字典的 PDF、PNG 签名），`resetCopy` 在没有素材
+  时用它而不是跳过；`ci.yml` 去掉 `-skip '^TestE2E'`，六个端到端测试在 CI 上
+  第一次真正执行（本地实测 8 个文件全部改名 + 回滚 + CSV 往返通过）。
+
 ### 修复 · 键盘能不能真的用
 
 有人反馈"代码里看不到快捷键绑定"。查下来的结论分两半:**绑定确实有,而且是

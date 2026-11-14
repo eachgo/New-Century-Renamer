@@ -37,7 +37,11 @@ func resetCopy(t *testing.T) (dir string, paths []string) {
 	t.Helper()
 	src, ok := findTestfile()
 	if !ok {
-		t.Skip("no testfile dir")
+		// 没有素材目录就当场造一套:以前这里直接 t.Skip,于是 CI 上
+		// 六个 TestE2E* 全被跳过——"端到端"在 CI 里从来没跑过,
+		// 测试绿只是因为什么都没测。夹具是生成的最小文件,只保证
+		// 各解析器认得出自己,不需要能播放。
+		src = makeTestfile(t)
 	}
 	dir = os.Getenv("NCREAMER_E2E_DIR")
 	if dir == "" {

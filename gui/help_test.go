@@ -171,10 +171,17 @@ func TestHelpScrollsToShortcutLine(t *testing.T) {
 			break
 		}
 	}
-	// 断言用稳定的片段:整行文案会随排版微调,而"有没有把快捷键讲到"不会。
-	for _, want := range []string{"Ctrl+D 复制步骤", "Alt+↑↓", "Ctrl+逗号 设置", "F1 帮助"} {
+	// 断言用 shortcutTip 拼出来的片段,不写死 "Ctrl+"。帮助页在 macOS 上
+	// 显示的是 ⌘/⌥,把 Ctrl 写进断言等于把那个 bug 钉成契约——真去修
+	// 跨平台显示时,这条测试会在苹果机器上先红。
+	for _, want := range []string{
+		shortcutTip("Ctrl+D") + " 复制步骤",
+		shortcutTip("Alt+↑↓"),
+		shortcutTip("Ctrl+,") + " 设置",
+		"F1 帮助",
+	} {
 		if !tt.HasText(want) {
-			t.Fatalf("滚到底也看不到快捷键说明里的 %q", want)
+			t.Fatalf("滚到底也看不到快捷键说明里的 %q(实际修饰键按本平台换算)", want)
 		}
 	}
 }

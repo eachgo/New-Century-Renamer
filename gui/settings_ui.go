@@ -184,7 +184,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 											if a.pickOpen {
 												label = "收起"
 											}
-											if ui.Button(c, label).Radius(14).Disabled(a.seedFollow).Clicked() {
+											if ui.Button(c, label).Radius(8).Disabled(a.seedFollow).Clicked() {
 												a.pickOpen = !a.pickOpen
 											}
 										})
@@ -300,7 +300,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									if a.pickOpen {
 										label = "收起"
 									}
-									if ui.Button(c, label).Radius(14).Disabled(a.seedFollow).Clicked() {
+									if ui.Button(c, label).Radius(8).Disabled(a.seedFollow).Clicked() {
 										a.pickOpen = !a.pickOpen
 									}
 								})
