@@ -513,7 +513,12 @@ func (a *app) catalogView(c *ui.Context) {
 		// TrackScroll 记住滚动位置:底缘渐隐只在真还有内容时出现,
 		// 而这个判断要读它,不能靠猜。
 		a.catRect = a.catScroll.Bounds(c)
-		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).Children(func() {
+		// FocusGroup:左栏这一整块只算一个 Tab 停留点,方向键在条目之间移动。
+		// 以前 34 个条目 + 11 个组标题各占一个停留点,Tab 要走 40 多次才
+		// 出得了左栏——文件列表排在第 60 个,键盘用户基本到不了。Tab 遍历
+		// 本身是 mygo 内建的(ui/input.go 的 moveFocus),这里只是告诉它
+		// "这一堆是一个整体"。搜索框留在组外,它自己是一个停留点。
+		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).FocusGroup(ui.Vertical).Children(func() {
 			if len(shown) == 0 {
 				ui.Text(c, "没有匹配的功能").FontSize(13).TextColor(t.TextMuted).Padding(8, 10)
 			}
@@ -993,6 +998,13 @@ func (a *app) swapSteps(i, j int) {
 	case j:
 		a.stepSel = i
 	}
+	// Alt+↑↓ 动的是管道顺序,不是"选中上一个/下一个"——这两个语义在别的
+	// 软件里常落在同一组键上,误按一次就会静默改掉执行顺序(预览会跟着变,
+	// 但预览变了不等于用户知道是自己按出来的)。所以每次交换都在底栏
+	// 说一句,让"我按错了"当场可见,而不是等到执行完才发现顺序不对。
+	if a.stepSel >= 0 && a.stepSel < len(a.steps) {
+		a.status = fmt.Sprintf("「%s」移到第 %d 位", a.steps[a.stepSel].opLabel, a.stepSel+1)
+	}
 }
 
 // deleteStep 删掉第 i 步。鼠标的「确认删除?」和键盘的第二次 Delete
@@ -1432,7 +1444,12 @@ func (a *app) filesView(c *ui.Context) {
 				if f.group != "" {
 					indent = 14
 				}
-				row := ui.Row(c).Fill().Gap(8).PaddingStart(indent)
+				// 行底先铺一层不透明的栏底色。mygo 的列表会给"选中行"刷一层
+				// 主色底(它不知道我们用卡片浮在行上的结构),那层主色只会在
+				// 卡片与结果列之间的 8px 缝里露出来,像一块贴错位置的绿条。
+				// 铺掉它,选中态改由卡片自己表达——卡片是这一行真正的内容。
+				selected := a.fileSel == ri
+				row := ui.Row(c).Fill().Gap(8).PaddingStart(indent).Background(pt.right)
 				// 右键菜单:mygo 的 ContextMenu 会在菜单打开时跑一次 build,
 				// 再在"某一项被选中"的那一帧跑第二次,用 Chosen() 判断。
 				// 所以每个 Item 都要先建、再问 Chosen——顺序不能反。
@@ -1472,6 +1489,14 @@ func (a *app) filesView(c *ui.Context) {
 					// (PUI p.18 的"内 < 外")。两个值都在 4px 网格上。
 					card := ui.Column(c).Fill().Gap(4).Padding(8, 10).Radius(10).
 						Background(dt.panes(a.isDark()).card)
+					// 选中态:键盘上下键选中的那一行必须看得见。以前 a.fileSel
+					// 只喂给列表做"当前行"记账,渲染里一次都没读,于是按方向键
+					// 选中文件后界面毫无变化,再按 Delete 就把一个看不见的
+					// 选择删掉了。底色 + 主色描边两重编码:底色回答"选了哪行",
+					// 描边回答"这一行还是可操作目标"。
+					if selected {
+						card.Background(t.Selection).Border(1, t.Accent.Alpha(0.65))
+					}
 					// 失败的行要能一眼从"将更名"里挑出来:整卡降饱和太狠会
 					// 连文件名都读不清,所以只加一道危险色描边,文字保持原样。
 					if i < len(a.ops) && a.ops[i].Err != nil {

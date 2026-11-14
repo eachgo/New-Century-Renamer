@@ -160,11 +160,21 @@ func TestHelpScrollsToShortcutLine(t *testing.T) {
 	if a.helpScroll.MaxY <= 0 {
 		t.Fatal("480 高的窗口里帮助内容应当溢出,否则这条测试没在测滚动")
 	}
-	for i := 0; i < 4; i++ {
+	// 快捷键那几行越写越长(键盘导航的说明也在里面),滚 4 屏不一定够。
+	// 一直滚到 Scroll 的 MaxY 不再变化为止,再断言内容可见——测的是
+	// "能不能滚到底",不是"滚几次能到底"。
+	for i := 0; i < 20; i++ {
+		last := a.helpScroll.Y
 		tt.Scroll(500, 300, 0, 200)
 		tt.Frame()
+		if a.helpScroll.Y == last {
+			break
+		}
 	}
-	if !tt.HasText("Ctrl+D 复制步骤 · Alt+↑↓ 调整顺序 · Ctrl+逗号 设置 · F1 帮助") {
-		t.Fatal("滚到底也看不到快捷键那一行")
+	// 断言用稳定的片段:整行文案会随排版微调,而"有没有把快捷键讲到"不会。
+	for _, want := range []string{"Ctrl+D 复制步骤", "Alt+↑↓", "Ctrl+逗号 设置", "F1 帮助"} {
+		if !tt.HasText(want) {
+			t.Fatalf("滚到底也看不到快捷键说明里的 %q", want)
+		}
 	}
 }

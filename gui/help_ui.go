@@ -75,9 +75,15 @@ func (a *app) helpDialog(c *ui.Context) {
 							})
 						}
 					})
-					ui.Text(c, "快捷键：Ctrl+O 添加 · Ctrl+Enter 执行 · Ctrl+Z 回滚 · Delete 删除").
+					// 键盘这一节要把"焦点在哪"说清楚,因为同一个 Delete 在两处
+					// 管不同的事。只列按键不列前提,等于让用户猜。
+					ui.Text(c, "快捷键：Ctrl+O 添加 · Ctrl+Enter 执行 · Ctrl+Z 回滚 · Ctrl+逗号 设置 · F1 帮助").
 						FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "Ctrl+D 复制步骤 · Alt+↑↓ 调整顺序 · Ctrl+逗号 设置 · F1 帮助").
+					ui.Text(c, "Tab / Shift+Tab 换区域，方向键在区域内移动（左栏目录是一整块，进去后用上下键挑条目）").
+						FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, "Delete 删除：焦点在文件列表时删文件，在步骤列表时删步骤（都要按两次确认）").
+						FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, "Ctrl+D 复制步骤 · Alt+↑↓ 把步骤上移/下移（改的是执行顺序，底栏会说移到第几位）").
 						FontSize(12).TextColor(t.TextMuted)
 				})
 			})
