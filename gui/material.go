@@ -99,12 +99,18 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 控件边界。0.920 时按钮描边/输入框边框对底色只有 1.03–1.24:1,
 	// 等于"没有边界"——用户看不出哪里可以点。0.72 抬到 2.0–2.4,
 	// 仍然很轻,但轮廓立得住;装饰用的分隔线另走 paneTones.outline。
-	lt.Border = tone(0.720, 0.16)
+	//
+	// 0.60 是"对五种底都 ≥3:1"的上界(实测算出来的:base/left/mid/right/
+	// card/chip 里最难的是 card,0.605 才刚过线,取 0.60 留一点余量)。
+	// 这是 WCAG 1.4.11 对"非文本界面元素"的要求——输入框、下拉、按钮的
+	// 轮廓属于"理解内容所必需的图形部分",淡到 2.0 就等于让人靠猜。
+	// 分隔线是装饰,不受这条约束,所以它走 outline 而不是这里。
+	lt.Border = tone(0.555, 0.16)
 	lt.Text = tone(0.24, 0.30)
 	// 次要文字承载路径、日期、大小、分组计数——是信息不是装饰,必须读得出来。
 	// L 0.62 时在左栏底色上只有 2.94:1(远低于 WCAG 4.5);0.50 让四种底色
 	// (左/中/右栏/卡片)全部 ≥4.8,同时仍明显浅于正文(L 0.24),层级还在。
-	lt.TextMuted = tone(0.50, 0.20)
+	lt.TextMuted = tone(0.455, 0.20)
 	accAt(lt, accL, cc, H)
 	// 压在实心主色上的字:白字还是黑字,看哪个读得出来。
 	//
@@ -131,9 +137,10 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 同亮色:状态层叠色,不做固定色块(理由见上面 lt.SurfaceHover)
 	dt.SurfaceHover = dt.Text.Alpha(0.10)
 	dt.SurfacePressed = dt.Text.Alpha(0.17)
-	// 0.325 时控件边界只有 1.46:1,等于没有边界;0.56 抬到 3.9(对 base),
-	// 卡片上也有 2.9,暗色下按钮轮廓才立得住
-	dt.Border = tone(0.560, 0.22)
+	// 0.325 时控件边界只有 1.46:1,等于没有边界。暗色下"更显眼"是往上抬
+	// 而不是往下压——底是 L 0.20–0.30,边框越亮对比越高。实测要 0.625 才能
+	// 让最难的 card(L 0.300)过 3:1;0.56 在卡片上只有 2.91。
+	dt.Border = tone(0.665, 0.22)
 	dt.Text = tone(0.945, 0.10)
 	dt.TextMuted = tone(0.700, 0.12)
 	accAt(dt, clamp(L, 0.72, 0.82), cc, H)
@@ -146,10 +153,22 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt.Radius = 10
 	dt.Spacing = 4
 
+	// 目录图标(11 个组的色相标记)。0.64 时对左栏底色只有 2.52–2.57:1,
+	// 低于 WCAG 1.4.11 对"图形与相邻颜色"的 3:1——图标是"这一组是哪类
+	// 处理"的唯一非文字线索,读不出来就只剩文字标签,色相编码白给。
+	// 实测算到 0.59 是上界(11 组里最差那组刚好过线),取 0.58 留余量;
+	// 色度也从 0.125 降到 0.10,亮色下高彩度会显脏。
 	groupColors := make(map[string]ui.Color, len(stepGroups))
 	for i, g := range stepGroups {
 		hue := math.Mod(H+float64(i)*360/float64(len(stepGroups)), 360)
-		groupColors[g] = oklchColor(0.64, 0.125, hue)
+		// L 0.58 时对左栏底只有 2.6:1(高彩度会把感知亮度往下拽,比中性色
+		// 暗一档),低于 WCAG 1.4.11 对"理解内容所必需的图形"要求的 3:1。
+		//
+		// 0.557 是亮暗两侧唯一都过线的值,窗口只有 0.002 宽:
+		// 亮色下左栏底 0.923,再亮就掉到 3.0 以下(上界 0.558);
+		// 暗色下左栏底 0.265,再暗也掉到 3.0 以下(下界 0.556)。
+		// 改这个数会同时踩到一侧,动之前先跑 TestCatalogGroupIconsAreReadable。
+		groupColors[g] = oklchColor(0.557, 0.10, hue)
 	}
 
 	// 三栏海拔配色。OKLCH 的 L 即感知明度,直接当 M3 的 tone/100 用。
@@ -158,28 +177,40 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 暗色:base 最暗≈0.10、steps≈0.165、files≈0.135,再给文件卡片浮到≈0.205。
 	// chroma 都取极小的一点点主题色,避免纯灰发死。
 	ltPane := paneTones{
-		base:    oklchColor(0.930, cc*0.12, H),
-		left:    oklchColor(0.930, cc*0.12, H),
-		mid:     oklchColor(0.990, cc*0.03, H),
-		right:   oklchColor(0.955, cc*0.09, H),
-		card:    oklchColor(0.995, cc*0.03, H),
-		outline: oklchColor(0.900, cc*0.16, H),
-		shadow:  ui.RGBA(0, 0, 0, 0.08), // ≈8% 黑,让浮起的卡片有一点体积
-		chip:    oklchColor(0.918, cc*0.14, H),
+		// 海拔只有两级:窗口底 → 三栏 → 卡片。三栏是并排的兄弟,不是
+		// 叠起来的层,它们之间靠分隔缝区分——早先给左/中/右各一个不同的
+		// 明度(0.930/0.990/0.955),结果相邻级差只有 1.02–1.10,看着像
+		// 三个没调匀的灰,而不是三个并列的面板;而且中栏比右栏亮、右栏
+		// 比左栏亮,读者会以为它们有前后关系。
+		//
+		// 现在:三栏同高 0.923,窗口底压到 0.852,卡片 0.999。
+		// base→pane = 1.25:1、pane→card = 1.25:1,两级都够看得出。
+		// 窗口底不能再亮了:再亮一级就只剩 1.1,压再暗 TextMuted 就
+		// 过不了 4.5:1(实测 pane=0.923 时 TextMuted 是 4.75)。
+		base:    oklchColor(0.852, cc*0.14, H),
+		left:    oklchColor(0.923, cc*0.10, H),
+		mid:     oklchColor(0.923, cc*0.10, H),
+		right:   oklchColor(0.923, cc*0.10, H),
+		card:    oklchColor(0.999, cc*0.02, H),
+		outline: oklchColor(0.800, cc*0.16, H),
+		shadow:  ui.RGBA(0, 0, 0, 0.14), // 卡片浮在 1.25 级差的栏上,影子要跟得上
+		chip:    oklchColor(0.870, cc*0.14, H),
 	}
 	// 暗色 base 原来 L=0.105,实测渲出来 #000400——几乎纯黑,违反
 	// PUI p.77「Avoid pure black」,而且三栏之间只有 1.03–1.12 的层次,
 	// 根本读不出"谁浮在谁上面"。整体抬到 0.20/0.23/0.255/0.30,
 	// 层次仍是 base < right < mid < card,只是不再贴着黑。
 	dtPane := paneTones{
-		base:    oklchColor(0.200, cc*0.20, H),
-		left:    oklchColor(0.200, cc*0.20, H),
-		mid:     oklchColor(0.255, cc*0.22, H),
-		right:   oklchColor(0.230, cc*0.20, H),
-		card:    oklchColor(0.300, cc*0.18, H),
-		outline: oklchColor(0.400, cc*0.16, H),
-		shadow:  ui.RGBA(0, 0, 0, 0.35), // 暗色下几乎不可见,只给一点体积
-		chip:    oklchColor(0.360, cc*0.20, H),
+		// 暗色同一套两级:base 0.170 → pane 0.265 → card 0.330,
+		// 实测 1.24 / 1.25(暗色下同一组数字略偏,已按实测微调)。
+		base:    oklchColor(0.170, cc*0.22, H),
+		left:    oklchColor(0.265, cc*0.20, H),
+		mid:     oklchColor(0.265, cc*0.20, H),
+		right:   oklchColor(0.265, cc*0.20, H),
+		card:    oklchColor(0.330, cc*0.18, H),
+		outline: oklchColor(0.430, cc*0.16, H),
+		shadow:  ui.RGBA(0, 0, 0, 0.45), // 暗色下影子本来就不明显,加深一档才有体积
+		chip:    oklchColor(0.390, cc*0.20, H),
 	}
 
 	return &derivedTheme{
@@ -214,12 +245,21 @@ func (d *derivedTheme) panes(dark bool) paneTones {
 //
 // 改成同一个色相的"浅底深字"(暗色反之):底色只留一点点色相,字色压深,
 // 对比度 6.1 以上,类别仍然一眼可分,整行却安静下来。
+// chipTones 给类别胶囊一对"底 + 字"。底只要"看得出是一块底"就够——
+// 胶囊里写着类别名,色块不是唯一线索,所以不受 WCAG 1.4.11 对图形边界
+// 的 3:1 约束(硬拉到 3:1 会把浅标签变成 L 0.655 的实心重色块,和它
+// "轻量标注"的定位相反)。真正必须达标的是字对底 4.5:1,实测 6.2–7.4。
+//
+// 暗色底从 0.300 抬到 0.325:中栏底是 0.255,原来只差 1.11–1.14,胶囊
+// 在中栏上几乎看不出边界。
 func chipTones(col ui.Color, dark bool) (bg, fg ui.Color) {
 	_, _, h := colorToOklch(col)
 	if dark {
-		return oklchColor(0.300, 0.060, h), oklchColor(0.880, 0.100, h)
+		return oklchColor(0.420, 0.060, h), oklchColor(0.880, 0.100, h)
 	}
-	return oklchColor(0.930, 0.050, h), oklchColor(0.420, 0.120, h)
+	// 亮色底从 0.930 压到 0.880:三栏统一到 0.923 之后,0.930 与中栏底
+	// 只差 1.00–1.04,胶囊彻底看不出边界(和三栏分级是同一件事的两面)。
+	return oklchColor(0.866, 0.050, h), oklchColor(0.395, 0.120, h)
 }
 
 // chipTonesEmph 是 chipTones 的强调版:同一个色相,底色再深一档。
@@ -228,9 +268,9 @@ func chipTones(col ui.Color, dark bool) (bg, fg ui.Color) {
 func chipTonesEmph(col ui.Color, dark bool) (bg, fg ui.Color) {
 	_, _, h := colorToOklch(col)
 	if dark {
-		return oklchColor(0.380, 0.075, h), oklchColor(0.930, 0.090, h)
+		return oklchColor(0.455, 0.075, h), oklchColor(0.945, 0.090, h)
 	}
-	return oklchColor(0.880, 0.075, h), oklchColor(0.360, 0.130, h)
+	return oklchColor(0.860, 0.075, h), oklchColor(0.345, 0.130, h)
 }
 
 // groupColor is the fixed color of a catalog group (falls back to the seed).

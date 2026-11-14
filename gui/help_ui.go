@@ -32,7 +32,7 @@ func (a *app) helpDialog(c *ui.Context) {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "五步就够").Bold().FontSize(18)
 				ui.Spacer(c)
-				if ui.Button(c, "知道了").Radius(8).Clicked() {
+				if ui.Button(c, "知道了").Radius(6).Clicked() {
 					a.helpOpen = false
 				}
 			})
@@ -49,14 +49,14 @@ func (a *app) helpDialog(c *ui.Context) {
 						ui.Column(c).FillWidth().Gap(4).Padding(10, 12).Radius(10).
 							Background(cardBg).Children(func() {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, s.n).FontSize(13).Bold().TextColor(t.Accent).Width(14)
+								ui.Text(c, s.n).FontSize(12).Bold().TextColor(t.Accent).Width(14)
 								ui.Text(c, s.title).FontSize(14).TextColor(t.Text).SingleLine()
 							})
-							ui.Text(c, s.body).FontSize(13).TextColor(t.TextMuted)
+							ui.Text(c, s.body).FontSize(12).TextColor(t.TextMuted)
 						})
 					}
 
-					ui.Text(c, "模板里能用的变量").FontSize(13).Bold().TextColor(t.TextMuted).Padding(4, 2)
+					ui.Text(c, "模板里能用的变量").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
 					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
 						Background(cardBg).Children(func() {
 						vars := []struct{ name, desc string }{
@@ -72,8 +72,8 @@ func (a *app) helpDialog(c *ui.Context) {
 						}
 						for _, v := range vars {
 							ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-								ui.Text(c, v.name).FontSize(13).Width(130).TextColor(t.Text)
-								ui.Text(c, v.desc).FontSize(13).TextColor(t.TextMuted).FillWidth()
+								ui.Text(c, v.name).FontSize(12).Width(130).TextColor(t.Text)
+								ui.Text(c, v.desc).FontSize(12).TextColor(t.TextMuted).FillWidth()
 							})
 						}
 					})

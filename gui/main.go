@@ -250,7 +250,7 @@ func (a *app) view(c *ui.Context) {
 			ui.Spacer(c)
 			// 帮助入口:34 项功能、9 种模板变量、NFO 编号、CSV 回填,
 			// 全靠试是学不会的。放标题栏而不是目录里——它不属于管道。
-			help := ui.ButtonBase(c).Size(26, 26).Radius(13).Padding(0).Tooltip("帮助 F1")
+			help := ui.ButtonBase(c).Size(26, 26).Radius(26 / 2).Padding(0).Tooltip("帮助 F1")
 			if help.Hovered() {
 				help = help.Background(t.SurfaceHover)
 			}
@@ -263,7 +263,7 @@ func (a *app) view(c *ui.Context) {
 			// 设置是应用级入口,不该藏在"往管道里加东西"的目录末尾——
 			// 那里它排在 y≈1385,任何窗口高度都要先滚到底才能看见。
 			// 桌面应用的约定是设置不进内容列表,所以放标题栏右侧。
-			gear := ui.ButtonBase(c).Size(26, 26).Radius(13).Padding(0).
+			gear := ui.ButtonBase(c).Size(26, 26).Radius(26 / 2).Padding(0).
 				Tooltip(shortcutTip("Ctrl+,"))
 			if gear.Hovered() {
 				gear = gear.Background(t.SurfaceHover)
@@ -363,13 +363,13 @@ func (a *app) statusBar(c *ui.Context) {
 					label = fmt.Sprintf("%s 已等待 %d 秒", label, sec)
 				}
 			}
-			ui.Text(c, label).FontSize(13).TextColor(t.TextMuted)
+			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
 			// 批量执行时给一条真进度:一个转圈说不出"还要多久",
 			// 而 500 个文件能跑十几秒。
 			if a.busyTotal > 0 {
 				frac := float32(a.busyDone) / float32(a.busyTotal)
-				ui.Box(c).Width(120).Height(4).Radius(2).Background(t.Border).Children(func() {
-					ui.Box(c).FillWidth().Height(4).Radius(2).Background(t.Accent).Width(120 * frac)
+				ui.Box(c).Width(120).Height(4).Radius(4 / 2).Background(t.Border).Children(func() {
+					ui.Box(c).FillWidth().Height(4).Radius(4 / 2).Background(t.Accent).Width(120 * frac)
 				})
 				ui.Text(c, fmt.Sprintf("%d/%d", a.busyDone, a.busyTotal)).FontSize(12).TextColor(t.TextMuted)
 			} else if done, total := a.aiProgress(); total > 0 {
@@ -377,19 +377,19 @@ func (a *app) statusBar(c *ui.Context) {
 				// 进度,用户分不清"本地模型慢"和"网关已经死了"——而 3/40
 				// 正是"再等等"与"直接关掉"之间的区别。
 				frac := float32(done) / float32(total)
-				ui.Box(c).Width(120).Height(4).Radius(2).Background(t.Border).Children(func() {
-					ui.Box(c).FillWidth().Height(4).Radius(2).Background(t.Accent).Width(120 * frac)
+				ui.Box(c).Width(120).Height(4).Radius(4 / 2).Background(t.Border).Children(func() {
+					ui.Box(c).FillWidth().Height(4).Radius(4 / 2).Background(t.Accent).Width(120 * frac)
 				})
 				ui.Text(c, fmt.Sprintf("%d/%d", done, total)).FontSize(12).TextColor(t.TextMuted)
 			}
 		} else if a.status != "" {
-			ui.Text(c, a.status).FontSize(13).TextColor(a.statusColor(t)).SingleLine().Ellipsis("…")
+			ui.Text(c, a.status).FontSize(12).TextColor(a.statusColor(t)).SingleLine().Ellipsis("…")
 		} else {
 			// 空态只陈述事实,不指挥用户点某个按钮——此刻"执行更名"是禁用的,
 			// 让文案指向它等于把人引到一堵墙上。
 			// 也不再说"先拖文件":中栏这时正摆着四张意图卡,两条路都通,
 			// 底栏再指定一条就等于和旁边那条打架。
-			ui.Text(c, "还没有文件").FontSize(13).TextColor(t.TextMuted)
+			ui.Text(c, "还没有文件").FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Spacer(c)
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
@@ -441,7 +441,7 @@ func (a *app) intentCards(c *ui.Context) {
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).FillWidth().Gap(8).Padding(2, 2).Children(func() {
-			ui.Text(c, "想改成什么样？点一张，我把步骤配好").FontSize(13).TextColor(t.TextMuted).Padding(0, 2)
+			ui.Text(c, "想改成什么样？点一张，我把步骤配好").FontSize(12).TextColor(t.TextMuted).Padding(0, 2)
 			// 明说两条路都行:中栏摆着"先配步骤",右栏摆着"先放文件",
 			// 两边都不说对方,用户就只能猜哪个才是"正确顺序"。
 			ui.Text(c, "还没放文件也可以先排——文件加进来时，这些步骤会立刻套上去。").
@@ -544,7 +544,7 @@ func (a *app) catalogView(c *ui.Context) {
 		// "这一堆是一个整体"。搜索框留在组外,它自己是一个停留点。
 		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).FocusGroup(ui.Vertical).Children(func() {
 			if len(shown) == 0 {
-				ui.Text(c, "没有匹配的功能").FontSize(13).TextColor(t.TextMuted).Padding(8, 10)
+				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
 			}
 			for _, g := range groups {
 				// 组标题本身就是折叠开关:11 组收起后一屏放得下,而且
@@ -559,7 +559,7 @@ func (a *app) catalogView(c *ui.Context) {
 					head.Background(t.SurfaceHover)
 				}
 				head.Children(func() {
-					ui.Text(c, arrow+" "+g).FontSize(13).TextColor(t.TextMuted).SingleLine()
+					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).SingleLine()
 				})
 				if head.Clicked() {
 					if a.folded == nil {
@@ -690,7 +690,7 @@ func (a *app) rangeLegend(c *ui.Context, t *ui.Theme, dt *derivedTheme) {
 	}
 	chip := func(col ui.Color, label string) {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Width(4).Height(13).Radius(2).Background(col)
+			ui.Box(c).Width(4).Height(13).Radius(4 / 2).Background(col)
 			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).SingleLine()
 		})
 	}
@@ -731,7 +731,7 @@ func (a *app) stepsView(c *ui.Context) {
 			if a.pickMode {
 				label = "完成"
 			}
-			if ui.Button(c, label).Radius(8).Clicked() {
+			if ui.Button(c, label).Radius(6).Clicked() {
 				a.pickMode = !a.pickMode
 				if !a.pickMode {
 					a.chosen.Clear()
@@ -801,7 +801,7 @@ func (a *app) stepsView(c *ui.Context) {
 								numCol, labCol = t.Text, t.Text
 							}
 							ui.Row(c).Gap(6).Children(func() {
-								ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(13).TextColor(numCol).Width(22).TextAlign(ui.End)
+								ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22).TextAlign(ui.End)
 								// 全部步骤统一左对齐(设计书:不要在同一列表里混用对齐);
 								// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
 								if s.opFlow {
@@ -809,18 +809,18 @@ func (a *app) stepsView(c *ui.Context) {
 										// Shrink(0):操作名不参与压缩,要压缩就让后面的参数
 										// 胶囊去省略。以前没有它,"追加序号"会被挤成"追…"、
 										// "AI 按内容命名"挤成"AI…"——名字比参数重要。
-										ui.Text(c, s.opLabel).FontSize(13).FontWeight(500).TextColor(labCol).SingleLine().Shrink(0)
+										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && showSummary {
 											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(4).MaxWidth(150).SingleLine().Ellipsis("…").
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text)
 										}
 									})
 								} else {
 									ui.Row(c).Fill().Gap(6).Children(func() {
-										ui.Text(c, s.opLabel).FontSize(13).FontWeight(500).TextColor(labCol).SingleLine().Shrink(0)
+										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && v != s.opLabel && showSummary {
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(4).MaxWidth(150).SingleLine().Ellipsis("…").
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text)
 										}
 									})
@@ -836,7 +836,7 @@ func (a *app) stepsView(c *ui.Context) {
 										if i > 0 && a.steps[i-1].opGroup == s.opGroup {
 											ui.Box(c).Size(9, 9).Background(catFg)
 										} else {
-											ui.Text(c, s.opGroup).FontSize(12).Padding(2, 8).Radius(4).
+											ui.Text(c, s.opGroup).FontSize(12).Padding(2, 8).Radius(6).
 												Background(catBg).TextColor(catFg)
 										}
 									})
@@ -852,13 +852,13 @@ func (a *app) stepsView(c *ui.Context) {
 									if picked {
 										dotColor = t.Accent
 									}
-									pick := ui.ButtonBase(c).Size(16, 16).Radius(8).Border(1, dotColor)
+									pick := ui.ButtonBase(c).Size(16, 16).Radius(6).Border(1, dotColor)
 									if picked {
 										pick.Background(t.Accent)
 									}
 									pick.Children(func() {
 										if picked {
-											ui.Text(c, "✓").FontSize(11).TextColor(t.AccentText)
+											ui.Text(c, "✓").FontSize(12).TextColor(t.AccentText)
 										}
 									})
 									if pick.Clicked() {
@@ -889,7 +889,7 @@ func (a *app) stepsView(c *ui.Context) {
 					Background(dt.panes(a.isDark()).card).Children(func() {
 					ui.Text(c, r.opLabel).Bold()
 					if r.opDesc != "" {
-						ui.Text(c, r.opDesc).FontSize(13).TextColor(t.TextMuted)
+						ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
 					}
 					// 参数表单要知道自己实际有多宽:中栏的分隔缝可以一路拖到
 					// 几乎关闭,固定 96 的标签加上控件在那种宽度下会顶出栏外。
@@ -948,7 +948,7 @@ func (a *app) stepsView(c *ui.Context) {
 				} else if dangerButton(c, "删除所选", true).Clicked() {
 					a.armConfirm("chosen")
 				}
-				if ui.Button(c, "全不选").Radius(8).Clicked() {
+				if ui.Button(c, "全不选").Radius(6).Clicked() {
 					a.chosen.Clear()
 				}
 			})
@@ -1188,7 +1188,7 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 			// 一句话说清两条路都行:这个软件既能先放文件也能先排步骤,把其中
 			// 一条说成"正确顺序"只会让人以为另一条走不通。
 			ui.Text(c, "也可以点下面的按钮挑。先放文件或先排步骤都行，两边会自动接上。").
-				FontSize(13).TextColor(t.TextMuted)
+				FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Row(c).Gap(8).Wrap().Justify(ui.Center).Padding(4, 0).Children(func() {
 			// 大号:空态里这是唯一的主动作,不该和工具栏里那些次要按钮同尺寸。
@@ -1447,6 +1447,25 @@ func (a *app) filesView(c *ui.Context) {
 					ui.Text(c, "结果").FontSize(12).TextColor(t.TextMuted).Width(resultW).TextAlign(ui.End).SingleLine()
 				}
 			})
+			// 名字胶囊的最小宽度:110 是"能认出这是哪个文件"的下限
+			// (放得下 "01-…-01.mkv" 这种最常见的形态),但右栏能拖到
+			// 只剩一百多 DIP,那时硬撑 110 会把整组顶出窗口。
+			// 按可用宽度分档,而不是写死:保住"名字还在、还能认"这件事,
+			// 比保住那个具体数字重要。
+			// 名字这一行实际能用的宽度:卡片内边距(左右各 10)、结果列、
+			// 两者之间的 8、以及行尾那颗 18 宽的 × 按钮都要先扣掉。
+			// 110 是"能认出这是哪个文件"的下限(放得下 "01-…-01.mkv"),
+			// 但右栏能拖到只剩一百多 DIP——那时硬撑 110 会把结果列顶出
+			// 窗口(实测 splitL=240 时"将更名"跑到 909 > 900)。
+			// 所以按实际可用宽度夹紧:宁可名字缩成 "…",也不能让
+			// 扩展名或结果词掉出去。
+			nameAvail := innerW - 20 - resultW - 8 - 18
+			nameMinW := float32(110)
+			if nameAvail < 150 {
+				nameMinW = 30
+			} else if nameAvail < 200 {
+				nameMinW = 70
+			}
 			// 元数据行的两档降级:先丢日期(信息量最小),再丢大小。
 			showDate, showSize := innerW >= 200, innerW >= 120
 			// 序号列要够宽才画:三位数序号 + 右侧 8 的呼吸位。
@@ -1460,7 +1479,7 @@ func (a *app) filesView(c *ui.Context) {
 					// 读起来像"钉住"的标签条。
 					ui.Row(c).Fill().Gap(8).Padding(6).
 						Background(dt.panes(a.isDark()).right).Children(func() {
-						ui.Text(c, r.group).FontSize(14).FontWeight(600).TextColor(t.Text)
+						ui.Text(c, r.group).FontSize(14).Bold().TextColor(t.Text)
 						if nGroups > 1 {
 							ui.Text(c, fmt.Sprintf("%d 个文件", r.count)).FontSize(12).TextColor(t.TextMuted)
 						}
@@ -1569,11 +1588,24 @@ func (a *app) filesView(c *ui.Context) {
 							// 可用宽度,于是「webm」被顶到窗口外 936.8 > 900。
 							// 组内换行让扩展名掉到第二行,虽然多占一行,但至少
 							// 还在窗口里。
-							ui.Row(c).Gap(4).Wrap().AlignItems(ui.Center).Children(func() {
-								// SingleLine 才能让 Ellipsis 生效:没有它,超长文件名会折成
-								// 四行,把 54px 的卡片撑到 95px,整列节奏全乱
+							// 不 Wrap:扩展名必须和名字同一行。允许换行时,
+							// 组内放不下就把「. flac」单独甩到下一行,那一行
+							// 只剩一个句点和三颗字母,读起来像渲染坏了。
+							// 宽度不够就让名字收缩(它有 TruncateMiddle),
+							// 名字的最小宽度由 nameMinW 按可用宽度分档。
+							ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+								// TruncateMiddle:超长文件名从中间省略,保留开头和结尾。
+								// 尾部省略("01 - Awich - THE UNION 很长…")把真正
+								// 用来认文件的尾巴和扩展名一起切掉了,而这一列的
+								// 任务就是"让人认出这是哪个文件"——开头是序号/艺人,
+								// 结尾是集数/版本/扩展名,两头都比中间有信息量。
+								//
+								// MinWidth(110):以前是 70,那一档下"第2话"这种短名
+								// 也会被压到只剩两三个字,而 110 正好放得下
+								// "01-…-01.mkv" 这类最常见的形态。
 								ui.Text(c, stem).FontSize(14).Padding(2, 10).Radius(6).
-									Background(stemBg).MinWidth(70).MaxWidth(170).SingleLine().Ellipsis("…")
+									Background(stemBg).MinWidth(nameMinW).MaxWidth(190).
+									Shrink(1).SingleLine().TruncateMiddle()
 								if ext != "" {
 									ui.Text(c, ".").FontSize(14).TextColor(t.TextMuted)
 									// Shrink(0):扩展名是最短的一颗胶囊,允许它收缩时
@@ -1629,10 +1661,10 @@ func (a *app) filesView(c *ui.Context) {
 								if !row.Hovered() {
 									return
 								}
-								x := ui.ButtonBase(c).Size(18, 18).Radius(9).Padding(0).
+								x := ui.ButtonBase(c).Size(18, 18).Radius(18 / 2).Padding(0).
 									Background(t.Danger.Alpha(0.12)).Tooltip("从列表移除（Delete）")
 								x.Children(func() {
-									ui.Text(c, "×").FontSize(13).TextColor(t.Danger)
+									ui.Text(c, "×").FontSize(12).TextColor(t.Danger)
 								})
 								if x.Clicked() {
 									a.pendingRemove = i + 1
@@ -1653,7 +1685,7 @@ func (a *app) filesView(c *ui.Context) {
 						// 胶囊换到下一行,胶囊内部永不断行。
 						ui.Row(c).Gap(6).Wrap().Children(func() {
 							if f.group == "" {
-								path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(12).Padding(1, 6).Radius(4).
+								path := ui.Text(c, pathTail3(filepath.Dir(f.path))).FontSize(12).Padding(1, 6).Radius(6).
 									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).MaxWidth(170).SingleLine().Ellipsis("…")
 								path.Tooltip(filepath.Dir(f.path))
 							}
@@ -1669,16 +1701,16 @@ func (a *app) filesView(c *ui.Context) {
 							extNoDot := strings.ToLower(strings.TrimPrefix(oExt, "."))
 							switch contentCheck(extNoDot, f.realType, f.size) {
 							case contentMismatch:
-								ui.Text(c, "内容为 "+contentLabel(f.realType)).FontSize(12).Padding(1, 6).Radius(4).
+								ui.Text(c, "内容为 "+contentLabel(f.realType)).FontSize(12).Padding(1, 6).Radius(6).
 									Background(t.Danger.Alpha(0.15)).TextColor(t.Danger).SingleLine().
 									Tooltip("扩展名是 ." + extNoDot + "，但文件内容像 " + contentLabel(f.realType))
 							case contentUnrecognized:
-								ui.Text(c, "内容未识别").FontSize(12).Padding(1, 6).Radius(4).
+								ui.Text(c, "内容未识别").FontSize(12).Padding(1, 6).Radius(6).
 									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine().
 									Tooltip("扩展名是 ." + extNoDot + "，但文件开头读不出已知的格式标记")
 							default:
 								if oExt == "" && f.typ != "" && f.typ != "无扩展名" {
-									ui.Text(c, f.typ).FontSize(12).Padding(1, 6).Radius(4).
+									ui.Text(c, f.typ).FontSize(12).Padding(1, 6).Radius(6).
 										Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 								}
 							}
@@ -1687,11 +1719,11 @@ func (a *app) filesView(c *ui.Context) {
 							// 胶囊宽度(日期 73 DIP、大小最长「12.0 MB」55 DIP,
 							// 每颗前后各 6 的间隔),再留出名字胶囊的余地。
 							if showDate {
-								ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(4).
+								ui.Text(c, f.modTime.Format("2006-01-02")).FontSize(12).Padding(1, 6).Radius(6).
 									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 							}
 							if showSize {
-								ui.Text(c, humanSize(f.size)).FontSize(12).Padding(1, 6).Radius(4).
+								ui.Text(c, humanSize(f.size)).FontSize(12).Padding(1, 6).Radius(6).
 									Background(dt.panes(a.isDark()).chip).TextColor(t.TextMuted).SingleLine()
 							}
 							ui.Spacer(c)
@@ -1700,7 +1732,7 @@ func (a *app) filesView(c *ui.Context) {
 						// 允许折两行——单行 + 省略号会把最有信息量的
 						// 后半句吃掉,而失败原因往往后半句才是关键。
 						if i < len(a.ops) && a.ops[i].Err != nil {
-							ui.Text(c, a.ops[i].Err.Error()).FontSize(13).TextColor(t.Danger).MaxLines(2)
+							ui.Text(c, a.ops[i].Err.Error()).FontSize(12).TextColor(t.Danger).MaxLines(2)
 						}
 					})
 					// 右缘结果:成功/失败/将更名/不变。
@@ -1710,10 +1742,10 @@ func (a *app) filesView(c *ui.Context) {
 					if i >= len(a.ops) && a.previewErr != "" {
 						ui.Row(c).Width(resultW).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
 							ui.Spacer(c)
-							dot := ui.Box(c).Size(7, 7).Radius(4).Background(t.Border)
+							dot := ui.Box(c).Size(7, 7).Radius(7 / 2).Background(t.Border)
 							dot.Tooltip("预览算不出来：" + a.previewErr)
 							if showResultText {
-								ui.Text(c, "算不出").FontSize(13).TextColor(t.TextMuted).SingleLine().
+								ui.Text(c, "算不出").FontSize(12).TextColor(t.TextMuted).SingleLine().
 									Tooltip("预览算不出来：" + a.previewErr)
 							}
 						})
@@ -1726,9 +1758,9 @@ func (a *app) filesView(c *ui.Context) {
 						// Tooltip——颜色和位置仍然能一眼分辨成功/失败。
 						ui.Row(c).Width(resultW).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
 							ui.Spacer(c)
-							dot := ui.Box(c).Size(7, 7).Radius(4).Background(col)
+							dot := ui.Box(c).Size(7, 7).Radius(7 / 2).Background(col)
 							if showResultText {
-								txt := ui.Text(c, res).FontSize(13).TextColor(col).SingleLine()
+								txt := ui.Text(c, res).FontSize(12).TextColor(col).SingleLine()
 								if a.ops[i].Err != nil {
 									txt.Tooltip(a.ops[i].Err.Error())
 								}
@@ -1851,11 +1883,15 @@ func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 // 同色相、L 0.44 的墨色;暗色下 Accent 本身就有 5.4 以上,继续用它,
 // 免得暗色按钮反而变闷。
 func accentInk(t *ui.Theme) ui.Color {
-	if t.Dark {
-		return t.Accent
-	}
-	// 同色相、L 0.44 的墨色;chroma 沿用 Accent 的(已被 seed 收敛过)
+	// 同色相的墨色/亮色,chroma 沿用 Accent 的(已被 seed 收敛过)。
+	//
+	// 暗色不再直接用 Accent:浅填充底是"Accent 20% 叠在栏底上",三栏统一
+	// 到 0.265 之后那层底比原来亮,与 Accent(L≈0.72)的对比掉到 4.15。
+	// 往上抬到 0.80 才重新过 4.5(实测最差 5.11)。
 	_, ac, ah := colorToOklch(t.Accent)
+	if t.Dark {
+		return oklchColor(0.80, ac, ah)
+	}
 	return oklchColor(0.44, ac, ah)
 }
 
@@ -1865,7 +1901,7 @@ func accentInk(t *ui.Theme) ui.Color {
 func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
 	ink := accentInk(t)
-	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).TextColor(ink).
+	b := ui.ButtonBase(c).Radius(6).Padding(6, 14).TextColor(ink).
 		Background(t.Accent.Alpha(0.12))
 	if !enabled {
 		b = b.TextColor(t.TextMuted).Background(t.SurfaceHover)
@@ -1887,10 +1923,10 @@ func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
 func primaryButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
 	if enabled {
-		return ui.PrimaryButton(c, label).Radius(8)
+		return ui.PrimaryButton(c, label).Radius(6)
 	}
 	fg, bg := disabledPrimaryColors(t)
-	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).
+	b := ui.ButtonBase(c).Radius(6).Padding(6, 14).
 		TextColor(fg).Background(bg).Border(1, t.Border).
 		DimDisabled(false).Disabled(true)
 	b.Children(func() { ui.Text(c, label).SingleLine() })
@@ -1914,7 +1950,7 @@ func outlinedButton(c *ui.Context, label string, enabled bool) ui.Element {
 	if !enabled {
 		fg = t.TextMuted
 	}
-	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Border)
+	b := ui.ButtonBase(c).Radius(6).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Border)
 	if enabled && b.Hovered() {
 		b = b.Background(t.SurfaceHover)
 	}
@@ -1931,7 +1967,7 @@ func dangerButton(c *ui.Context, label string, enabled bool) ui.Element {
 	if !enabled {
 		fg = t.TextMuted
 	}
-	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Danger.Alpha(0.5))
+	b := ui.ButtonBase(c).Radius(6).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Danger.Alpha(0.5))
 	if !enabled {
 		b = b.Border(1, t.Border)
 	} else if b.Hovered() {

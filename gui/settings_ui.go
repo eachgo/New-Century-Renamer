@@ -89,7 +89,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 		card := func(title string, fields func()) {
 			ui.Column(c).Fill().Gap(8).Padding(12, 14).Radius(10).
 				Background(cardBg).Children(func() {
-				ui.Text(c, title).FontSize(13).Bold().TextColor(t.TextMuted)
+				ui.Text(c, title).FontSize(12).Bold().TextColor(t.TextMuted)
 				fields()
 			})
 		}
@@ -130,7 +130,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 											if a.keyShown {
 												label = "隐藏"
 											}
-											if ui.Button(c, label).Radius(8).Tooltip("切换 API Key 的显示").Clicked() {
+											if ui.Button(c, label).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
 												a.keyShown = !a.keyShown
 											}
 										})
@@ -138,13 +138,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 									row("等待秒数", func() {
 										ui.Row(c).Gap(10).Children(func() {
 											intField(c, "等待秒数", &a.aiTimeoutText, 10, 3600, core.DefaultAITimeoutSeconds, 150)
-											ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(13).TextColor(t.TextMuted).Grow(1)
+											ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(12).TextColor(t.TextMuted).Grow(1)
 										})
 									})
 									row("并发路数", func() {
 										ui.Row(c).Gap(10).Children(func() {
 											intField(c, "并发路数", &a.aiConcurrencyText, 1, 32, core.DefaultAIConcurrency, 150)
-											ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(13).TextColor(t.TextMuted).Grow(1)
+											ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(12).TextColor(t.TextMuted).Grow(1)
 										})
 									})
 									row("默认提示词", func() {
@@ -179,12 +179,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 										ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 											sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
 											sw.Border(1, t.Border)
-											ui.Text(c, colorHex(a.seedPick)).FontSize(13).TextColor(t.TextMuted)
+											ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
 											label := "更改…"
 											if a.pickOpen {
 												label = "收起"
 											}
-											if ui.Button(c, label).Radius(8).Disabled(a.seedFollow).Clicked() {
+											if ui.Button(c, label).Radius(6).Disabled(a.seedFollow).Clicked() {
 												a.pickOpen = !a.pickOpen
 											}
 										})
@@ -201,7 +201,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 										pt := themeFor(a.seedPick).panes(a.isDark())
 										swatch := func(name string, col ui.Color) {
 											ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-												b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
+												b := ui.Box(c).Size(16, 16).Radius(6).Background(col)
 												b.Border(1, t.Border)
 												ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
 											})
@@ -215,12 +215,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 									})
 								})
 								card("设置文件", func() {
-									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(13).TextColor(t.TextMuted)
+									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
 									ui.Row(c).Gap(8).Children(func() {
-										if ui.Button(c, "导出设置…").Radius(8).Clicked() {
+										if ui.Button(c, "导出设置…").Radius(6).Clicked() {
 											go a.exportSettings()
 										}
-										if ui.Button(c, "导入设置…").Radius(8).Clicked() {
+										if ui.Button(c, "导入设置…").Radius(6).Clicked() {
 											go a.importSettings()
 										}
 									})
@@ -248,7 +248,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									if a.keyShown {
 										label = "隐藏"
 									}
-									if ui.Button(c, label).Radius(8).Tooltip("切换 API Key 的显示").Clicked() {
+									if ui.Button(c, label).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
 										a.keyShown = !a.keyShown
 									}
 								})
@@ -256,13 +256,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 							row("等待秒数", func() {
 								ui.Row(c).Gap(10).Children(func() {
 									intField(c, "等待秒数", &a.aiTimeoutText, 10, 3600, core.DefaultAITimeoutSeconds, 150)
-									ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(13).TextColor(t.TextMuted).Grow(1)
+									ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(12).TextColor(t.TextMuted).Grow(1)
 								})
 							})
 							row("并发路数", func() {
 								ui.Row(c).Gap(10).Children(func() {
 									intField(c, "并发路数", &a.aiConcurrencyText, 1, 32, core.DefaultAIConcurrency, 150)
-									ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(13).TextColor(t.TextMuted).Grow(1)
+									ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(12).TextColor(t.TextMuted).Grow(1)
 								})
 							})
 							row("默认提示词", func() {
@@ -295,12 +295,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
 									sw.Border(1, t.Border)
-									ui.Text(c, colorHex(a.seedPick)).FontSize(13).TextColor(t.TextMuted)
+									ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
 									label := "更改…"
 									if a.pickOpen {
 										label = "收起"
 									}
-									if ui.Button(c, label).Radius(8).Disabled(a.seedFollow).Clicked() {
+									if ui.Button(c, label).Radius(6).Disabled(a.seedFollow).Clicked() {
 										a.pickOpen = !a.pickOpen
 									}
 								})
@@ -317,7 +317,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 								pt := themeFor(a.seedPick).panes(a.isDark())
 								swatch := func(name string, col ui.Color) {
 									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-										b := ui.Box(c).Size(16, 16).Radius(4).Background(col)
+										b := ui.Box(c).Size(16, 16).Radius(6).Background(col)
 										b.Border(1, t.Border)
 										ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
 									})
@@ -331,12 +331,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 							})
 						})
 						card("设置文件", func() {
-							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(13).TextColor(t.TextMuted)
+							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
 							ui.Row(c).Gap(8).Children(func() {
-								if ui.Button(c, "导出设置…").Radius(8).Clicked() {
+								if ui.Button(c, "导出设置…").Radius(6).Clicked() {
 									go a.exportSettings()
 								}
-								if ui.Button(c, "导入设置…").Radius(8).Clicked() {
+								if ui.Button(c, "导入设置…").Radius(6).Clicked() {
 									go a.importSettings()
 								}
 							})
@@ -360,10 +360,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Spacer(c)
-				if ui.Button(c, "取消").Radius(8).Clicked() {
+				if ui.Button(c, "取消").Radius(6).Clicked() {
 					a.closeSettings(false)
 				}
-				if ui.PrimaryButton(c, "保存").Radius(8).Clicked() {
+				if ui.PrimaryButton(c, "保存").Radius(6).Clicked() {
 					a.commitAITimeout()
 					a.commitAIConcurrency()
 					a.commitAIPrompt()
@@ -557,28 +557,28 @@ func (a *app) importDialog(c *ui.Context) {
 			Background(t.Surface).Children(func() {
 			ui.Text(c, "导入设置？").Bold().FontSize(18)
 			ui.Text(c, "将用 "+filepath.Base(a.importPath)+" 整份替换当前设置。").
-				FontSize(13).TextColor(t.TextMuted)
+				FontSize(12).TextColor(t.TextMuted)
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
 					if len(diffs) == 0 {
 						ui.Text(c, "这份文件和当前设置完全一样，导入不会有任何变化。").
-							FontSize(13).TextColor(t.TextMuted)
+							FontSize(12).TextColor(t.TextMuted)
 						return
 					}
 					for _, d := range diffs {
-						ui.Text(c, "· "+d).FontSize(13).TextColor(t.Text)
+						ui.Text(c, "· "+d).FontSize(12).TextColor(t.Text)
 					}
 					ui.Text(c, "原设置会先备份成 "+filepath.Base(settingsPath())+".bak，可以随时换回来。").
 						FontSize(12).TextColor(t.TextMuted)
 				})
 			})
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, "取消").Radius(8).Clicked() {
+				if ui.Button(c, "取消").Radius(6).Clicked() {
 					a.importPending, a.importPath = nil, ""
 					a.importOpen = false
 					a.status = "已取消导入，设置没有变化"
 				}
-				confirm := ui.PrimaryButton(c, "导入并保存").Radius(8)
+				confirm := ui.PrimaryButton(c, "导入并保存").Radius(6)
 				if confirm.Clicked() {
 					go a.commitImport()
 				}

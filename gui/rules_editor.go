@@ -710,13 +710,13 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme, w float32) {
 			// Wrap lets a row of several controls (起始 / 步长) use two
 			// lines instead of overflowing.
 			ui.Column(c).Gap(4).Children(func() {
-				ui.Text(c, label).FontSize(13).TextColor(t.TextMuted)
+				ui.Text(c, label).FontSize(12).TextColor(t.TextMuted)
 				ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(ctl)
 			})
 			return
 		}
 		ui.Row(c).Gap(labelGap).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, label).FontSize(13).TextColor(t.TextMuted).Width(labelW)
+			ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).Width(labelW)
 			ctl()
 		})
 	}

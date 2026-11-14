@@ -1239,11 +1239,10 @@ func TestTonalButtonInkReadable(t *testing.T) {
 			if dark {
 				th = dt.dark
 			}
-			ink := th.Accent
-			if !dark {
-				_, ac, ah := colorToOklch(th.Accent)
-				ink = oklchColor(0.44, ac, ah)
-			}
+			// 用生产里的 accentInk,不在这里重算一遍:重算出来的值会
+			// 跟真实按钮上的字色脱钩——这条断言以前就是这样,所以
+			// 暗色字色改了之后它还在报旧数字。
+			ink := accentInk(th)
 			p := dt.panes(dark)
 			// 12% 常态底与 20% 悬停底都要过 4.5
 			for _, al := range []float32{0.12, 0.20} {
