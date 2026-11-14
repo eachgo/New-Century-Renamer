@@ -422,6 +422,12 @@ func (a *app) commitImport() {
 		}
 	}
 	a.settings = s
+	// 设置面板可能还开着(导入是从它里面点的)。草稿必须跟着换,
+	// 否则用户接着点「保存」,会把面板里那份旧的草稿又写回去——
+	// 导入看起来成功了,实际一保存就被覆盖。
+	if a.settingsOpen {
+		a.settingsDraft = s
+	}
 	a.syncSeedUI()
 	a.ApplySettings()
 	if err := os.WriteFile(dst, mustJSON(a.settings), 0o644); err != nil {
@@ -497,6 +503,13 @@ func summarizeText(s string) string {
 func (a *app) importDialog(c *ui.Context) {
 	if a.importPending == nil {
 		a.importOpen = false
+		return
+	}
+	// Modal 自己也认 Esc(它会把 *open 置 false)。那条路径绕过了 view()
+	// 里的逃生键,所以在这里补一次收尾——否则确认态关掉了,待导入的
+	// 设置还挂在 app 上,下次一打开对话框就又是那一份。
+	if !a.importOpen {
+		a.importPending, a.importPath = nil, ""
 		return
 	}
 	t := c.Theme()

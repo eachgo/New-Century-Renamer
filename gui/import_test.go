@@ -156,3 +156,48 @@ func TestImportCancelKeepsSettings(t *testing.T) {
 		t.Fatal("取消不该产生备份文件")
 	}
 }
+
+// 从设置面板里导入时,面板的草稿也必须跟着换。否则用户接着点「保存」,
+// 会把面板里那份旧草稿又写回去——导入看起来成功了,一保存就被覆盖。
+func TestImportRefreshesOpenSettingsDraft(t *testing.T) {
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "ncreamer-settings.json")
+	old := defaultSettings()
+	old.AI.Model = "旧模型"
+	if err := ExportSettingsTo(dst, old); err != nil {
+		t.Fatal(err)
+	}
+	settingsFilePath = func() string { return dst }
+	defer func() { settingsFilePath = settingsPath }()
+
+	next := defaultSettings()
+	next.AI.Model = "新模型"
+	a := &app{stepSel: -1, settings: old, settingsDraft: old, settingsOpen: true,
+		importOpen: true, importPending: &next, importPath: filepath.Join(dir, "x.json")}
+	a.commitImport()
+	if a.settingsDraft.AI.Model != "新模型" {
+		t.Fatalf("导入后设置面板的草稿还是旧的: %q", a.settingsDraft.AI.Model)
+	}
+}
+
+// Esc 关掉最上面那层(导入确认),不能连底下的设置面板一起关。
+func TestEscClosesImportFirst(t *testing.T) {
+	dir := t.TempDir()
+	next := defaultSettings()
+	a := &app{stepSel: -1, settings: defaultSettings(), settingsDraft: defaultSettings(),
+		settingsOpen: true, importOpen: true, importPending: &next,
+		importPath: filepath.Join(dir, "x.json")}
+	a.syncSeedUI()
+	tt := ui.NewTester(a.view, 1100, 760)
+	for i := 0; i < 4; i++ {
+		tt.Frame()
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if a.importOpen || a.importPending != nil {
+		t.Fatal("Esc 没有关掉导入确认")
+	}
+	if !a.settingsOpen {
+		t.Fatal("Esc 把下面的设置面板一起关了")
+	}
+}

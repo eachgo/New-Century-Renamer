@@ -132,8 +132,13 @@ func (a *app) view(c *ui.Context) {
 	} else {
 		c.SetTheme(dt.light)
 	}
-	// 逃生键:模式类状态必须能被一键解除,用户不会被困在里面
-	if a.pickOpen && c.Shortcut(0, ui.KeyEscape) {
+	// 逃生键:模式类状态必须能被一键解除,用户不会被困在里面。
+	// 导入确认排在最前:它盖在设置面板上面,按 Esc 该先关最上面那层,
+	// 而不是连下面那个一起关掉。
+	if a.importOpen && c.Shortcut(0, ui.KeyEscape) {
+		a.importPending, a.importPath, a.importOpen = nil, "", false
+		a.status = "已取消导入，设置没有变化"
+	} else if a.pickOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.pickOpen = false
 	} else if a.pickMode && c.Shortcut(0, ui.KeyEscape) {
 		a.pickMode = false
