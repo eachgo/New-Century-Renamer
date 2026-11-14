@@ -109,6 +109,14 @@ type app struct {
 	pendingDrop []string
 	// fileFocus 记着"上一帧结束时文件列表是否拿着焦点",见 handleShortcuts
 	fileFocus bool
+	// previewErr 是"这一轮预览整体算不出来"的原因(规则本身有问题,
+	// 比如模板括号不配对)。它和 op.Err 不是一回事:op.Err 是"某个文件
+	// 改不成",previewErr 是"一个都算不出来"。
+	//
+	// 以前这条分支只把 a.ops 置空,于是文件行还在、新名列和结果列整片
+	// 消失,看起来像"预览全没了"却又不说是为什么。现在留着原因,
+	// 右栏顶部明说,每行也标一句"等修好步骤"。
+	previewErr string
 }
 
 func (a *app) view(c *ui.Context) {
@@ -335,12 +343,9 @@ func (a *app) statusBar(c *ui.Context) {
 			}
 		}
 		applyEnabled := !a.busy && a.hasChanges()
-		if applyEnabled {
-			if ui.PrimaryButton(c, "执行更名").Radius(8).Tooltip(shortcutTip("Ctrl+Enter")).Clicked() {
-				go a.apply()
-			}
-		} else {
-			ui.PrimaryButton(c, "执行更名").Radius(8).Disabled(true)
+		applyBtn := primaryButton(c, "执行更名", applyEnabled).Tooltip(shortcutTip("Ctrl+Enter"))
+		if applyEnabled && applyBtn.Clicked() {
+			go a.apply()
 		}
 	})
 }
@@ -1190,7 +1195,7 @@ func (a *app) filesView(c *ui.Context) {
 				if a.busyAI {
 					previewLabel = "联网命名中…"
 				}
-				if ui.PrimaryButton(c, previewLabel).Radius(8).Disabled(a.busy || len(a.files) == 0).Clicked() {
+				if primaryButton(c, previewLabel, !a.busy && len(a.files) > 0).Clicked() {
 					go a.previewAsync()
 				}
 			})
@@ -1244,6 +1249,19 @@ func (a *app) filesView(c *ui.Context) {
 					if outlinedButton(c, "撤销这次", !a.busy && a.journalExists()).Clicked() {
 						go a.undo()
 					}
+				})
+			}
+			// 整轮预览算不出来:这是"一个都算不出来",和下面那条"某几个
+			// 文件改不成"是两回事,所以单独一条、颜色更重。以前这条分支
+			// 只清空 a.ops,右栏于是只剩光秃秃的文件名——用户看不出
+			// 是"没配步骤"还是"步骤写错了",更不知道错在哪。
+			if a.previewErr != "" {
+				ui.Row(c).FillWidth().Gap(6).Padding(4, 8).Radius(6).
+					Background(t.Danger.Alpha(0.14)).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "预览算不出来").FontSize(12).TextColor(t.Danger).Shrink(0)
+					ui.Spacer(c)
+					ui.Text(c, a.previewErr).FontSize(12).TextColor(t.Danger).MaxWidth(280).
+						SingleLine().Ellipsis("…").Tooltip(a.previewErr)
 				})
 			}
 			// 失败的聚合条:60 个文件里 5 个失败时,逐行扫描找红字
@@ -1405,6 +1423,15 @@ func (a *app) filesView(c *ui.Context) {
 										nameChips(nStem, "", nCol.Alpha(0.18), nExtBg, nExtFg)
 									}
 								})
+							} else if a.previewErr != "" {
+								// 整轮算不出来:这里以前什么都不画,而右边原本该
+								// 出现新名字的位置留空——用户看到的是"这个名字
+								// 没有要改的地方",其实是一个名字都算不出来。
+								ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+									ui.Text(c, "→").TextColor(t.TextMuted)
+									ui.Text(c, "等步骤修好").FontSize(14).Padding(2, 10).Radius(6).
+										Background(t.SurfaceHover).TextColor(t.TextMuted).SingleLine()
+								})
 							}
 							ui.Spacer(c)
 							// 悬停出 ×:200 个文件里只有 3 个不想改时,不必
@@ -1489,8 +1516,21 @@ func (a *app) filesView(c *ui.Context) {
 							ui.Text(c, a.ops[i].Err.Error()).FontSize(13).TextColor(t.Danger).MaxLines(2)
 						}
 					})
-					// 右缘结果:成功/失败/将更名/不变
-					if i < len(a.ops) {
+					// 右缘结果:成功/失败/将更名/不变。
+					// 整轮算不出来时也要占住这一列:留空的话右缘整片空白,
+					// 加上新名列一起消失,读起来就是"预览没了"——而真相是
+					// "预览暂时算不出来",两句话对用户的意义完全不同。
+					if i >= len(a.ops) && a.previewErr != "" {
+						ui.Row(c).Width(resultW).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
+							ui.Spacer(c)
+							dot := ui.Box(c).Size(7, 7).Radius(4).Background(t.Border)
+							dot.Tooltip("预览算不出来：" + a.previewErr)
+							if showResultText {
+								ui.Text(c, "算不出").FontSize(13).TextColor(t.TextMuted).SingleLine().
+									Tooltip("预览算不出来：" + a.previewErr)
+							}
+						})
+					} else if i < len(a.ops) {
 						// 结果是"状态",不是"类别":用状态点 + 纯文字,
 						// 不用胶囊形状,免得和类别胶囊混成一种语言
 						res, col := a.resultChip(a.ops[i])
@@ -1647,6 +1687,35 @@ func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
 	}
 	b.Children(func() { ui.Text(c, label).SingleLine() })
 	return b
+}
+
+// primaryButton 是"主操作"按钮(执行更名)。启用时是实心主色块,字色由
+// 主题的 AccentText 决定——它按"白字与深墨取对比度高者"算,浅色相上
+// 不会糊成一片(见 material.go 的 inkOn)。
+//
+// 禁用时换成中性底 + 次要文字,并且关掉 mygo 的自动半透明:那个 50%
+// 是把整块连同文字一起乘上去,实心主色本来就饱和,乘完实测只有
+// 1.37–1.55:1——「执行更名」在没文件可改的时候等于看不见。中性底
+// (t.Surface)配次要文字是 5.84:1,既明确"现在点不了",又读得出是哪个按钮。
+func primaryButton(c *ui.Context, label string, enabled bool) ui.Element {
+	t := c.Theme()
+	if enabled {
+		return ui.PrimaryButton(c, label).Radius(8)
+	}
+	fg, bg := disabledPrimaryColors(t)
+	b := ui.ButtonBase(c).Radius(8).Padding(6, 14).
+		TextColor(fg).Background(bg).Border(1, t.Border).
+		DimDisabled(false).Disabled(true)
+	b.Children(func() { ui.Text(c, label).SingleLine() })
+	return b
+}
+
+// disabledPrimaryColors 是禁用主按钮的字色与底色。抽成函数是为了让
+// 测试能拿到"生产真的用的那两个颜色"——测试里自己重算一遍
+// (TextMuted 配 Surface)的话,把按钮改回裸 Disabled 它也照样通过,
+// 等于没守。
+func disabledPrimaryColors(t *ui.Theme) (fg, bg ui.Color) {
+	return t.TextMuted, t.Surface
 }
 
 // outlinedButton 是"中性次要动作"的镂空按钮:只描边、不填底,永远不抢眼。
@@ -1997,10 +2066,14 @@ func (a *app) previewAsync() {
 func (a *app) preview() {
 	rules, err := core.ParseRules(a.stepSpecs())
 	if err != nil {
+		// 整轮算不出来:记住原因,a.ops 置空(没有可信的新名字可用),
+		// 但界面不能因此装作"没有预览这回事"——见 previewErr 的注释。
 		a.ops = nil
+		a.previewErr = err.Error()
 		a.status = err.Error()
 		return
 	}
+	a.previewErr = ""
 	paths := make([]string, len(a.files))
 	for i := range a.files {
 		paths[i] = a.files[i].path

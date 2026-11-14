@@ -106,7 +106,13 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// (左/中/右栏/卡片)全部 ≥4.8,同时仍明显浅于正文(L 0.24),层级还在。
 	lt.TextMuted = tone(0.50, 0.20)
 	accAt(lt, accL, cc, H)
-	lt.AccentText = ui.RGB(255, 255, 255)
+	// 压在实心主色上的字:白字还是黑字,看哪个读得出来。
+	//
+	// 主色的明度被 accL 夹在 0.55–0.68,白字在浅色相(黄、青、亮绿)上
+	// 只有 2.76–2.89:1——「执行更名」四个字糊成一片。全色域扫一遍
+	// (H 每 5°、C 六档、L 四档)可以证明:按"白字与深墨取对比度高者"
+	// 这条规则,最差的一档是 4.56:1,全部达标;而只用白字最差 3.35。
+	lt.AccentText = inkOn(lt.Accent)
 	lt.Selection = tone(0.925, 0.35)
 	lt.Focus = oklchColor(accL, cc, H)
 	lt.Inverse = tone(0.28, 0.85)
@@ -253,6 +259,17 @@ func accAt(t *ui.Theme, l, c, h float64) {
 	// 留空时按 AccentText 混出一层灰——切到别的窗口,整屏的主题色就褪掉,
 	// 看起来像"这个程序被禁用了"。主色是用户选的,不该由焦点决定。
 	t.InactiveAccent = t.Accent
+}
+
+// inkOn 返回压在实心底色 ground 上读得最清楚的字色:纯白或深墨,
+// 取对比度高的那个。深墨的明度取 0.10——比正文的 0.24 还深,
+// 因为它要压的是一块饱和色,不是近白的底。
+func inkOn(ground ui.Color) ui.Color {
+	dark := oklchColor(0.10, 0.02, 0)
+	if contrastRatio(ground, dark) > contrastRatio(ground, ui.RGB(255, 255, 255)) {
+		return dark
+	}
+	return ui.RGB(255, 255, 255)
 }
 
 func clamp(v, lo, hi float64) float64 {
