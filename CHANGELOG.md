@@ -7,6 +7,29 @@
 0.1.3 发出去之后的用户反馈。都是"看着不对劲但说不清哪不对"的那类问题,
 根因一条条量出来才清楚。
 
+### 修复 · CI 的 macOS 与 Ubuntu 两条红灯
+
+本地交叉编译三平台都能过，红的是测试。两条失败各占一个平台，根因完全不同：
+
+- **Ubuntu 上界面的中文一个像素都没画出来**。`TestDisabledPrimaryButtonStaysReadable`
+  报"实测对比度只有 1.00:1"——1.00 的意思是量到的那块区域里只有一种颜色，
+  也就是一个字形都没渲染。不是配色问题：`ubuntu-latest` 的镜像里只有
+  `fonts-noto-color-emoji`，没有任何中日韩字体；mygo 的 Linux 文本后端走
+  Pango，`pango_layout_get_glyphs` 给出 `PANGO_GLYPH_EMPTY` 时直接返回空位图，
+  不画 fallback 方框，也不打警告（库都加载成功了，只是没有字形）。macOS 自带
+  PingFang、Windows 自带雅黑，所以只有 Linux 红。
+  CI 里给 Linux 加一步 `fonts-noto-cjk`；测试同时把"整块只有一种颜色"单独
+  报成"这台机器缺中文字体"——报成"对比度 1.00"会把人引向配色，方向是错的。
+- **macOS 上点"空白处"失焦，实际点到了遮罩**。`TestAIIntFieldClampsOutOfRange`
+  用固定坐标 `tt.ClickAt(900, 700)` 让输入框失焦，而 1280×800 下设置面板的
+  y 范围是 99.5–700.4——**700 正好压在底边上**。macOS 的行高比 Windows 高，
+  面板尺寸一变，那个坐标就落到面板外面；面板外面是遮罩，遮罩的 `Clicked()`
+  会关掉对话框（`coreDialogBase`），`closeSettings(false)` 再走 `syncSeedUI()`
+  把输入缓冲清成空串，`strconv.Atoi("")` 失败 → 设置变成 0。所以报错是
+  "实际 0"而不是"实际 5000"，看着像夹紧没生效，其实是面板被关掉了。
+  改成点同一张卡片里另一行的标签：既能可靠失焦，又不会关掉任何东西，也不再
+  依赖任何平台的字体度量。
+
 ### 修复 · 下拉与拖放落点
 
 两条都是"控件本身没毛病，用起来不像这个程序的东西"。

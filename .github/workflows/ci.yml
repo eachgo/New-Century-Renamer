@@ -34,6 +34,17 @@ jobs:
             go.sum
             gui/go.sum
 
+      # ubuntu-latest 的镜像里只有 fonts-noto-color-emoji,没有任何中日韩
+      # 字体。mygo 的 Linux 文本后端走 Pango,找不到字形时返回空位图——
+      # 界面上所有中文都不画,量像素的对比度测试于是读到"整块一种颜色"。
+      # macOS 自带 PingFang、Windows 自带雅黑,所以只有 Linux 需要装。
+      - name: 安装中文字体 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-list :lang=zh | head -5
+
       - name: Go 版本
         run: go version && go env GOTOOLCHAIN
 

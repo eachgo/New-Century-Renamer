@@ -132,8 +132,21 @@ func TestAIIntFieldClampsOutOfRange(t *testing.T) {
 		t.Error("超出范围应当就地提示")
 	}
 
-	tt.ClickAt(900, 700) // 点空白处失焦
+	// 点同一张卡片里另一行的标签来失焦。不能用固定坐标点"空白处":
+	// 对话框尺寸随字体度量变(macOS 的行高比 Windows 高),那个坐标在
+	// 某个平台上会落到面板外面——而面板外面是遮罩,遮罩的 Clicked()
+	// 会把对话框关掉(coreDialogBase),closeSettings(false) 再走
+	// syncSeedUI 把缓冲清空,于是断言拿到的是 "0" 而不是夹紧值。
+	// 点标签既能可靠失焦,又不会关掉任何东西。
+	if lbl, ok := tt.Find("接口地址"); ok {
+		tt.ClickAt(lbl.X+lbl.W/2, lbl.Y+lbl.H/2)
+	} else {
+		t.Fatal("找不到「接口地址」这一行,没法失焦")
+	}
 	tt.Frame()
+	if !a.settingsOpen {
+		t.Fatal("点标签不该把设置面板关掉")
+	}
 	if got := strings.TrimSpace(a.aiTimeoutText); got != "3600" {
 		t.Errorf("失焦后应夹到上界 3600,实际 %q", got)
 	}

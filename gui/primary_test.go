@@ -79,7 +79,15 @@ func TestDisabledPrimaryButtonStaysReadable(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: 找不到「执行更名」的位置", hex)
 		}
-		got := contrastInRect(t, tt, r)
+		got, distinct := contrastInRect(t, tt, r)
+		// 整块只有一种颜色 = 一个字形都没画出来。这不是配色问题,是这台
+		// 机器没有能画中文的字体:mygo 的 Linux 后端走 Pango,找不到字形
+		// 时返回空位图,而 ubuntu-latest 默认只装了 fonts-noto-color-emoji。
+		// 报成"对比度 1.00"会把人引向配色,所以单独说清楚。
+		if distinct <= 1 {
+			t.Fatalf("%s: 按钮区域只有一种颜色,一个字形都没画出来——这台机器缺中文字体"+
+				"(CI 需要 fonts-noto-cjk)", hex)
+		}
 		if got < 4.5 {
 			t.Fatalf("%s: 禁用的主按钮实测对比度只有 %.2f:1,应 ≥4.5", hex, got)
 		}
@@ -120,7 +128,10 @@ func TestPreviewErrorIsStatedNotHidden(t *testing.T) {
 // contrastInRect 量一块渲染区域内"最常见的颜色"与"离它最远的文字色"
 // 之间的对比度。用于断言按钮上的字真的读得出来——包括 mygo 自己
 // 施加的透明度,那是主题色里看不出来的。
-func contrastInRect(t *testing.T, tt *ui.Tester, r ui.Rect) float64 {
+//
+// 第二个返回值是这块区域里不同颜色的个数:只有 1 种就说明一个字形都
+// 没画出来(没字体),那时对比度恒为 1.00,报"对比度不够"是误导。
+func contrastInRect(t *testing.T, tt *ui.Tester, r ui.Rect) (float64, int) {
 	t.Helper()
 	img := tt.Image()
 	// 探针按 1× 渲染,DIP 与像素一一对应;万一将来改了缩放,
@@ -157,5 +168,5 @@ func contrastInRect(t *testing.T, tt *ui.Tester, r ui.Rect) float64 {
 			worst = v
 		}
 	}
-	return worst
+	return worst, len(counts)
 }
