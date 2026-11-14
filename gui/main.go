@@ -559,7 +559,12 @@ func (a *app) catalogView(c *ui.Context) {
 					head.Background(t.SurfaceHover)
 				}
 				head.Children(func() {
-					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).SingleLine()
+					// FillWidth + Start:ButtonBase 默认把内容居中,而下面的条目
+					// 全是左对齐。组标题居中、条目左对齐,两者左缘差了 50 多 DIP
+					// (实测组标题文本 x=84.85,条目 x=32.00),扫下来像两组不相干
+					// 的列表。组标题是条目的上级,它该和条目共用同一条左轴。
+					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).
+						FillWidth().TextAlign(ui.Start).SingleLine()
 				})
 				if head.Clicked() {
 					if a.folded == nil {
@@ -777,7 +782,10 @@ func (a *app) stepsView(c *ui.Context) {
 						// 所以补的是图例(stepsView 顶部),不是删掉编码。
 						// 当前步骤与多选集合都高亮
 						hot := i == a.stepSel || a.chosen.Has(s.opUID)
-						row := ui.Column(c).Fill().Padding(6).MinHeight(38).Radius(6)
+						// 横向内边距 10 而不是 6:下面参数卡片的标题与标签
+						// 都在 x=258(栏内边距 10),而编号原来在 x=254,
+						// 差 4 DIP——列表和它下面的编辑器看起来是两块拼的。
+						row := ui.Column(c).Fill().Padding(6, 10).MinHeight(38).Radius(6)
 						if hot {
 							row.Background(t.Selection)
 						}
@@ -1244,75 +1252,88 @@ func (a *app) filesView(c *ui.Context) {
 		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
 		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
-		ui.Row(c).Gap(8).Wrap().MinHeight(34).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "文件").Bold().FontSize(14)
-			// 排序菜单紧挨着"文件":它改的是这一整列的次序,和"添加/导出"
-			// 那种"对清单做一件事"不同,所以放在标题与动作之间。
-			// 拖动重排会打乱排序结果,所以两条路都留着:排序是"按某个键
-			// 重新排一遍",拖动是"就这一次,按我的手排"。
-			//
-			// PopoverMenuButton 而不是 MenuButton:后者弹的是系统菜单,在
-			// 自绘的圆角卡片旁边是另一套字体、另一套阴影、另一套高亮色,
-			// 看起来像从别的程序里借来的。这个菜单画在窗口里,用同一套主题。
-			ui.PopoverMenuButton(c, sortLabel(a.sortBy, a.sortDesc), func(m *ui.Menu) {
-				for _, opt := range []struct{ by, label string }{
-					{"", "添加顺序"},
-					{"name", "按名称"},
-					{"date", "按修改时间"},
-					{"size", "按大小"},
-				} {
-					if m.Item(opt.label).Radio(a.sortBy == opt.by).Chosen() {
-						a.sortBy = opt.by
-						a.sortDesc = false
+		// 外层只负责"至少 34 高、垂直居中",内层负责换行。
+		// 两个都挂在同一个 Row 上是不行的:Wrap 一旦生效,MinHeight 就不再
+		// 撑高度(实测右栏标题 y=63.00,另两栏 63.67),三栏标题就差半像素
+		// 落不到同一条基线上。
+		ui.Row(c).MinHeight(34).AlignItems(ui.Start).Children(func() {
+			// 标题固定在自己的 34 高槽里:工具栏换行时外层会变高,
+			// 若让标题跟着居中,它就会往下漂半行,三栏标题又对不齐了。
+			ui.Row(c).Height(34).AlignItems(ui.Center).Children(func() {
+				// SingleLine + Shrink(0):右栏窄到 412 DIP 时,"文件"两个字
+				// 会被压成竖排(实测 21.89×37.34,两字上下叠),既难读又把
+				// 整行撑高。标题只有两个字,该让按钮去换行。
+				ui.Text(c, "文件").Bold().FontSize(14).SingleLine().Shrink(0)
+			})
+			ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
+				// 排序菜单紧挨着"文件":它改的是这一整列的次序,和"添加/导出"
+				// 那种"对清单做一件事"不同,所以放在标题与动作之间。
+				// 拖动重排会打乱排序结果,所以两条路都留着:排序是"按某个键
+				// 重新排一遍",拖动是"就这一次,按我的手排"。
+				//
+				// PopoverMenuButton 而不是 MenuButton:后者弹的是系统菜单,在
+				// 自绘的圆角卡片旁边是另一套字体、另一套阴影、另一套高亮色,
+				// 看起来像从别的程序里借来的。这个菜单画在窗口里,用同一套主题。
+				ui.PopoverMenuButton(c, sortLabel(a.sortBy, a.sortDesc), func(m *ui.Menu) {
+					for _, opt := range []struct{ by, label string }{
+						{"", "添加顺序"},
+						{"name", "按名称"},
+						{"date", "按修改时间"},
+						{"size", "按大小"},
+					} {
+						if m.Item(opt.label).Radio(a.sortBy == opt.by).Chosen() {
+							a.sortBy = opt.by
+							a.sortDesc = false
+							a.pendingSort = true
+						}
+					}
+					m.Separator()
+					if m.Item("倒序").Checked(a.sortDesc).Disabled(a.sortBy == "").Chosen() {
+						a.sortDesc = !a.sortDesc
 						a.pendingSort = true
 					}
+				})
+				addBtn := tonalButton(c, "添加文件…", true).Tooltip(shortcutTip("Ctrl+O"))
+				if addBtn.Clicked() {
+					go a.addFilesDialog()
 				}
-				m.Separator()
-				if m.Item("倒序").Checked(a.sortDesc).Disabled(a.sortBy == "").Chosen() {
-					a.sortDesc = !a.sortDesc
-					a.pendingSort = true
+				expBtn := tonalButton(c, "导出CSV", len(a.files) > 0)
+				if expBtn.Clicked() {
+					go a.exportCSV()
+				}
+				// 导入CSV 原来在左栏"高级"组里,可它作用于文件清单——和导出
+				// 是同一件事的两头,被拆到两个栏里谁也找不到另一半。
+				impBtn := tonalButton(c, "导入CSV", !a.busy)
+				if impBtn.Clicked() {
+					go a.importCSV()
+				}
+				if a.confirmClear && a.confirmStale() {
+					a.dropConfirm() // 挂太久:当用户改主意,收回确认态
+				}
+				if a.confirmClear {
+					// 二次确认态:换成红色实心,明确告诉用户"再点就真删了"
+					confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+					if confirm.Hovered() {
+						confirm = confirm.Background(t.Danger.Alpha(0.85))
+					}
+					confirm.Children(func() { ui.Text(c, "确认清空?").SingleLine() })
+					if confirm.Clicked() {
+						a.files, a.ops, a.applied = nil, nil, false
+						a.appliedAt, a.appliedCount = time.Time{}, 0
+						// 序号从 #1 重新开始,排序回到"添加顺序":清空之后
+						// 还留着"按大小"的话,下一批文件一进来就莫名其妙
+						// 不是用户添加的顺序了。
+						a.nextOrder = 0
+						a.sortBy, a.sortDesc = "", false
+						a.dropConfirm()
+					}
+				} else {
+					clrBtn := dangerButton(c, "清空列表", len(a.files) > 0)
+					if clrBtn.Clicked() {
+						a.armConfirm("clear") // 防错:两次点击才清空
+					}
 				}
 			})
-			addBtn := tonalButton(c, "添加文件…", true).Tooltip(shortcutTip("Ctrl+O"))
-			if addBtn.Clicked() {
-				go a.addFilesDialog()
-			}
-			expBtn := tonalButton(c, "导出CSV", len(a.files) > 0)
-			if expBtn.Clicked() {
-				go a.exportCSV()
-			}
-			// 导入CSV 原来在左栏"高级"组里,可它作用于文件清单——和导出
-			// 是同一件事的两头,被拆到两个栏里谁也找不到另一半。
-			impBtn := tonalButton(c, "导入CSV", !a.busy)
-			if impBtn.Clicked() {
-				go a.importCSV()
-			}
-			if a.confirmClear && a.confirmStale() {
-				a.dropConfirm() // 挂太久:当用户改主意,收回确认态
-			}
-			if a.confirmClear {
-				// 二次确认态:换成红色实心,明确告诉用户"再点就真删了"
-				confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
-				if confirm.Hovered() {
-					confirm = confirm.Background(t.Danger.Alpha(0.85))
-				}
-				confirm.Children(func() { ui.Text(c, "确认清空?").SingleLine() })
-				if confirm.Clicked() {
-					a.files, a.ops, a.applied = nil, nil, false
-					a.appliedAt, a.appliedCount = time.Time{}, 0
-					// 序号从 #1 重新开始,排序回到"添加顺序":清空之后
-					// 还留着"按大小"的话,下一批文件一进来就莫名其妙
-					// 不是用户添加的顺序了。
-					a.nextOrder = 0
-					a.sortBy, a.sortDesc = "", false
-					a.dropConfirm()
-				}
-			} else {
-				clrBtn := dangerButton(c, "清空列表", len(a.files) > 0)
-				if clrBtn.Clicked() {
-					a.armConfirm("clear") // 防错:两次点击才清空
-				}
-			}
 		})
 		// ② AI 预览:也是"文件列表"上的操作(对清单里的文件联网起名),留在顶部
 		if a.hasAIStep() {
@@ -1432,6 +1453,9 @@ func (a *app) filesView(c *ui.Context) {
 					}
 				})
 			}
+			// 序号列要够宽才画:三位数序号 + 右侧 8 的呼吸位。
+			const seqW float32 = 30
+			showSeq := innerW >= 260
 			// 列头:结果列离名字有几百像素,没有表头的话右边那列只是
 			// "一个小圆点加两个字",用户得自己猜那是结果。表头只在有文件时
 			// 出现——空列表时它只是一行噪音。
@@ -1439,6 +1463,12 @@ func (a *app) filesView(c *ui.Context) {
 			// 会被压成一列竖排单字("原"/"名"/"→"...),比截断更难看。
 			// 宁可把"结果"表头换到第二行。
 			ui.Row(c).FillWidth().Gap(8).PaddingStart(10).Wrap().Children(func() {
+				// 序号列在行里占 seqW + gap,列头必须让出同样的宽度,
+				// 否则"原名 → 新名"从 x=598 起、名字胶囊从 x=636 起,
+				// 表头说的那一列和它下面那一列差了 38 DIP,看着像没对齐。
+				if showSeq {
+					ui.Box(c).Width(seqW).Height(1).Shrink(0)
+				}
 				ui.Text(c, "原名 → 新名").FontSize(12).TextColor(t.TextMuted).SingleLine()
 				ui.Spacer(c)
 				// 与行内同一套降级:结果词收起来时表头也跟着收,否则
@@ -1468,9 +1498,6 @@ func (a *app) filesView(c *ui.Context) {
 			}
 			// 元数据行的两档降级:先丢日期(信息量最小),再丢大小。
 			showDate, showSize := innerW >= 200, innerW >= 120
-			// 序号列要够宽才画:三位数序号 + 右侧 8 的呼吸位。
-			const seqW float32 = 30
-			showSeq := innerW >= 260
 			ui.List(c, &a.table, len(rows), func(ri int) {
 				r := rows[ri]
 				// 分组头独立一行:吸顶的文件夹名 + 组内文件数
