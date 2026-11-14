@@ -129,18 +129,17 @@ func TestCategoryChipIsReadable(t *testing.T) {
 	}
 }
 
-// TestElevationHasTwoSteps 守住"三栏同色、底与卡片各差一级"这个结构。
+// TestElevationReadsAsContentNotAsFrames 守住"卡片才是要读的那一层"。
 //
-// 三栏是并排的兄弟,不是叠起来的层——它们之间靠分隔缝区分,不靠明度。
-// 早先给左/中/右各一个不同明度(0.930/0.990/0.955),相邻级差只有
-// 1.02–1.10:看着像三个没调匀的灰,而且中栏比右栏亮、右栏比左栏亮,
-// 读者会以为它们有前后关系。
+// 窗口底与三栏之间不追求对比:它们是同一张桌面上的三块面板,近似色就够。
+// 把这一层拉开到 1.25 会把整屏切成"深底 + 浅卡"两截,反而更吵——对比度
+// 数值达标不等于好看。真正必须读得出来的是"栏里的内容":卡片对栏底。
 //
-// 为什么不是三级各 1.25:亮色下从 card 0.999 倒推会得到
-// mid=0.923 right=0.853 left=0.786,而 L 0.786 的左栏上 TextMuted 必须
-// 压到 L≤0.410 才能 4.5:1——那个亮度与正文 0.24 只差 1.95:1,次要文字
-// 就和正文分不开了。三级 1.25 与文字可读性不可兼得,所以只做两级。
-func TestElevationHasTwoSteps(t *testing.T) {
+// 所以断言分成两半:
+//   - 三栏必须同色(它们是并排的兄弟,不该有前后关系)
+//   - 卡片对三栏 ≥1.15:1(这一层是内容,必须浮起来)
+//   - 窗口底与三栏之间不管——近似色是有意的
+func TestElevationReadsAsContentNotAsFrames(t *testing.T) {
 	seeds := []ui.Color{
 		ui.RGB(0x2F, 0x7A, 0x52), ui.RGB(0xF2, 0x70, 0x3C), ui.RGB(0xF5, 0xC5, 0x18),
 		ui.RGB(0x00, 0xBC, 0xD4), ui.RGB(0x8A, 0x2B, 0xE2), ui.RGB(0xE2, 0x2B, 0x5C),
@@ -151,21 +150,23 @@ func TestElevationHasTwoSteps(t *testing.T) {
 		dt := themeFor(seed)
 		hex := colorHex(seed)
 		for _, dark := range []bool{false, true} {
-			p := dt.lightPane
+			p := dt.panes(dark)
 			name := "亮色"
 			if dark {
-				p = dt.darkPane
 				name = "暗色"
 			}
 			if p.left != p.mid || p.mid != p.right {
 				t.Errorf("%s %s: 三栏底色应当一致(左/中/右 = %v/%v/%v)——它们是并排的兄弟,不是有前后的层",
 					hex, name, p.left, p.mid, p.right)
 			}
-			if got := contrastRatio(p.left, p.base); got < 1.22 {
-				t.Errorf("%s %s: 窗口底→三栏只有 %.2f:1,应当 ≥1.22(两级海拔之一)", hex, name, got)
+			if got := contrastRatio(p.card, p.left); got < 1.15 {
+				t.Errorf("%s %s: 卡片对栏底只有 %.2f:1,应当 ≥1.15——这一层是内容,必须浮得起来",
+					hex, name, got)
 			}
-			if got := contrastRatio(p.card, p.left); got < 1.22 {
-				t.Errorf("%s %s: 三栏→卡片只有 %.2f:1,应当 ≥1.22(两级海拔之二)", hex, name, got)
+			// 底与栏之间不该被拉开:超过 1.15 说明又把桌面切成了两截。
+			if got := contrastRatio(p.left, p.base); got > 1.15 {
+				t.Errorf("%s %s: 窗口底与三栏差到 %.2f:1,它们是同一张桌面,近似色就够(拉开会把整屏切成两截)",
+					hex, name, got)
 			}
 		}
 	}

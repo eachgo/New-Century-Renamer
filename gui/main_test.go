@@ -336,10 +336,7 @@ func TestDarkPanesNotPureBlack(t *testing.T) {
 	if _, _, l := colorToOklch(p.base); l < 0.17 {
 		t.Errorf("dark base lightness %.3f < 0.17, almost pure black", l)
 	}
-	// 层次仍要读得出来:中栏比基底亮,卡片又比右栏亮
-	if contrastRatio(p.base, p.mid) < 1.10 {
-		t.Errorf("dark base↔mid %.2f, panes indistinguishable", contrastRatio(p.base, p.mid))
-	}
+	// 底与栏之间不追求对比(同一张桌面上的近似色),要读得出来的是卡片。
 	if contrastRatio(p.right, p.card) < 1.15 {
 		t.Errorf("dark right↔card %.2f, cards indistinguishable", contrastRatio(p.right, p.card))
 	}

@@ -176,41 +176,36 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 中栏(steps)浮得最高、最白,tone≈0.99;右栏(files)次之,tone≈0.955。
 	// 暗色:base 最暗≈0.10、steps≈0.165、files≈0.135,再给文件卡片浮到≈0.205。
 	// chroma 都取极小的一点点主题色,避免纯灰发死。
+	// 窗口底与三栏之间不追求对比:它们是同一张桌面,只是三块面板的
+	// 边界,近似色就够——把这一层拉开到 1.25 会把整屏切成"深底 + 浅卡"
+	// 两截,反而更吵。真正要读得出来的是"栏里的内容":卡片对栏底。
+	//
+	// 所以:base 0.930 与三栏 0.945 只差 1.02(几乎同色),卡片 0.995
+	// 对三栏 1.15。用户读的是卡片,不是面板本身。
 	ltPane := paneTones{
-		// 海拔只有两级:窗口底 → 三栏 → 卡片。三栏是并排的兄弟,不是
-		// 叠起来的层,它们之间靠分隔缝区分——早先给左/中/右各一个不同的
-		// 明度(0.930/0.990/0.955),结果相邻级差只有 1.02–1.10,看着像
-		// 三个没调匀的灰,而不是三个并列的面板;而且中栏比右栏亮、右栏
-		// 比左栏亮,读者会以为它们有前后关系。
-		//
-		// 现在:三栏同高 0.923,窗口底压到 0.852,卡片 0.999。
-		// base→pane = 1.25:1、pane→card = 1.25:1,两级都够看得出。
-		// 窗口底不能再亮了:再亮一级就只剩 1.1,压再暗 TextMuted 就
-		// 过不了 4.5:1(实测 pane=0.923 时 TextMuted 是 4.75)。
-		base:    oklchColor(0.852, cc*0.14, H),
-		left:    oklchColor(0.923, cc*0.10, H),
-		mid:     oklchColor(0.923, cc*0.10, H),
-		right:   oklchColor(0.923, cc*0.10, H),
-		card:    oklchColor(0.999, cc*0.02, H),
-		outline: oklchColor(0.800, cc*0.16, H),
-		shadow:  ui.RGBA(0, 0, 0, 0.14), // 卡片浮在 1.25 级差的栏上,影子要跟得上
-		chip:    oklchColor(0.870, cc*0.14, H),
+		base:    oklchColor(0.930, cc*0.12, H),
+		left:    oklchColor(0.945, cc*0.09, H),
+		mid:     oklchColor(0.945, cc*0.09, H),
+		right:   oklchColor(0.945, cc*0.09, H),
+		card:    oklchColor(0.995, cc*0.03, H),
+		outline: oklchColor(0.880, cc*0.16, H),
+		shadow:  ui.RGBA(0, 0, 0, 0.08), // ≈8% 黑,让浮起的卡片有一点体积
+		chip:    oklchColor(0.900, cc*0.14, H),
 	}
 	// 暗色 base 原来 L=0.105,实测渲出来 #000400——几乎纯黑,违反
 	// PUI p.77「Avoid pure black」,而且三栏之间只有 1.03–1.12 的层次,
 	// 根本读不出"谁浮在谁上面"。整体抬到 0.20/0.23/0.255/0.30,
 	// 层次仍是 base < right < mid < card,只是不再贴着黑。
+	// 暗色同一套逻辑:base 0.230 与三栏 0.250 几乎同色,卡片 0.300 才抬起来。
 	dtPane := paneTones{
-		// 暗色同一套两级:base 0.170 → pane 0.265 → card 0.330,
-		// 实测 1.24 / 1.25(暗色下同一组数字略偏,已按实测微调)。
-		base:    oklchColor(0.170, cc*0.22, H),
-		left:    oklchColor(0.265, cc*0.20, H),
-		mid:     oklchColor(0.265, cc*0.20, H),
-		right:   oklchColor(0.265, cc*0.20, H),
-		card:    oklchColor(0.330, cc*0.18, H),
-		outline: oklchColor(0.430, cc*0.16, H),
-		shadow:  ui.RGBA(0, 0, 0, 0.45), // 暗色下影子本来就不明显,加深一档才有体积
-		chip:    oklchColor(0.390, cc*0.20, H),
+		base:    oklchColor(0.230, cc*0.20, H),
+		left:    oklchColor(0.250, cc*0.20, H),
+		mid:     oklchColor(0.250, cc*0.20, H),
+		right:   oklchColor(0.250, cc*0.20, H),
+		card:    oklchColor(0.300, cc*0.18, H),
+		outline: oklchColor(0.400, cc*0.16, H),
+		shadow:  ui.RGBA(0, 0, 0, 0.35),
+		chip:    oklchColor(0.360, cc*0.20, H),
 	}
 
 	return &derivedTheme{
