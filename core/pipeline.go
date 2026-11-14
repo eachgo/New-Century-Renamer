@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -260,17 +261,18 @@ func preflight(plan []RenameOp) {
 			op.ErrText = op.Err.Error()
 		}
 	}
-	// 新名字里出现路径分隔符意味着"改名"会变成"移动":文件会被静默搬进
-	// 子目录,而界面一直说这是改名。这是唯一会让文件改变位置的行为,
-	// 必须在预览阶段拦下,不能等执行完才发现文件不见了。
+	// 名字本身是否合法(Windows 保留字符、结尾空格/点、保留设备名、控制
+	// 字符、路径分隔符)。这些以前一条都没查:预览里绿油油一片,执行时
+	// 要么在 Windows 上直接失败,要么更糟——被系统静默改名,于是日志里
+	// 记的名字和磁盘上的对不上,回滚也退不回去。
 	for i := range plan {
 		op := &plan[i]
 		if op.Err != nil || op.OldName == op.NewName {
 			continue
 		}
-		if strings.ContainsAny(op.NewName, `/\`) {
-			op.Err = fmt.Errorf("新名字里有路径分隔符，会把文件移动到别的目录；更名器只改名不移动文件")
-			op.ErrText = op.Err.Error()
+		if msg := CheckName(op.NewName); msg != "" {
+			op.Err = errors.New(msg)
+			op.ErrText = msg
 		}
 	}
 }
@@ -368,11 +370,35 @@ func ApplyPlan(plan []RenameOp, journal string) error {
 	return ApplyPlanProgress(plan, journal, nil)
 }
 
+// ApplyReport 是"这一轮执行真的发生了什么"的计数,由执行函数自己在
+// os.Rename 成功的那一刻数出来。
+//
+// 界面以前是回头遍历 plan 看 op.Applied 来统计的。那是个可变状态:
+// 只要有任何一条路径在不清零的情况下把 Applied 留下来(重入、外部改
+// plan、将来新加的提前 return),底栏就会把没改的文件算进成功,而行里
+// 写着失败——同一次批量既成功又失败。计数交给执行者当场数,物理上
+// 不可能和磁盘上发生的事不一致。
+type ApplyReport struct {
+	Renamed   int // 这一轮 os.Rename 真的成功了
+	Failed    int // 这一轮试过但失败了(目标已存在、rename 报错)
+	Skipped   int // 进来就带着上一轮的错误,这一轮没试
+	Unchanged int // 新旧名字一样,不需要动
+}
+
 // ApplyPlanProgress is ApplyPlan with a progress callback: it is called once
 // per file, with done counting every file looked at and total the length of
 // the plan, so a UI can show how far along a long batch is. A nil progress
 // behaves exactly like ApplyPlan.
 func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, total int)) error {
+	_, err := ApplyPlanReport(plan, journal, progress)
+	return err
+}
+
+// ApplyPlanReport is ApplyPlanProgress that also returns the per-outcome
+// counts measured at the point of the rename, for UIs that must report
+// exactly what happened.
+func ApplyPlanReport(plan []RenameOp, journal string, progress func(done, total int)) (ApplyReport, error) {
+	var rep ApplyReport
 	var ops []RenameOp
 	for i := range plan {
 		if progress != nil {
@@ -384,7 +410,22 @@ func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, tota
 		// Err!=nil,界面按 Applied 优先统计就把它算进"成功",而行里写着
 		// "失败"——同一个文件,一处说成功、一处说失败。
 		op.Applied = false
-		if op.Err != nil || op.OldName == op.NewName {
+		if op.Err != nil {
+			rep.Skipped++
+			continue
+		}
+		if op.OldName == op.NewName {
+			rep.Unchanged++
+			continue
+		}
+		// 第二道校验:preflight 已经查过一遍,但执行是真正动磁盘的那一步,
+		// 不能指望调用方一定先跑过 preflight。plan 可以是手搓的(CLI 的
+		// --dry-run 之外还有测试、脚本),漏掉这一层就等于把 Windows 的
+		// 静默改名直接交给用户。
+		if msg := CheckName(op.NewName); msg != "" {
+			op.Err = errors.New(msg)
+			op.ErrText = msg
+			rep.Failed++
 			continue
 		}
 		old := filepath.Join(op.Dir, op.OldName)
@@ -397,15 +438,18 @@ func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, tota
 				// 于是错误等于没写。
 				op.Err = fmt.Errorf("目标已存在同名文件：%s", op.NewName)
 				op.ErrText = op.Err.Error()
+				rep.Failed++
 				continue
 			}
 		}
 		if err := rename(old, new, self); err != nil {
 			op.Err = err
 			op.ErrText = err.Error()
+			rep.Failed++
 			continue
 		}
 		op.Applied = true
+		rep.Renamed++
 		ops = append(ops, *op)
 		fmt.Printf("* %s => %s\n", old, op.NewName)
 	}
@@ -415,9 +459,9 @@ func ApplyPlanProgress(plan []RenameOp, journal string, progress func(done, tota
 	// 只有真的改了东西才写日志。全失败时照常写会覆盖上一批的回滚记录,
 	// 用户既被"成功 0 失败 7"之外什么也没发生安抚,又失去了唯一的退路。
 	if len(ops) == 0 {
-		return nil
+		return rep, nil
 	}
-	return WriteJournal(journal, ops)
+	return rep, WriteJournal(journal, ops)
 }
 
 // samePathAsSource reports whether dir/newName is the very file at

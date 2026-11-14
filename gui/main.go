@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -117,6 +116,13 @@ type app struct {
 	// 消失,看起来像"预览全没了"却又不说是为什么。现在留着原因,
 	// 右栏顶部明说,每行也标一句"等修好步骤"。
 	previewErr string
+	// importPending 是"已经读进内存、还没落盘"的导入设置。
+	// 导入是整份替换:文件里没写的字段会回到默认值,API Key 会被清空,
+	// 日志路径会被改掉——这些都不该在点下"导入设置…"的那一下发生。
+	// 先拿在手里,让用户看清要换掉什么,再决定要不要写盘。
+	importPending *Settings
+	importPath    string
+	importOpen    bool
 }
 
 func (a *app) view(c *ui.Context) {
@@ -241,6 +247,7 @@ func (a *app) view(c *ui.Context) {
 		a.statusBar(c)
 	})
 	a.settingsDialog(c)
+	a.importDialog(c)
 	a.helpDialog(c)
 	// 焦点要等这一帧构建完才有值:列表在构建时才把行标成可聚焦,
 	// 所以记在帧尾,给下一帧的 handleShortcuts 用。
@@ -1246,8 +1253,26 @@ func (a *app) filesView(c *ui.Context) {
 						a.appliedAt.Format("01-02 15:04"), a.appliedCount)).
 						FontSize(12).TextColor(t.Text)
 					ui.Spacer(c)
-					if outlinedButton(c, "撤销这次", !a.busy && a.journalExists()).Clicked() {
-						go a.undo()
+					// 和底栏的「回滚上次」同一套防错:回滚会动磁盘,不能
+					// 因为按钮画在横幅里就变成一点就退——同一个动作有两套
+					// 强度,用户迟早会在弱的那一侧误触。
+					if a.confirmUndo && a.confirmStale() {
+						a.dropConfirm()
+					}
+					if a.confirmUndo {
+						label := fmt.Sprintf("确认回滚 %d 个?", len(a.journalInfoNames()))
+						confirm := ui.ButtonBase(c).Radius(8).Padding(6, 14).
+							Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+						if confirm.Hovered() {
+							confirm = confirm.Background(t.Danger.Alpha(0.85))
+						}
+						confirm.Children(func() { ui.Text(c, label).SingleLine() })
+						if confirm.Clicked() {
+							a.dropConfirm()
+							go a.undo()
+						}
+					} else if outlinedButton(c, "撤销这次", !a.busy && a.journalExists()).Clicked() {
+						a.armConfirm("undo")
 					}
 				})
 			}
@@ -2109,7 +2134,7 @@ func (a *app) preview() {
 func (a *app) handleShortcuts(c *ui.Context) {
 	// 对话框/面板开着时不接管:它们有自己的 Esc 与默认按钮,
 	// 底下这层要是还响应 Ctrl+O,就成了"看不见的窗口在后台动作"。
-	if a.settingsOpen || a.pickOpen || a.pickMode {
+	if a.settingsOpen || a.pickOpen || a.pickMode || a.importOpen {
 		return
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyO) && !a.busy {
@@ -2236,6 +2261,15 @@ func (a *app) hasAIStep() bool {
 	return false
 }
 
+// journalInfoNames 是"还能回滚的那批"的名字,只用来数个数。
+func (a *app) journalInfoNames() []string {
+	sum, ok := a.journalInfo()
+	if !ok {
+		return nil
+	}
+	return sum.Names
+}
+
 // journalExists: 回滚只在真有日志可回滚时可用.
 // 只看文件在不在不够——上一次执行如果全失败,日志里是空列表,
 // 按钮却亮着,点下去一个文件也不动还报"已回滚"。
@@ -2313,7 +2347,7 @@ func (a *app) apply() {
 	a.busyStart = time.Now()
 	a.update()
 	a.busyDone, a.busyTotal = 0, len(a.ops)
-	err := core.ApplyPlanProgress(a.ops, a.settings.Journal, func(done, total int) {
+	rep, err := core.ApplyPlanReport(a.ops, a.settings.Journal, func(done, total int) {
 		a.busyDone, a.busyTotal = done, total
 		a.update()
 	})
@@ -2324,9 +2358,11 @@ func (a *app) apply() {
 	if err != nil {
 		a.status = "执行出错：" + err.Error()
 	} else {
-		// 统计和行里的结果用同一个判定,否则会出现"行里写失败、底栏算
-		// 成功"这种自相矛盾——用户没法知道该信哪一个。
-		ok, failed := a.applyOutcome()
+		// 数字直接来自执行者:它在 os.Rename 成功的那一刻就记了一笔。
+		// 以前是回头遍历 plan 看 op.Applied 反推,那是可变状态——绕过
+		// 主按钮的 Disabled 重入一次,就能得到"底栏绿字成功、满屏行里
+		// 写着失败"。现在计数和磁盘上发生的事是同一次观测。
+		ok, failed := rep.Renamed, rep.Failed
 		// 只报告这一次真的发生了什么:"失败"不该把"名字没变化、无需处理"
 		// 的文件也算进去,那会让一次干净的批量看起来像出了很多错。
 		if ok == 0 {
@@ -2356,38 +2392,44 @@ func (a *app) undo() {
 	a.busy = true
 	a.busyStart = time.Now()
 	a.update()
-	err := core.UndoJournal(a.settings.Journal)
+	rep, err := core.UndoJournalReport(a.settings.Journal)
 	a.busy = false
 	a.busyStart = time.Time{}
-	if err != nil {
+	// 只按"确实退回去了"的那些更新界面。以前是遍历所有 Applied 的行
+	// 一起改成旧名——部分失败时,没退成的文件也会被画成旧名,而它其实
+	// 还叫新名字,界面和磁盘当场对不上。
+	restored := make(map[string]bool, len(rep.Restored))
+	for _, name := range rep.Restored {
+		restored[name] = true
+	}
+	for i := range a.ops {
+		if !a.ops[i].Applied || !restored[a.ops[i].NewName] {
+			continue
+		}
+		a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
+		a.ops[i].Applied = false
+	}
+	a.assignExtColors(a.currentTheme())
+	// 横幅说的是"刚才执行了哪一批",回滚之后那句话已经不成立——哪怕
+	// 只退了一部分,剩下的也由底栏的「回滚上次（N 个）」接着说,那里
+	// 的数字直接来自日志,比横幅可靠。
+	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
+	switch {
+	case len(rep.Restored) > 0 && len(rep.Failed) > 0:
 		// 尽力而为的回滚可能只退了一部分,状态里必须说清退了多少,
 		// 而不是一句"回滚失败"让用户以为文件没动过。
-		var ue *core.UndoError
-		if errors.As(err, &ue) && ue.Done > 0 {
-			a.status = "回滚部分完成：" + ue.Error()
-			for i := range a.files {
-				if i < len(a.ops) && a.ops[i].Applied {
-					a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
-					a.ops[i].Applied = false
-				}
-			}
-			a.assignExtColors(a.currentTheme())
-			a.update()
-			return
-		}
+		a.status = fmt.Sprintf("回滚部分完成：%d 个已退回，%d 个没退成（%s）",
+			len(rep.Restored), len(rep.Failed), strings.Join(rep.Failed, "; "))
+	case len(rep.Restored) > 0 && err != nil:
+		// 文件退回去了,但日志没写成功:下次再点回滚会对着已经改回旧名的
+		// 文件再 rename 一次而失败。这件事必须说出来。
+		a.status = fmt.Sprintf("已回滚 %d 个，但日志未能更新：%v", len(rep.Restored), err)
+	case len(rep.Restored) > 0:
+		a.status = fmt.Sprintf("已回滚 %d 个", len(rep.Restored))
+	case err != nil:
 		a.status = "回滚失败：" + err.Error()
-	} else {
-		a.status = "已回滚"
-		for i := range a.files {
-			if i < len(a.ops) && a.ops[i].Applied {
-				a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
-				// 已回滚的项不再算"将更名",否则主按钮会在回滚后仍然亮着
-				a.ops[i].Applied = false
-			}
-		}
-		a.assignExtColors(a.currentTheme())
-		// 回滚之后那一批已经不存在了:横幅不该继续说"已执行 N 个文件"
-		a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
+	default:
+		a.status = "没有可回滚的更名"
 	}
 	a.update()
 }

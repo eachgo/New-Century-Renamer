@@ -46,6 +46,11 @@ func settingsPath() string {
 	return filepath.Join(filepath.Dir(exe), settingsFile)
 }
 
+// settingsFilePath is settingsPath behind a variable: the import path has to
+// back up the file it is about to replace, and a test that exercised that
+// against the real location would write next to the test binary.
+var settingsFilePath = settingsPath
+
 // defaultJournalPath 把回滚日志放到用户配置目录。
 // 以前是相对路径 .ncreamer-journal.json,跟着进程工作目录走:换个目录
 // 启动,"回滚上次"就变成不可用(或者更糟——回滚到别处记录里的文件)。

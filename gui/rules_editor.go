@@ -640,7 +640,20 @@ func (r *guiRule) paramsFields(c *ui.Context, t *ui.Theme, pline func(label stri
 	case "scope":
 		pline("选取范围", func() { ui.Select(c, &r.scopeSel, []string{"文件名", "扩展名", "整体"}).Width(fit(160)) })
 	case "replace":
-		pline("查找", func() { ui.TextInput(c, &r.oldStr).Placeholder("查找").FillWidth() })
+		pline("查找", func() {
+			ui.Column(c).Gap(4).Children(func() {
+				ui.TextInput(c, &r.oldStr).Placeholder("查找").FillWidth()
+				// 空查找串不是"没填",它是一条会执行成功的规则:替换会把
+				// 替换文本插到每个字符之间,正则在每个位置匹配一次。预览
+				// 会显示每个文件名被切碎,执行出来就是一堆谁也不认识的
+				// 名字。core 里已经拒绝,这里就地说明,省得用户对着一条
+				// 报错的步骤猜是哪一格没填。
+				if r.oldStr == "" {
+					ui.Text(c, "还没填查找内容——空字符串会匹配每个字符之间，这一步现在不会执行。").
+						FontSize(12).TextColor(t.Danger).SingleLine()
+				}
+			})
+		})
 		pline("替换为", func() { ui.TextInput(c, &r.newStr).Placeholder("替换为").FillWidth() })
 		pline("正则", func() { ui.Switch(c, &r.regex) })
 	case "template":

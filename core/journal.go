@@ -75,6 +75,17 @@ func JournalCount(path string) int {
 	return len(s.Names)
 }
 
+// UndoReport 说清一次回滚到底退回了哪些文件。
+//
+// 只给一个 Done 计数是不够的:界面要按行更新——退回去的那几行显示旧名,
+// 没退成的那几行必须继续显示新名(它们确实还叫新名字)。以前界面只能
+// 遍历"所有 Applied 的行"一起改成旧名,部分失败时就把没退成的文件也
+// 画成了旧名,和磁盘上真实的名字对不上。
+type UndoReport struct {
+	Restored []string // 已成功退回旧名的那些"新名字"
+	Failed   []string // 没退成的,格式 "新名字 (原因)"
+}
+
 // UndoError reports a rollback that restored some files and failed on
 // others, so the caller can say exactly how far it got instead of a bare
 // "回滚失败".
@@ -88,16 +99,29 @@ func (e *UndoError) Error() string {
 }
 
 func UndoJournal(path string) error {
-	b, err := os.ReadFile(path)
+	rep, err := UndoJournalReport(path)
 	if err != nil {
 		return err
 	}
+	if len(rep.Failed) > 0 {
+		return &UndoError{Done: len(rep.Restored), Failed: rep.Failed}
+	}
+	return nil
+}
+
+// UndoJournalReport is UndoJournal that also reports which files were
+// actually restored, for callers that must keep per-row state in sync.
+func UndoJournalReport(path string) (UndoReport, error) {
+	var rep UndoReport
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return rep, err
+	}
 	var j journalFile
 	if err := json.Unmarshal(b, &j); err != nil {
-		return err
+		return rep, err
 	}
 	n := 0
-	var failed []string
 	// reverse order: undo later renames first
 	for i := len(j.Renames) - 1; i >= 0; i-- {
 		op := j.Renames[i]
@@ -109,22 +133,22 @@ func UndoJournal(path string) error {
 		// 尽力而为:一个文件失败不能把整批回滚停在半完成状态,
 		// 那样用户既不知道已经退回哪些,也没有办法继续。
 		if err := os.Rename(old, new); err != nil {
-			failed = append(failed, fmt.Sprintf("%s (%v)", op.NewName, err))
+			rep.Failed = append(rep.Failed, fmt.Sprintf("%s (%v)", op.NewName, err))
 			continue
 		}
 		fmt.Printf("* %s => %s\n", old, op.OldName)
 		n++
+		rep.Restored = append(rep.Restored, op.NewName)
 		j.Renames[i].Applied = false
 	}
 	if n > 0 {
 		// 标记为已回滚:再点一次"回滚上次"不该把已经退回去的文件重放一遍。
 		if err := writeJournalFile(path, j); err != nil {
-			return fmt.Errorf("已回滚 %d 个，但日志未能更新：%w", n, err)
+			return rep, fmt.Errorf("已回滚 %d 个，但日志未能更新：%w", n, err)
 		}
 	}
-	if len(failed) > 0 {
-		return &UndoError{Done: n, Failed: failed}
+	if len(rep.Failed) == 0 {
+		fmt.Printf("已回滚 %d 个更名\n", n)
 	}
-	fmt.Printf("已回滚 %d 个更名\n", n)
-	return nil
+	return rep, nil
 }

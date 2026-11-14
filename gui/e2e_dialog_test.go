@@ -63,6 +63,14 @@ func TestE2EDialogHooks(t *testing.T) {
 	}
 	a.settings.AI.Model = ""
 	a.importSettings()
+	// 导入是整份替换,选完文件只进入确认态;真正写盘要用户点「导入并保存」。
+	if a.settings.AI.Model != "" {
+		t.Fatalf("导入在确认前就生效了: %+v", a.settings.AI)
+	}
+	if !a.importOpen || a.importPending == nil {
+		t.Fatalf("导入后应停在确认态: open=%v pending=%v", a.importOpen, a.importPending != nil)
+	}
+	a.commitImport()
 	if a.settings.AI.Model != "test-model" {
 		t.Fatalf("设置导入未生效: %+v", a.settings.AI)
 	}

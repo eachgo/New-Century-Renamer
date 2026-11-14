@@ -314,6 +314,13 @@ func newReplaceRule(args []string) (Rule, error) {
 	if len(args) < 2 {
 		return nil, fmt.Errorf("需要 OLD、NEW 参数")
 	}
+	// 空查找串是"匹配所有东西"的一种写法:strings.ReplaceAll 会把它
+	// 插到每个字符之间,正则在每个位置匹配一次。两种都不是用户想要的
+	// ——预览会显示每个文件名被切碎成一堆替换文本,执行出来就是一堆
+	// 谁也不认识的名字,而且回滚日志记的也是那堆名字。宁可报错。
+	if args[0] == "" {
+		return nil, fmt.Errorf("查找内容不能为空（空字符串会匹配每个字符之间）")
+	}
 	r := &replaceRule{old: args[0], new: args[1]}
 	if val(args, 2) == "regex" {
 		re, err := regexp.Compile(args[0])
@@ -326,6 +333,12 @@ func newReplaceRule(args []string) (Rule, error) {
 }
 
 func (r *replaceRule) Apply(ctx *Ctx, dir, name string) (string, error) {
+	// 第二道闸:规则可能来自导入的 JSON、也可能由调用方直接构造,
+	// 不经过 newReplaceRule。空查找串在这里必须是"什么都不做",
+	// 不能变成"每个字符之间都插一遍"。
+	if r.old == "" && r.re == nil {
+		return name, nil
+	}
 	// the replacement itself supports variables (e.g. inserting <SEQ>)
 	repl := ExpandVars(r.new, ctx, dir, name)
 	if r.re != nil {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -392,13 +394,152 @@ func (a *app) importSettings() {
 		a.update()
 		return
 	}
+	// 不在这里落盘。导入是整份替换:文件里没写的字段会回到默认值,
+	// API Key 会被清空,操作日志路径会被改到别处——这些后果一个都不
+	// 该在点下"导入设置…"的那一下发生,而以前就是这样:选完文件直接
+	// 覆盖,连"刚才那份长什么样"都看不到了。
+	a.importPending, a.importPath = &s, paths[0]
+	a.importOpen = true
+	a.status = "导入前请确认要替换的内容"
+	a.update()
+}
+
+// commitImport 备份现有设置再写入新的。备份失败就不写:一份覆盖掉
+// 找不回来的配置,比一次没导成功严重得多。
+func (a *app) commitImport() {
+	if a.importPending == nil {
+		return
+	}
+	s := *a.importPending
+	dst := settingsFilePath()
+	if old, err := os.ReadFile(dst); err == nil {
+		bak := dst + ".bak"
+		if err := os.WriteFile(bak, old, 0o644); err != nil {
+			a.status = "导入已取消：备份原设置失败（" + err.Error() + "）"
+			a.importPending, a.importPath, a.importOpen = nil, "", false
+			a.update()
+			return
+		}
+	}
 	a.settings = s
 	a.syncSeedUI()
 	a.ApplySettings()
-	if err := os.WriteFile(settingsPath(), mustJSON(a.settings), 0o644); err == nil {
-		a.status = "设置已导入并保存"
+	if err := os.WriteFile(dst, mustJSON(a.settings), 0o644); err != nil {
+		a.status = "设置已生效，但写盘失败：" + err.Error()
+	} else {
+		a.status = "设置已导入并保存（原设置备份为 " + filepath.Base(dst) + ".bak）"
 	}
+	a.importPending, a.importPath, a.importOpen = nil, "", false
 	a.update()
+}
+
+// settingsDiff 列出"这份文件会改掉哪些东西",按人话写,不列 JSON 字段名。
+// 导入确认要回答的只有一个问题:换完之后我的程序会变成什么样。
+func settingsDiff(cur, next Settings) []string {
+	var out []string
+	add := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
+	if cur.AI.Base != next.AI.Base {
+		add("接口地址：%s → %s", orDefault(cur.AI.Base, "（空）"), orDefault(next.AI.Base, "（空）"))
+	}
+	if cur.AI.Model != next.AI.Model {
+		add("模型：%s → %s", orDefault(cur.AI.Model, "（空）"), orDefault(next.AI.Model, "（空）"))
+	}
+	switch {
+	case cur.AI.Key != next.AI.Key && next.AI.Key == "":
+		add("API Key：会被清空（之后改用环境变量或重新填）")
+	case cur.AI.Key != next.AI.Key && cur.AI.Key == "":
+		add("API Key：文件里带了一个，会覆盖当前的空值")
+	case cur.AI.Key != next.AI.Key:
+		add("API Key：会被替换成文件里的那个")
+	}
+	if cur.Journal != next.Journal {
+		add("操作日志：%s → %s", orDefault(cur.Journal, "（默认）"), orDefault(next.Journal, "（默认）"))
+	}
+	if cur.Theme.Mode != next.Theme.Mode {
+		add("外观模式：%s → %s", cur.Theme.Mode, next.Theme.Mode)
+	}
+	if cur.Theme.Seed != next.Theme.Seed {
+		add("主色：%s → %s", orDefault(cur.Theme.Seed, "跟随系统"), orDefault(next.Theme.Seed, "跟随系统"))
+	}
+	if cur.AI.Timeout != next.AI.Timeout {
+		add("等待秒数：%d → %d", cur.AI.Timeout, next.AI.Timeout)
+	}
+	if cur.AI.Concurrency != next.AI.Concurrency {
+		add("并发路数：%d → %d", cur.AI.Concurrency, next.AI.Concurrency)
+	}
+	if cur.AI.Prompt != next.AI.Prompt {
+		add("默认提示词：%s", summarizeText(next.AI.Prompt))
+	}
+	return out
+}
+
+func orDefault(s, fallback string) string {
+	if strings.TrimSpace(s) == "" {
+		return fallback
+	}
+	return s
+}
+
+// summarizeText 把可能很长的文本压成一句能放进一行的摘要。
+func summarizeText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "会被清空"
+	}
+	r := []rune(s)
+	if len(r) > 24 {
+		return string(r[:24]) + "…"
+	}
+	return "换成 " + s
+}
+
+// importDialog 是导入前的确认框:列出会被改掉的项,并说明原设置会备份。
+func (a *app) importDialog(c *ui.Context) {
+	if a.importPending == nil {
+		a.importOpen = false
+		return
+	}
+	t := c.Theme()
+	ui.Modal(c, &a.importOpen, func() {
+		w, h := c.Size()
+		dw := float32(520)
+		if w-48 < dw {
+			dw = w - 48
+		}
+		dh := h - 48
+		diffs := settingsDiff(a.settings, *a.importPending)
+		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(14).
+			Background(t.Surface).Children(func() {
+			ui.Text(c, "导入设置？").Bold().FontSize(18)
+			ui.Text(c, "将用 "+filepath.Base(a.importPath)+" 整份替换当前设置。").
+				FontSize(13).TextColor(t.TextMuted)
+			ui.Scroll(c).Grow(1).Children(func() {
+				ui.Column(c).FillWidth().Gap(6).Children(func() {
+					if len(diffs) == 0 {
+						ui.Text(c, "这份文件和当前设置完全一样，导入不会有任何变化。").
+							FontSize(13).TextColor(t.TextMuted)
+						return
+					}
+					for _, d := range diffs {
+						ui.Text(c, "· "+d).FontSize(13).TextColor(t.Text)
+					}
+					ui.Text(c, "原设置会先备份成 "+filepath.Base(settingsPath())+".bak，可以随时换回来。").
+						FontSize(12).TextColor(t.TextMuted)
+				})
+			})
+			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+				if ui.Button(c, "取消").Radius(8).Clicked() {
+					a.importPending, a.importPath = nil, ""
+					a.importOpen = false
+					a.status = "已取消导入，设置没有变化"
+				}
+				confirm := ui.PrimaryButton(c, "导入并保存").Radius(8)
+				if confirm.Clicked() {
+					go a.commitImport()
+				}
+			})
+		})
+	})
 }
 
 func mustJSON(v any) []byte {

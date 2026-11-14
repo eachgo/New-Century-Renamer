@@ -186,6 +186,57 @@
   「失败的那条仍带着上一轮的 Applied」，把 `Applied` 判到 `Err` 前面报
   「带错误的一行应显示失败, got "已更名"」。
 
+### 修复 · 执行结果的来源与回滚的粒度
+- **成功与失败的数字不再靠 `Applied` 反推**。统计以前是回头遍历 plan 看
+  `op.Applied`——那是可变状态，只要有一条路径在不清零的情况下把 `Applied`
+  留下来（绕过主按钮 `Disabled` 的重入、外部改 plan、将来新加的提前 return），
+  底栏就会把没改的文件算进成功，而行里写着失败。现在 `ApplyPlanReport`
+  在执行循环里当场计数：`os.Rename` 成功的那一刻 `Renamed++`，目标已存在和
+  rename 报错各 `Failed++`，带着上一轮错误的算 `Skipped`，新旧同名的算
+  `Unchanged`。计数与磁盘上发生的事是同一次观测，物理上不可能不一致。
+  `ApplyPlanProgress` 保留原签名，只是转发给新函数。
+- **回滚只更新真的退回去了的那几行**。`UndoJournalReport` 返回
+  `Restored`（退回旧名的那些新名字）与 `Failed`（没退成的）。`undo()` 拿
+  `Restored` 建集合，只对命中的行 stat 回旧名并清 `Applied`；`Failed` 的行
+  保持新名——它确实还叫新名字。以前是一律遍历所有 `Applied` 的行改成旧名，
+  部分失败时把没退成的文件也画成旧名，用户按界面去找文件会找不到。状态栏
+  相应分成五档（部分完成 / 退回但日志没写成功 / 全成功 / 失败 / 没有可回滚）。
+- **横幅的「撤销这次」接回二次确认**。它原来一点就 `go a.undo()`，而底栏的
+  「回滚上次」要按两次——同一个动作两套防错强度，用户迟早会在弱的那一侧
+  误触。现在两处都走 `armConfirm("undo")`，确认态显示「确认回滚 N 个?」。
+- **名字合法性校验补齐，preflight 与执行侧共用一份**。新增
+  `core.CheckName`：Windows 保留字符 `<>:"|?*`、路径分隔符（单独给"会移动
+  文件"的文案）、控制字符（报 `U+%04X`）、结尾空格/点（Windows 会静默去掉，
+  于是改名结果和预览不一致、回滚日志也退不回去）、保留设备名（按去掉扩展名
+  的 stem 判，`CON.txt` 同样不可用）。`preflight()` 用它标记预览行，
+  `ApplyPlanReport` 在动磁盘前再查一遍——plan 可以是手搓的，不能指望调用方
+  一定先跑过 preflight。
+- **空查找串不再是"没填"，而是明确的错误**。`newReplaceRule` 对
+  `args[0] == ""` 直接报「查找内容不能为空（空字符串会匹配每个字符之间）」，
+  `replaceRule.Apply` 再加一道"空查找串什么都不做"的闸（防导入 JSON 或直接
+  构造绕过）。GUI 在查找框下方就地提示。这是目前唯一"预览承诺与执行结果
+  明显荒谬"的入口：`ReplaceAll` 会把替换文本插到每个字符之间，实测把
+  `abc.mp3` 变成 `XaXbXcX.XmXpX3X`。
+- **导入设置先看摘要再落盘**。以前选完文件直接覆盖，API Key 被清空、日志
+  路径被改掉都只发生在那一瞬间。现在 `importSettings` 只把文件读进
+  `importPending` 并打开确认框，逐条列出会改掉什么（接口地址、模型、
+  API Key 的清空/替换、日志路径、外观模式、主色、等待秒数、并发路数、
+  默认提示词），点「导入并保存」才 `commitImport`；写盘前把原设置备份成
+  `ncreamer-settings.json.bak`，备份失败就不写（一份覆盖掉找不回来的配置，
+  比一次没导成功严重得多）。取消不留任何痕迹。
+- **七条回归测试**：`TestApplyReportCountsOutcomes`（四种结局各计一次）、
+  `TestApplyRejectsIllegalNamesWithoutPreflight`（跳过 preflight 也拦得住，
+  源文件必须还在原处）、`TestCheckNameRejects`/`TestCheckNameAccepts`
+  （17 个反例 + 8 个正例，含 `console.txt`、`com10.txt`、`..hidden`）、
+  `TestEmptyFindIsRejected`/`TestEmptyFindRuleIsNoOp`、
+  `TestPartialUndoKeepsFailedRowOnNewName`（退回去的换旧名、没退成的留新名）、
+  `TestBannerUndoAlsoNeedsConfirm`、`TestImportWaitsForConfirmation`/
+  `TestImportBacksUpBeforeWriting`/`TestImportDialogListsWhatChanges`/
+  `TestImportCancelKeepsSettings`。反向验证报错文本：「没退成的那行被清掉了
+  Applied,界面会说它已经退回」「第一次点击就回滚了,横幅应该只是进入确认态」
+  「空查找串把名字改成了 "XaXbXcX.XmXpX3X",应该是原样返回」
+  「导入在确认前就改了设置」。
+
 ### 修复 · 类型判定
 类型判定原来有三套各说各话的口径:`detectType` 按扩展名给中文标签、`sniffMagic`
 按魔数给大写英文、`extCategory` 又按扩展名分中文类别(而且全仓库没人调用它)。
