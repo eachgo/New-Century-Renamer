@@ -512,8 +512,12 @@ func insertVar(dst *string, v string) {
 // varPicker is the 插入变量 dropdown next to a template input. A menu
 // button rather than a modal: picking a variable is a two-second act and
 // should not take the user away from the form they are filling in.
+//
+// PopoverMenuButton: the menu is drawn in the window with the theme's look.
+// A system menu next to a form made of rounded cards reads as another
+// program's.
 func varPicker(c *ui.Context, dst *string) {
-	ui.MenuButton(c, "插入变量", func(m *ui.Menu) {
+	ui.PopoverMenuButton(c, "插入变量", func(m *ui.Menu) {
 		for _, v := range templateVars {
 			if m.Item(v.name + "  " + v.desc).Chosen() {
 				insertVar(dst, v.insert)

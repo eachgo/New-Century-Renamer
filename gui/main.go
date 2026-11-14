@@ -136,6 +136,11 @@ type app struct {
 	pendingDrop []string
 	// fileFocus 记着"上一帧结束时文件列表是否拿着焦点",见 handleShortcuts
 	fileFocus bool
+	// dragOver 是"此刻有文件正被拖在这个窗口上方"。整窗的根节点是拖放
+	// 落点(见 view),它每帧把 FileDragOver 记在这里;空态的虚线框只在
+	// 它为真时画出来——平时摆一个虚线框在空列表里,等于把"可以往这儿拖"
+	// 说成"你正在往这儿拖"。
+	dragOver bool
 	// previewErr 是"这一轮预览整体算不出来"的原因(规则本身有问题,
 	// 比如模板括号不配对)。它和 op.Err 不是一回事:op.Err 是"某个文件
 	// 改不成",previewErr 是"一个都算不出来"。
@@ -152,6 +157,11 @@ type app struct {
 	importPath    string
 	importOpen    bool
 }
+
+// dragOverProbe 让测试造出"文件正被拖在窗口上方"这一帧。Tester 没有只发
+// FileDragOver 而不松手的入口(DropFiles 两件事一起发,而 fileDrop 会先把
+// dropOver 清零),所以真实悬停状态在无头测试里造不出来。生产路径永远是 nil。
+var dragOverProbe func() bool
 
 func (a *app) view(c *ui.Context) {
 	dt := a.currentTheme()
@@ -216,7 +226,21 @@ func (a *app) view(c *ui.Context) {
 	t := c.Theme()
 	pt := a.currentTheme().panes(a.isDark())
 	// 基底:整个窗口先铺 base 色;顶栏、底栏、左栏、四周留白都在这个底色上。
-	ui.Column(c).Fill().Background(pt.base).Children(func() {
+	//
+	// 根节点同时是整窗的拖放落点。mygo 的窗口级 OnFileDrop 只在真正松手时
+	// 触发,没有"文件正悬在窗口上方"的窗口级事件——要画"拖进来才出现的
+	// 虚线框",就得有个每帧都被问到的元素。根节点正好:它覆盖整窗,任何
+	// 位置的拖拽都会沿 hitChain 走到它(见 ui/input.go 的 appendHitChain)。
+	// 注意不能用 PassThrough:那样它根本不进 rt.hits,也就永远不是落点。
+	root := ui.Column(c).Fill().Background(pt.base)
+	if paths := root.DroppedFiles(); len(paths) > 0 {
+		a.pendingDrop = append(a.pendingDrop, paths...)
+	}
+	a.dragOver = root.FileDragOver()
+	if dragOverProbe != nil && dragOverProbe() {
+		a.dragOver = true
+	}
+	root.Children(func() {
 		ui.Row(c).Height(titleH).Padding(0, float32(bar.Right), 0, float32(bar.Left)).DragWindow().
 			AlignItems(ui.Center).Children(func() {
 			brand := ui.Text(c, "New Century Renamer").Bold().FontSize(14).Padding(0, 8)
@@ -1116,7 +1140,7 @@ func dropZoneDash(t *ui.Theme) ui.Color {
 	return t.Border.Mix(t.Text, 0.35)
 }
 
-// dropZone 是右栏的空态:一个虚线拖放区 + 一个真正的"添加文件…"大按钮。
+// dropZone 是右栏的空态:一个落点提示 + 一个真正的"添加文件…"大按钮。
 //
 // 以前这里是两行居中灰字,写着"把文件拖进窗口"。两个问题:
 //  1. 整窗都能接文件(Window.OnFileDrop),于是"拖到哪儿"没有视觉答案——
@@ -1124,11 +1148,13 @@ func dropZoneDash(t *ui.Theme) ui.Color {
 //  2. 空态里最该点的"添加文件…"只是工具栏上一个 14px 的次要按钮,而正文
 //     区那两行字反而更像装饰。
 //
-// 现在把落点画出来,并让它在拖拽经过时变色:mygo 的 Element.FileDragOver
-// 就是为这件事准备的("reports whether files dragged from another app are
-// over the element, which takes them if they are dropped, for showing it
-// would")。同一个元素上的 DroppedFiles 负责真正收下文件,而且它只认落点
-// 在框内的拖放——框外松手仍旧落到窗口级监听上,两条路不会重复添加。
+// 现在把落点画出来,但只在真的拖着文件时才画:平时就摆一个虚线框,等于把
+// "可以往这儿拖"说成"你正在往这儿拖"——虚线框在桌面软件里的含义是"松手
+// 落在这里",一个常驻的虚线框没有落点可言,只是装饰。
+//
+// over 有两个来源:框自己的 FileDragOver(指针就在框上),和窗口根节点的
+// (指针在窗口的任何地方)。后者见 view() 里根节点的注释:mygo 没有窗口级
+// 的"文件悬停"事件,只能靠一个覆盖整窗的元素每帧被问一次。
 func (a *app) dropZone(c *ui.Context, availW float32) {
 	t := c.Theme()
 	pt := a.currentTheme().panes(a.isDark())
@@ -1138,18 +1164,19 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 	dash := dropZoneDash(t)
 	// 顺序有讲究:DroppedFiles 只在"收到文件的那一帧"返回路径,所以必须
 	// 每帧无条件调用(它同时把这一帧的落点登记成接文件的元素)。
-	zone := ui.Column(c).Grow(1).FillWidth().Center().Gap(10).Padding(20).Radius(14).
-		Border(1, dash).BorderStyle(ui.BorderDashed)
+	zone := ui.Column(c).Grow(1).FillWidth().Center().Gap(10).Padding(20).Radius(14)
 	if paths := zone.DroppedFiles(); len(paths) > 0 {
 		// 拖放是在构建这一帧的途中发现的,当场 append 会让正在逐行构建的
 		// 列表长度对不上,所以排到下一帧开头再加。
 		a.pendingDrop = append(a.pendingDrop, paths...)
 	}
-	over := zone.FileDragOver()
+	over := zone.FileDragOver() || a.dragOver
+	// 平时留一圈透明边框:尺寸按 border box 算,边框一直占着那 1px,
+	// 拖拽时换成虚线就不会让框里的内容跳一下。
 	if over {
-		zone = zone.Background(t.Accent.Alpha(0.08)).Border(1, t.Accent)
+		zone = zone.Background(t.Accent.Alpha(0.08)).Border(1, dash).BorderStyle(ui.BorderDashed)
 	} else {
-		zone = zone.Background(pt.card)
+		zone = zone.Background(pt.card).Border(1, ui.Color{})
 	}
 	zone.Children(func() {
 		title := "把文件或文件夹拖到这里"
@@ -1223,7 +1250,11 @@ func (a *app) filesView(c *ui.Context) {
 			// 那种"对清单做一件事"不同,所以放在标题与动作之间。
 			// 拖动重排会打乱排序结果,所以两条路都留着:排序是"按某个键
 			// 重新排一遍",拖动是"就这一次,按我的手排"。
-			ui.MenuButton(c, sortLabel(a.sortBy, a.sortDesc), func(m *ui.Menu) {
+			//
+			// PopoverMenuButton 而不是 MenuButton:后者弹的是系统菜单,在
+			// 自绘的圆角卡片旁边是另一套字体、另一套阴影、另一套高亮色,
+			// 看起来像从别的程序里借来的。这个菜单画在窗口里,用同一套主题。
+			ui.PopoverMenuButton(c, sortLabel(a.sortBy, a.sortDesc), func(m *ui.Menu) {
 				for _, opt := range []struct{ by, label string }{
 					{"", "添加顺序"},
 					{"name", "按名称"},

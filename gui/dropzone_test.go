@@ -92,3 +92,32 @@ func TestDropZoneBorderIsVisible(t *testing.T) {
 		}
 	}
 }
+
+// 虚线框只在真的拖着文件时才画。平时摆一个虚线框在空列表里,等于把
+// "可以往这儿拖"说成"你正在往这儿拖"——虚线框在桌面软件里的含义是
+// "松手落在这里",常驻的虚线框没有落点可言。
+//
+// Tester 没有"只发 FileDragOver 不 drop"的入口(DropFiles 两件事一起发,
+// 而 fileDrop 会先把 dropOver 清零),所以用 dragOverProbe 造出那一帧——
+// 它喂的正是根节点每帧从 FileDragOver 读到的同一个值。
+func TestDropZoneIsDashedOnlyWhileDragging(t *testing.T) {
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	tt.Frame()
+
+	if tt.HasText("松开就加进来") {
+		t.Fatal("没在拖拽却已经显示「松开就加进来」")
+	}
+	if !tt.HasText("把文件或文件夹拖到这里") {
+		t.Fatal("平时也该说清这里可以接文件")
+	}
+
+	dragOverProbe = func() bool { return true }
+	defer func() { dragOverProbe = nil }()
+	tt.Frame()
+	tt.Frame()
+	if !tt.HasText("松开就加进来") {
+		t.Fatal("有文件悬在窗口上方时,落点提示应当变成「松开就加进来」")
+	}
+}
