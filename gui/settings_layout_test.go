@@ -106,6 +106,29 @@ func bandDarkestLum(img *image.RGBA, x0, x1, y0, y1 int) int {
 	return best
 }
 
+// bandModeLum 是一条横带里"最常见颜色"的亮度,也就是那条带的底色。
+//
+// 量渐隐要用它,不能用最暗像素:最暗像素量到的是字,而字落在哪一行取决
+// 于字体栅格化——换一套中文字体(CI 上装 fonts-noto-cjk 之后)取样带里
+// 有没有落进一个笔画就变了,断言于是随机红。渐隐改的是底色,量底色才是
+// 量它本身。
+func bandModeLum(img *image.RGBA, x0, x1, y0, y1 int) int {
+	counts := map[int]int{}
+	for y := y0; y <= y1; y++ {
+		for x := x0; x < x1; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			counts[int(r>>8)*299/1000+int(g>>8)*587/1000+int(b>>8)*114/1000]++
+		}
+	}
+	best, n := 0, 0
+	for l, c := range counts {
+		if c > n {
+			best, n = l, c
+		}
+	}
+	return best
+}
+
 func rowDarkestLum(img *image.RGBA, x0, x1, y int) int {
 	best := 999
 	for x := x0; x < x1; x++ {

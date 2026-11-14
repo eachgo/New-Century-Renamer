@@ -27,10 +27,14 @@ func TestCatalogFadeOnlyWhenOverflowing(t *testing.T) {
 	if a.catRect.H <= 0 {
 		t.Fatalf("没拿到目录视口位置: %+v", a.catRect)
 	}
-	near := bandDarkestLum(img, 20, 220, bottom-14, bottom-2)
-	far := bandDarkestLum(img, 20, 220, bottom-60, bottom-40)
-	if near <= far {
-		t.Fatalf("视口底缘没有淡出:最下 14px 最暗 %d,上方 40px 处最暗 %d", near, far)
+	// 量底色而不是最暗像素。渐隐做的是"把底色朝视口下方的颜色拉过去",
+	// 字形在最底下那 14px 里本来就会被裁掉一半——最暗像素落在哪一行,
+	// 取决于字体栅格化。换一套中文字体(CI 装上 fonts-noto-cjk 之后),
+	// 上方那条取样带里有没有落进一个笔画就变了,断言于是差 1 就红。
+	near := bandModeLum(img, 20, 220, bottom-14, bottom-2)
+	far := bandModeLum(img, 20, 220, bottom-60, bottom-40)
+	if near >= far {
+		t.Fatalf("视口底缘没有淡出:最下 14px 底色亮度 %d,上方 40px 处 %d", near, far)
 	}
 
 	// 拉高到整份目录都放得下,遮罩必须消失。
