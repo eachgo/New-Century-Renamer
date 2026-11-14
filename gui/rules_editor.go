@@ -577,6 +577,98 @@ func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
 	})
 }
 
+// intField is numField for a setting kept in a text buffer instead of an int.
+//
+// The two AI numbers (等待秒数, 并发路数) live in string buffers because the
+// settings dialog has to survive half-typed input: "3" on the way to "300" is
+// not a valid timeout, and parsing on every keystroke would either clamp it to
+// 3 seconds or throw the edit away. So the buffer stays the source of truth
+// (commit reads it, tests write it), and this control keeps a real int beside
+// it: the stepper steps a clamped value, blur rewrites the buffer, and an
+// out-of-range or non-numeric entry is reported in place instead of silently
+// becoming the default when the dialog closes.
+//
+// An empty buffer means "use the built-in default", so the field shows def
+// rather than 0 — what the user reads must be what actually takes effect.
+// label is the accessible name: without it a screen reader announces an
+// unnamed spin button, and a test cannot find the field to click it.
+func intField(c *ui.Context, label string, out *string, lo, hi, def int, width float32) {
+	t := c.Theme()
+	const h = 32
+	const stepperW, gap = float32(20), float32(6)
+	fieldW := width - stepperW - gap
+	if fieldW < 28 {
+		fieldW = 28
+	}
+	box := ui.Column(c).Gap(4)
+	value := ui.Local(box, "int-value", func() float64 {
+		if n, err := strconv.Atoi(strings.TrimSpace(*out)); err == nil {
+			return clamp(float64(n), float64(lo), float64(hi))
+		}
+		return float64(def)
+	})
+	text := ui.Local(box, "int-text", func() string {
+		if strings.TrimSpace(*out) == "" {
+			return strconv.Itoa(def)
+		}
+		return *out
+	})
+	// touched 记住"这个框被编辑过"。没有它,打开设置面板的一瞬间
+	// 空缓冲就会被写成 "300"(默认值),用户没动过手,设置里却多出一条
+	// 显式配置——之后再想"留空用默认"就没法表达了。
+	touched := ui.Local(box, "int-touched", func() bool { return false })
+	box.Children(func() {
+		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
+			in := ui.TextInput(c, text).Width(fieldW).Height(h).TextAlign(ui.Center).Label(label)
+			if in.Focused() {
+				*touched = true
+			}
+			if in.Changed() {
+				// 边打边同步到设置缓冲:点「保存」时焦点未必先离开这个框,
+				// 只在失焦时写会丢掉最后一次编辑(填了 42 直接点保存,存的
+				// 还是空串 = 默认 300 秒)。
+				*out = strings.TrimSpace(*text)
+				if v, err := strconv.Atoi(strings.TrimSpace(*text)); err == nil {
+					*value = clamp(float64(v), float64(lo), float64(hi))
+				}
+			}
+			if in.Shortcut(0, ui.KeyUp) {
+				*value = clamp(*value+1, float64(lo), float64(hi))
+				*text = strconv.Itoa(int(*value))
+				*out = *text
+				*touched = true
+			}
+			if in.Shortcut(0, ui.KeyDown) {
+				*value = clamp(*value-1, float64(lo), float64(hi))
+				*text = strconv.Itoa(int(*value))
+				*out = *text
+				*touched = true
+			}
+			ui.Stepper(c, value, float64(lo), float64(hi), 1).Height(h)
+			if !in.Focused() && *touched {
+				*touched = false
+				if strings.TrimSpace(*text) == "" {
+					*value = float64(def)
+					*text = ""
+				} else {
+					*text = strconv.Itoa(int(*value))
+				}
+				*out = *text
+			}
+		})
+		// 就地校验:填了但不是数字、或超出范围,当场说清楚。
+		// 以前这两种输入都会被 commit 静默当成 0(= 用默认),
+		// 用户以为填的 5 生效了,实际跑的还是 300 秒。
+		if raw := strings.TrimSpace(*text); raw != "" {
+			if n, err := strconv.Atoi(raw); err != nil {
+				ui.Text(c, "只能填整数").FontSize(12).TextColor(t.Danger)
+			} else if n < lo || n > hi {
+				ui.Text(c, fmt.Sprintf("范围 %d–%d", lo, hi)).FontSize(12).TextColor(t.Danger)
+			}
+		}
+	})
+}
+
 // paramsEditor builds the detail form of one step below the task list.
 //
 // Every parameter is one row: a fixed-width label and the controls it names.

@@ -55,7 +55,12 @@ func aiConfig() (base, key, model string, ok bool) {
 // aiTimeout is how long to wait for one model reply. Local 7B~9B models can
 // take minutes when the snippet is a long PDF, so the default is deliberately
 // generous. Override with NCREAMER_AI_TIMEOUT (seconds) or SetAITimeout.
-const defaultAITimeout = 300 * time.Second
+// DefaultAITimeoutSeconds 是"等待秒数"留空时真正生效的值。导出是因为
+// 设置面板要把它写进输入框的提示里——面板说 300、程序跑 180 这种事,
+// 比不写提示更糟。
+const DefaultAITimeoutSeconds = 300
+
+const defaultAITimeout = DefaultAITimeoutSeconds * time.Second
 
 // aiTimeoutOverride is set by the GUI settings dialog (seconds); 0 means unset.
 var aiTimeoutOverride int

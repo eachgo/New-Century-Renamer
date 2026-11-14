@@ -24,6 +24,18 @@ type RenameOp struct {
 // RunPipeline applies the rule chain to every file, gathering errors
 // per-file instead of aborting the batch (xTools' "check before apply").
 func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
+	return RunPipelineProgress(rules, files, nil)
+}
+
+// RunPipelineProgress is RunPipeline with a progress callback for the AI
+// prefetch phase: progress(done, total) is called as each model request
+// finishes, from whichever goroutine ran it.
+//
+// The callback exists because the prefetch is the only part of a preview that
+// can take minutes. Without it the GUI could only say "正在联网命名…" and spin
+// — the user cannot tell a slow local model from a dead gateway, and "第 3/40"
+// is the difference between waiting and killing the app.
+func RunPipelineProgress(rules []Rule, files []string, aiProgress func(done, total int)) (plan []RenameOp, errs []error) {
 	metaCache := map[string]map[string]string{}
 	counters := map[string]int{} // shared across files: seq group numbering
 
@@ -33,7 +45,7 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 	// (file, instruction) pairs concurrently first, then the loop just reads
 	// the cache. The cache key must match ExpandVars' lookup: self + "\x00" +
 	// instruction (no "AI:" prefix), or the placeholder would never resolve.
-	aiCache, aiErrs := prefetchAI(rules, files)
+	aiCache, aiErrs := prefetchAIProgress(rules, files, aiProgress)
 
 	for i, f := range files {
 		dir, name := filepath.Split(f)
@@ -97,12 +109,27 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 // aiConcurrency is how many model requests run at once during a batch. Local
 // servers usually handle a few in parallel; too many can thrash a small model,
 // so keep it modest and overridable.
-const defaultAIConcurrency = 4
+// DefaultAIConcurrency 是"并发路数"留空时真正生效的值,理由同
+// DefaultAITimeoutSeconds:设置面板的提示必须和实际行为同源。
+const DefaultAIConcurrency = 4
+
+const defaultAIConcurrency = DefaultAIConcurrency
 
 // prefetchAI runs every needed AI request for the whole batch concurrently and
 // returns the cache (key = self + "\x00" + instruction) plus per-file errors.
 // A file is keyed by its path in aiErrs so the main loop can mark it failed.
 func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs map[string]error) {
+	return prefetchAIProgress(rules, files, nil)
+}
+
+// prefetchAIProgress is prefetchAI with progress reporting: progress(done,
+// total) runs once per finished request, total being the number of distinct
+// (file, instruction) pairs queued.
+//
+// done is incremented even for skipped and failed requests: the point is "how
+// much of the batch is behind us", not "how many succeeded" — a progress bar
+// that stalls on a failing request is worse than no bar.
+func prefetchAIProgress(rules []Rule, files []string, progress func(done, total int)) (cache map[string]string, aiErrs map[string]error) {
 	cache = map[string]string{}
 	aiErrs = map[string]error{}
 
@@ -141,6 +168,15 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, conc)
+	total, done := len(jobs), 0
+	// report must be called with mu held: it reads and advances done.
+	report := func() {
+		if progress == nil {
+			return
+		}
+		done++
+		progress(done, total)
+	}
 	// Circuit breaker: once the server proves it's down (fatal error), stop
 	// starting new requests. Without this a batch of N files waits on N doomed
 	// round-trips to the same dead gateway — which is exactly the "server 502
@@ -156,6 +192,7 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 				mu.Lock()
 				aiErrs[j.file] = fmt.Errorf("%s：AI 已跳过（服务器无响应，批量已中止）", j.file)
 				delete(cache, j.key)
+				report()
 				mu.Unlock()
 				return
 			}
@@ -168,9 +205,11 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 				if isFatalAIError(err) {
 					atomic.StoreInt32(&aborted, 1)
 				}
+				report()
 				return
 			}
 			cache[j.key] = v
+			report()
 		}(j)
 	}
 	wg.Wait()

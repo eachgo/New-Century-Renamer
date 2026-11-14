@@ -6,6 +6,38 @@
   "copyright": "MIT",
   "license": "MIT",
   "out": "dist",
+  "fileAssociations": [
+    {
+      "ext": ["mp3", "flac", "ogg", "opus", "m4a", "wav", "wma", "aac"],
+      "name": "音频文件（用跨向更名器改名）",
+      "mimeType": "audio/x-ncreamer-batch",
+      "role": "Editor"
+    },
+    {
+      "ext": ["mp4", "mkv", "webm", "avi", "mov", "m4v", "flv", "3gp"],
+      "name": "视频文件（用跨向更名器改名）",
+      "mimeType": "video/x-ncreamer-batch",
+      "role": "Editor"
+    },
+    {
+      "ext": ["jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff"],
+      "name": "图片文件（用跨向更名器改名）",
+      "mimeType": "image/x-ncreamer-batch",
+      "role": "Editor"
+    },
+    {
+      "ext": ["epub", "mobi", "azw3", "m4b", "pdf"],
+      "name": "电子书（用跨向更名器改名）",
+      "mimeType": "application/x-ncreamer-ebook",
+      "role": "Editor"
+    },
+    {
+      "ext": ["txt", "md", "srt", "ass", "nfo"],
+      "name": "文本与字幕（用跨向更名器改名）",
+      "mimeType": "text/x-ncreamer-batch",
+      "role": "Editor"
+    }
+  ],
   "windows": {
     "displayName": "跨向更名器"
   },

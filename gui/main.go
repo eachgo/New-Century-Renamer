@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -30,6 +31,11 @@ type fileInfo struct {
 	// folder; the tree header shows the folder's name. Empty = a loose file
 	// added on its own (shown without a group header).
 	group string
+	// order is the position the file had when it entered the list. It outlives
+	// sorting and dragging, which is what makes "按添加顺序" a way back instead
+	// of a one-way trip: after sorting by size there is nothing else left to
+	// reconstruct the order the user built the batch in.
+	order int
 }
 
 // app is the state the window shows: three panes — catalog, task steps,
@@ -50,6 +56,12 @@ type app struct {
 	// busyDone/busyTotal 是批量执行走到第几个:500 个文件时一个转圈
 	// 说明不了还要多久。
 	busyDone, busyTotal int
+	// aiDone/aiTotal 是联网预取走到第几个。单独一组而不复用 busyDone:
+	// 预取的回调来自多个 goroutine,写的时候要加锁;而执行那组只在主线程
+	// 里写,混在一起会让加锁范围变得难以判断。
+	aiMu    sync.Mutex
+	aiDone  int
+	aiTotal int
 	// flashUntil 是"刚改名的那几行"高亮结束的时刻。执行成功是当天最重要
 	// 的事,却只有一个静态的结果词——让改过的行亮一下再淡出,是唯一一处
 	// 值得动的动效。
@@ -76,6 +88,7 @@ type app struct {
 	aiTimeoutText     string              // 设置里"等待秒数"输入框的文本缓冲
 	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
 	aiPromptText      string              // 设置里"默认提示词"多行输入框的缓冲
+	keyShown          bool                // 设置里 API Key 是否明文显示(默认掩码)
 
 	steps    []guiRule // ordered task steps
 	stepSel  int       // selected step, -1 = none
@@ -98,6 +111,21 @@ type app struct {
 	splitL, splitM float32 // pane divider positions
 	table          ui.ListState
 	fileSel        int // 文件列表里选中的行(rows 下标,不是 a.files 下标),-1 = 没选
+	// nextOrder 是下一个 fileInfo.order 的值,单调递增;清空列表时归零。
+	nextOrder int
+	// sortBy 是当前的排序依据:"" = 添加顺序,"name"/"date"/"size"。
+	// sortDesc 只对后三者有意义。
+	sortBy   string
+	sortDesc bool
+	// pendingSort 表示"排序依据变了,下一帧开头重排"。和 pendingMove
+	// 同理:菜单点击发生在构建途中,当场 sort 会让正在逐行构建的列表
+	// 与数据错位。
+	pendingSort bool
+	// pendingMove 是拖动重排的结果 {from, before},nil 表示没有。
+	// 排到下一帧开头再动 a.files:重排是在构建这一帧的途中发生的,
+	// 当场挪动会让正在逐行构建的列表与数据错位——同一帧里后面的行
+	// 会指向刚被换走的那个文件。
+	pendingMove *[2]int
 	// pendingRemove 是"下一帧要移除的文件下标 + 1",0 表示没有。
 	// 不能在构建这一帧的途中直接删 a.files:列表正按旧长度逐行构建,
 	// 删掉一个会让后面每一行的下标越界(实测直接 panic)。
@@ -155,12 +183,18 @@ func (a *app) view(c *ui.Context) {
 		a.pendingRemove = 0
 		a.removeFile(i)
 	}
-	// 上一帧拖放区收到的文件,同理排到帧首再加:拖放是在构建这一帧的
-	// 途中发现的,当场 append 会让正在逐行构建的列表长度对不上。
-	if len(a.pendingDrop) > 0 {
-		paths := a.pendingDrop
-		a.pendingDrop = nil
-		a.addPaths(paths)
+	a.drainPendingDrop()
+	// 排序与拖动重排也排到帧首:两者都在构建这一帧的途中被触发,
+	// 当场重排 a.files 会让已经建好的行指向错位的文件。
+	if a.pendingSort {
+		a.pendingSort = false
+		sortFiles(a.files, a.sortBy, a.sortDesc)
+		a.preview()
+	}
+	if mv := a.pendingMove; mv != nil {
+		a.pendingMove = nil
+		a.files = moveFile(a.files, mv[0], mv[1])
+		a.preview()
 	}
 	// live preview on any change (AI steps need the explicit button)
 	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
@@ -314,6 +348,15 @@ func (a *app) statusBar(c *ui.Context) {
 					ui.Box(c).FillWidth().Height(4).Radius(2).Background(t.Accent).Width(120 * frac)
 				})
 				ui.Text(c, fmt.Sprintf("%d/%d", a.busyDone, a.busyTotal)).FontSize(12).TextColor(t.TextMuted)
+			} else if done, total := a.aiProgress(); total > 0 {
+				// 联网预取是整次预览里唯一可能跑上几分钟的一段。没有这条
+				// 进度,用户分不清"本地模型慢"和"网关已经死了"——而 3/40
+				// 正是"再等等"与"直接关掉"之间的区别。
+				frac := float32(done) / float32(total)
+				ui.Box(c).Width(120).Height(4).Radius(2).Background(t.Border).Children(func() {
+					ui.Box(c).FillWidth().Height(4).Radius(2).Background(t.Accent).Width(120 * frac)
+				})
+				ui.Text(c, fmt.Sprintf("%d/%d", done, total)).FontSize(12).TextColor(t.TextMuted)
 			}
 		} else if a.status != "" {
 			ui.Text(c, a.status).FontSize(13).TextColor(a.statusColor(t)).SingleLine().Ellipsis("…")
@@ -1164,6 +1207,29 @@ func (a *app) filesView(c *ui.Context) {
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
 		ui.Row(c).Gap(8).Wrap().MinHeight(34).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, "文件").Bold().FontSize(14)
+			// 排序菜单紧挨着"文件":它改的是这一整列的次序,和"添加/导出"
+			// 那种"对清单做一件事"不同,所以放在标题与动作之间。
+			// 拖动重排会打乱排序结果,所以两条路都留着:排序是"按某个键
+			// 重新排一遍",拖动是"就这一次,按我的手排"。
+			ui.MenuButton(c, sortLabel(a.sortBy, a.sortDesc), func(m *ui.Menu) {
+				for _, opt := range []struct{ by, label string }{
+					{"", "添加顺序"},
+					{"name", "按名称"},
+					{"date", "按修改时间"},
+					{"size", "按大小"},
+				} {
+					if m.Item(opt.label).Radio(a.sortBy == opt.by).Chosen() {
+						a.sortBy = opt.by
+						a.sortDesc = false
+						a.pendingSort = true
+					}
+				}
+				m.Separator()
+				if m.Item("倒序").Checked(a.sortDesc).Disabled(a.sortBy == "").Chosen() {
+					a.sortDesc = !a.sortDesc
+					a.pendingSort = true
+				}
+			})
 			addBtn := tonalButton(c, "添加文件…", true).Tooltip(shortcutTip("Ctrl+O"))
 			if addBtn.Clicked() {
 				go a.addFilesDialog()
@@ -1191,6 +1257,11 @@ func (a *app) filesView(c *ui.Context) {
 				if confirm.Clicked() {
 					a.files, a.ops, a.applied = nil, nil, false
 					a.appliedAt, a.appliedCount = time.Time{}, 0
+					// 序号从 #1 重新开始,排序回到"添加顺序":清空之后
+					// 还留着"按大小"的话,下一批文件一进来就莫名其妙
+					// 不是用户添加的顺序了。
+					a.nextOrder = 0
+					a.sortBy, a.sortDesc = "", false
 					a.dropConfirm()
 				}
 			} else {
@@ -1241,6 +1312,15 @@ func (a *app) filesView(c *ui.Context) {
 			// 清空整表重来。Selected 让点击/方向键选中,Delete 与右键菜单
 			// 都作用在选中的那一行上。
 			a.table.Selected = &a.fileSel
+			// 拖动重排:rows/to 都是**列表行下标**(含分组头),要先换回
+			// a.files 的下标。而且只在同一分组内允许移动——分组头是"组名
+			// 与上一行不同"时才出现的,跨组拖会把两个文件夹的文件交错,
+			// 于是凭空长出一堆组头,每组只剩一个文件。
+			a.table.Reorder = func(moved []int, to int) {
+				if from, dest, ok := reorderTarget(a.files, rows, moved, to); ok {
+					a.pendingMove = &[2]int{from, dest}
+				}
+			}
 			// 只有一个分组时,标题栏右侧已经在说「N 个文件」,组头再说一遍
 			// 就是同一句话并排出现两次;多组时才需要每组各说各的。
 			nGroups := 0
@@ -1326,6 +1406,9 @@ func (a *app) filesView(c *ui.Context) {
 			})
 			// 元数据行的两档降级:先丢日期(信息量最小),再丢大小。
 			showDate, showSize := innerW >= 200, innerW >= 120
+			// 序号列要够宽才画:三位数序号 + 右侧 8 的呼吸位。
+			const seqW float32 = 30
+			showSeq := innerW >= 260
 			ui.List(c, &a.table, len(rows), func(ri int) {
 				r := rows[ri]
 				// 分组头独立一行:吸顶的文件夹名 + 组内文件数
@@ -1374,6 +1457,17 @@ func (a *app) filesView(c *ui.Context) {
 					}
 				})
 				row.Children(func() {
+					// 序号列:这一行的 #N 就是模板里 <N> 的值,也就是
+					// 「追加序号」这类步骤发号的顺序。以前发号顺序只存在
+					// 于 a.files 的下标里,用户看不见也改不了——排序或拖动
+					// 之后想知道"第 3 个文件会变成 03 还是 04",只能执行一次
+					// 再回滚。窄栏(<260)时藏起来:那时连名字都只剩省略号,
+					// 再挤一列数字只会把名字压得更短。
+					if showSeq {
+						ui.Text(c, "#"+strconv.Itoa(i+1)).FontSize(12).TextColor(t.TextMuted).
+							Width(seqW).TextAlign(ui.End).Shrink(0).
+							Tooltip("这一行是第 " + strconv.Itoa(i+1) + " 个，模板里的 <N> 取这个值")
+					}
 					// 卡内上下 8、卡间 12:内边距必须小于间距,分组才成立
 					// (PUI p.18 的"内 < 外")。两个值都在 4px 网格上。
 					card := ui.Column(c).Fill().Gap(4).Padding(8, 10).Radius(10).
@@ -1847,6 +1941,8 @@ func (a *app) addPaths(paths []string) {
 			seen[p] = true
 			fi := statFile(p)
 			fi.group = en.group
+			a.nextOrder++
+			fi.order = a.nextOrder
 			a.files = append(a.files, fi)
 		}
 	}
@@ -1988,6 +2084,8 @@ func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
 	for _, op := range plan {
 		fi := statFile(filepath.Join(op.Dir, op.OldName))
 		fi.group = filepath.Base(op.Dir)
+		a.nextOrder++
+		fi.order = a.nextOrder
 		a.files = append(a.files, fi)
 	}
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
@@ -2038,6 +2136,216 @@ func buildRows(files []fileInfo) []listRow {
 	return rows
 }
 
+// sortLabel is what the toolbar's sort button says. The order the files were
+// added in has no key to name, so it reads as "添加顺序" rather than "不排序":
+// "不排序" suggests the list has no order, when in fact it has the one the
+// user built by adding files.
+func sortLabel(by string, desc bool) string {
+	var s string
+	switch by {
+	case "name":
+		s = "按名称"
+	case "date":
+		s = "按修改时间"
+	case "size":
+		s = "按大小"
+	default:
+		return "添加顺序"
+	}
+	if desc {
+		s += " ↓"
+	}
+	return s
+}
+
+// rowFileIndex turns a list row index into an index into a.files. Header rows
+// have no file, so they report false — a drag that starts on a header is not a
+// drag of anything.
+func rowFileIndex(rows []listRow, ri int) (int, bool) {
+	if ri < 0 || ri >= len(rows) || rows[ri].header {
+		return 0, false
+	}
+	return rows[ri].file, true
+}
+
+// reorderTarget decides whether a drag means anything, and what it means:
+// from is the a.files index being moved, dest the index it goes before.
+//
+// The list hands over row indexes (headers included) and a drop point that may
+// sit on a header; neither is a file index, and both can name a place the move
+// must not happen. Rather than compute a maybe-correct move in the callback,
+// the whole decision lives here so it can be tested without a pointer: refuse
+// multi-row drags (the number is one file's identity), refuse drops onto a
+// header (that is another folder's territory), and refuse moves that leave the
+// file's own group — the group header only appears where the group changes, so
+// crossing groups interleaves two folders and grows a header per file.
+func reorderTarget(files []fileInfo, rows []listRow, moved []int, to int) (from, dest int, ok bool) {
+	if len(moved) != 1 {
+		return 0, 0, false
+	}
+	from, ok = rowFileIndex(rows, moved[0])
+	if !ok {
+		return 0, 0, false
+	}
+	dest = len(files)
+	if to >= 0 && to < len(rows) {
+		if rows[to].header {
+			return 0, 0, false
+		}
+		dest = rows[to].file
+	}
+	lo, hi := groupSpan(files, from)
+	if dest < lo || dest > hi {
+		return 0, 0, false
+	}
+	if dest == from || dest == from+1 {
+		return 0, 0, false
+	}
+	return from, dest, true
+}
+
+// groupSpan is the range of a.files that holds one contiguous run of the same
+// group, the run that index i belongs to. Files added on their own (no group)
+// are each their own run: dragging one loose file past another would otherwise
+// silently reshuffle a block the user never grouped.
+func groupSpan(files []fileInfo, i int) (lo, hi int) {
+	if i < 0 || i >= len(files) {
+		return 0, 0
+	}
+	g := files[i].group
+	if g == "" {
+		return i, i + 1
+	}
+	lo = i
+	for lo > 0 && files[lo-1].group == g {
+		lo--
+	}
+	hi = i + 1
+	for hi < len(files) && files[hi].group == g {
+		hi++
+	}
+	return lo, hi
+}
+
+// naturalLess compares two names the way a person reads them: "第2话" before
+// "第10话". A byte comparison puts "10" before "2", which on a list of numbered
+// episodes looks like the sort did nothing.
+func naturalLess(a, b string) bool {
+	for a != "" && b != "" {
+		ad, bd := isDigit(a[0]), isDigit(b[0])
+		if ad && bd {
+			// Compare the whole digit runs as numbers: strip leading zeros,
+			// then the longer run is the larger number.
+			an, bn := a, b
+			for len(an) > 0 && isDigit(an[0]) {
+				an = an[1:]
+			}
+			for len(bn) > 0 && isDigit(bn[0]) {
+				bn = bn[1:]
+			}
+			ar, br := a[:len(a)-len(an)], b[:len(b)-len(bn)]
+			at, bt := strings.TrimLeft(ar, "0"), strings.TrimLeft(br, "0")
+			if len(at) != len(bt) {
+				return len(at) < len(bt)
+			}
+			if at != bt {
+				return at < bt
+			}
+			a, b = an, bn
+			continue
+		}
+		// Case-insensitive at the byte level is wrong for non-ASCII, so only
+		// fold ASCII letters; everything else compares as-is.
+		ac, bc := a[0], b[0]
+		if 'A' <= ac && ac <= 'Z' {
+			ac += 'a' - 'A'
+		}
+		if 'A' <= bc && bc <= 'Z' {
+			bc += 'a' - 'A'
+		}
+		if ac != bc {
+			return ac < bc
+		}
+		a, b = a[1:], b[1:]
+	}
+	return len(a) < len(b)
+}
+
+func isDigit(c byte) bool { return '0' <= c && c <= '9' }
+
+// sortFiles orders the list by by ("name"/"date"/"size"), or restores the
+// order the files were added in when by is "".
+//
+// Sorting happens *within* each run of the same group, not across the whole
+// list: the group headers only appear where the group changes, so a global
+// sort would interleave two folders and grow a header for every file. What the
+// user asked for is "the files in this folder, by name", and that is what this
+// does.
+func sortFiles(files []fileInfo, by string, desc bool) {
+	// Every branch falls back to order, so equal keys keep a stable, meaningful
+	// sequence instead of whatever the sort happened to do with them.
+	less := func(x, y fileInfo) bool {
+		switch by {
+		case "name":
+			nx, ny := filepath.Base(x.path), filepath.Base(y.path)
+			if nx == ny {
+				return x.order < y.order
+			}
+			if desc {
+				return naturalLess(ny, nx)
+			}
+			return naturalLess(nx, ny)
+		case "date":
+			if x.modTime.Equal(y.modTime) {
+				return x.order < y.order
+			}
+			if desc {
+				return y.modTime.Before(x.modTime)
+			}
+			return x.modTime.Before(y.modTime)
+		case "size":
+			if x.size == y.size {
+				return x.order < y.order
+			}
+			if desc {
+				return y.size < x.size
+			}
+			return x.size < y.size
+		}
+		return x.order < y.order
+	}
+	// Walk the contiguous runs of one group and sort each on its own.
+	for start := 0; start < len(files); {
+		g := files[start].group
+		end := start + 1
+		for end < len(files) && files[end].group == g {
+			end++
+		}
+		block := files[start:end]
+		sort.SliceStable(block, func(i, j int) bool { return less(block[i], block[j]) })
+		start = end
+	}
+}
+
+// moveFile moves the file at index from so it sits just before index before
+// (len(files) = to the end), keeping the moved file's neighbours in order.
+func moveFile(files []fileInfo, from, before int) []fileInfo {
+	if from < 0 || from >= len(files) || before < 0 || before > len(files) || from == before || from+1 == before {
+		return files
+	}
+	f := files[from]
+	rest := make([]fileInfo, 0, len(files))
+	rest = append(rest, files[:from]...)
+	rest = append(rest, files[from+1:]...)
+	if before > from {
+		before--
+	}
+	rest = append(rest, fileInfo{})
+	copy(rest[before+1:], rest[before:])
+	rest[before] = f
+	return rest
+}
+
 // statFileKeepGroup 与 statFile 相同,但保留原分组。
 // 执行/回滚后重建 fileInfo 时如果丢掉 group,列表会进入"有的文件有组名、
 // 有的没有"的混合状态,而分组头判定是"组名非空且与上一行不同"——
@@ -2068,6 +2376,7 @@ func (a *app) previewAsync() {
 	a.busyAI = true
 	a.busyStart = time.Now()
 	a.status = "正在联网命名，模型思考中…"
+	a.setAIProgress(0, 0)
 	a.update()
 	// Tick the UI once a second so the wait shows live elapsed seconds instead of
 	// a frozen spinner. The user can tell it's working, not hung.
@@ -2088,12 +2397,48 @@ func (a *app) previewAsync() {
 		close(stop)
 		a.busy = false
 		a.busyAI = false
+		a.setAIProgress(0, 0)
 		a.update()
 	}()
-	a.preview()
+	a.previewSync(true)
 }
 
-func (a *app) preview() {
+// aiPrefetchHook turns the prefetch progress into status-bar updates. The
+// callback runs on a worker goroutine, so it must not touch the UI tree: it
+// records the numbers and asks for a repaint, which is all Window.Update does
+// (it posts to the main thread).
+func (a *app) aiPrefetchHook(enabled bool) func(done, total int) {
+	if !enabled {
+		return nil
+	}
+	return func(done, total int) {
+		a.setAIProgress(done, total)
+		a.update()
+	}
+}
+
+// setAIProgress records how far the AI prefetch has got. Called from whichever
+// worker goroutine finished a request, so it takes the lock; the status bar
+// reads it on the UI thread through aiProgress.
+func (a *app) setAIProgress(done, total int) {
+	a.aiMu.Lock()
+	a.aiDone, a.aiTotal = done, total
+	a.aiMu.Unlock()
+}
+
+// aiProgress is the prefetch progress as the status bar should show it.
+func (a *app) aiProgress() (done, total int) {
+	a.aiMu.Lock()
+	defer a.aiMu.Unlock()
+	return a.aiDone, a.aiTotal
+}
+
+func (a *app) preview() { a.previewSync(false) }
+
+// previewSync runs the pipeline. withProgress=true wires the AI prefetch's
+// progress into the status bar; the live (in-view-pass) preview leaves it off
+// because it never runs AI steps — addPaths skips the auto-preview for those.
+func (a *app) previewSync(withProgress bool) {
 	rules, err := core.ParseRules(a.stepSpecs())
 	if err != nil {
 		// 整轮算不出来:记住原因,a.ops 置空(没有可信的新名字可用),
@@ -2108,7 +2453,7 @@ func (a *app) preview() {
 	for i := range a.files {
 		paths[i] = a.files[i].path
 	}
-	ops, _ := core.RunPipeline(rules, paths)
+	ops, _ := core.RunPipelineProgress(rules, paths, a.aiPrefetchHook(withProgress))
 	a.ops = ops
 	a.status = fmt.Sprintf("%d 个将更名", countChanges(ops))
 	if n := countErrs(ops); n > 0 {
@@ -2380,7 +2725,9 @@ func (a *app) apply() {
 		}
 		for i := range a.files {
 			if i < len(a.ops) && a.ops[i].Applied {
-				a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].NewName), a.files[i].group)
+				fi := statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].NewName), a.files[i].group)
+				fi.order = a.files[i].order
+				a.files[i] = fi
 			}
 		}
 		if ok > 0 {
@@ -2411,7 +2758,9 @@ func (a *app) undo() {
 		if !a.ops[i].Applied || !restored[a.ops[i].NewName] {
 			continue
 		}
-		a.files[i] = statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
+		fi := statFileKeepGroup(filepath.Join(a.ops[i].Dir, a.ops[i].OldName), a.files[i].group)
+		fi.order = a.files[i].order
+		a.files[i] = fi
 		a.ops[i].Applied = false
 	}
 	a.assignExtColors(a.currentTheme())
@@ -2483,6 +2832,18 @@ func main() {
 	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings()}
 	a.syncSeedUI()
 	a.ApplySettings()
+	// 第二个实例不再静默退出:用户再点一次图标、或者从"打开方式"里选了
+	// 本程序,期望的是"窗口到前面来",而不是双击之后什么也没发生。
+	// 那个实例自己的命令行参数(可能带着文件)由 mygo 经 socket 转给这里,
+	// 走的是下面的 OnOpenFile,所以这里只管把窗口捞出来。
+	mygo.App.OnSecondInstance(func(args []string, workingDir string) {
+		a.bringToFront()
+	})
+	// 外部文件入口:资源管理器里双击、"打开方式"、把文件拖到图标上,
+	// 以及第二个实例带过来的文件,都从这里进来。
+	mygo.App.OnOpenFile(func(path string) {
+		a.openExternal(path)
+	})
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
 			Title:          "New Century Renamer",
@@ -2505,6 +2866,47 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// drainPendingDrop 把排队的外部路径(拖放、外部入口、第二个实例)加进列表。
+// 必须排在帧首:这些路径都是在构建这一帧的途中发现的,当场 append 会让
+// 正在逐行构建的列表长度对不上。
+func (a *app) drainPendingDrop() {
+	if len(a.pendingDrop) == 0 {
+		return
+	}
+	paths := a.pendingDrop
+	a.pendingDrop = nil
+	a.addPaths(paths)
+}
+
+// bringToFront 把窗口从最小化/后台捞回前台。第二个实例被拒绝后调用它:
+// 用户再点一次图标,期望的是"窗口到前面来",而不是双击之后什么也没发生。
+func (a *app) bringToFront() {
+	if a.win == nil {
+		return
+	}
+	// 最小化的窗口只 Focus 是不够的:它在任务栏里闪一下又沉下去,
+	// 看起来像"点了没反应"。先 Restore 再 Show 再 Focus。
+	if a.win.IsMinimized() {
+		a.win.Restore()
+	}
+	a.win.Show()
+	a.win.Focus()
+}
+
+// openExternal 收下一个从程序外面送进来的文件路径:资源管理器里双击、
+// "打开方式"、把文件拖到程序图标上,以及第二个实例带过来的文件。
+//
+// 排到 pendingDrop 而不是直接 addPaths:和拖放区走同一条路,帧首统一
+// 追加,避免在构建到一半的列表上改长度。窗口还没建好时 update() 是
+// 空操作,路径就留在队列里等第一帧。
+func (a *app) openExternal(path string) {
+	if path == "" {
+		return
+	}
+	a.pendingDrop = append(a.pendingDrop, path)
+	a.update()
 }
 
 // syncSeedUI mirrors the settings' seed into the dialog widgets.

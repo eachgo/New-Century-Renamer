@@ -9,6 +9,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+
+	"ncreamer/core"
 )
 
 // openHelp 每次从顶部开始:上次读到哪是上次的事,重新打开时先看到
@@ -116,18 +118,33 @@ func (a *app) settingsDialog(c *ui.Context) {
 										ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
 									})
 									row("API Key", func() {
-										ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Fill()
+										ui.Row(c).Gap(8).Children(func() {
+											// 掩码默认开着:设置面板经常被人从背后看到,而 key 是这里唯一
+											// 不能给旁人看的东西。要看原文得主动点「显示」。
+											in := ui.TextInput(c, &a.settingsDraft.AI.Key).
+												Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Grow(1).Label("API Key")
+											if !a.keyShown {
+												in.Password()
+											}
+											label := "显示"
+											if a.keyShown {
+												label = "隐藏"
+											}
+											if ui.Button(c, label).Radius(8).Tooltip("切换 API Key 的显示").Clicked() {
+												a.keyShown = !a.keyShown
+											}
+										})
 									})
 									row("等待秒数", func() {
 										ui.Row(c).Gap(10).Children(func() {
-											ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
-											ui.Text(c, "本地慢模型可调大").FontSize(13).TextColor(t.TextMuted).Grow(1)
+											intField(c, "等待秒数", &a.aiTimeoutText, 10, 3600, core.DefaultAITimeoutSeconds, 150)
+											ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(13).TextColor(t.TextMuted).Grow(1)
 										})
 									})
 									row("并发路数", func() {
 										ui.Row(c).Gap(10).Children(func() {
-											ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
-											ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(13).TextColor(t.TextMuted).Grow(1)
+											intField(c, "并发路数", &a.aiConcurrencyText, 1, 32, core.DefaultAIConcurrency, 150)
+											ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(13).TextColor(t.TextMuted).Grow(1)
 										})
 									})
 									row("默认提示词", func() {
@@ -219,18 +236,33 @@ func (a *app) settingsDialog(c *ui.Context) {
 								ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
 							})
 							row("API Key", func() {
-								ui.TextInput(c, &a.settingsDraft.AI.Key).Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Fill()
+								ui.Row(c).Gap(8).Children(func() {
+									// 掩码默认开着:设置面板经常被人从背后看到,而 key 是这里唯一
+									// 不能给旁人看的东西。要看原文得主动点「显示」。
+									in := ui.TextInput(c, &a.settingsDraft.AI.Key).
+										Placeholder("sk-…（留空用环境变量 NCREAMER_AI_KEY）").Grow(1).Label("API Key")
+									if !a.keyShown {
+										in.Password()
+									}
+									label := "显示"
+									if a.keyShown {
+										label = "隐藏"
+									}
+									if ui.Button(c, label).Radius(8).Tooltip("切换 API Key 的显示").Clicked() {
+										a.keyShown = !a.keyShown
+									}
+								})
 							})
 							row("等待秒数", func() {
 								ui.Row(c).Gap(10).Children(func() {
-									ui.TextInput(c, &a.aiTimeoutText).Width(90).Placeholder("300（默认）")
-									ui.Text(c, "本地慢模型可调大").FontSize(13).TextColor(t.TextMuted).Grow(1)
+									intField(c, "等待秒数", &a.aiTimeoutText, 10, 3600, core.DefaultAITimeoutSeconds, 150)
+									ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(13).TextColor(t.TextMuted).Grow(1)
 								})
 							})
 							row("并发路数", func() {
 								ui.Row(c).Gap(10).Children(func() {
-									ui.TextInput(c, &a.aiConcurrencyText).Width(90).Placeholder("4（默认）")
-									ui.Text(c, "云端 API 常限流，填 1；本地模型填 1~2 也可能更快").FontSize(13).TextColor(t.TextMuted).Grow(1)
+									intField(c, "并发路数", &a.aiConcurrencyText, 1, 32, core.DefaultAIConcurrency, 150)
+									ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(13).TextColor(t.TextMuted).Grow(1)
 								})
 							})
 							row("默认提示词", func() {
