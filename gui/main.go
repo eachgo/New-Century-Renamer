@@ -809,6 +809,37 @@ func (a *app) stepsView(c *ui.Context) {
 								numCol, labCol = t.Text, t.Text
 							}
 							ui.Row(c).Gap(6).Children(func() {
+								// 勾选框在最左、编号之前。以前它在行尾——类别胶囊、
+								// 范围色条之后,读一行流程要在半路绕过它。移到前面
+								// 之后,"[ ] 1. 操作名 参数 类别"读起来是一条直线。
+								//
+								// 槽位在"多选模式开着"或"已经有选中项"时恒占着,
+								// 不管这一行选没选:否则勾选一行会让整行文字横移
+								// 16 DIP,读流程时最刺眼的正是这种跳动。
+								picked := a.chosen.Has(s.opUID)
+								if a.pickMode || a.chosen.Len() > 0 {
+									dotColor := t.Border
+									if picked {
+										dotColor = t.Accent
+									}
+									pick := ui.ButtonBase(c).Size(16, 16).Radius(6).Border(1, dotColor).Shrink(0)
+									if picked {
+										pick.Background(t.Accent)
+									}
+									pick.Label("选中第 " + strconv.Itoa(i+1) + " 步")
+									pick.Children(func() {
+										if picked {
+											ui.Text(c, "✓").FontSize(12).TextColor(t.AccentText)
+										}
+									})
+									if pick.Clicked() {
+										if picked {
+											a.chosen.Remove(s.opUID)
+										} else {
+											a.chosen.Add(s.opUID)
+										}
+									}
+								}
 								ui.Text(c, fmt.Sprintf("%d.", i+1)).FontSize(12).TextColor(numCol).Width(22).TextAlign(ui.End)
 								// 全部步骤统一左对齐(设计书:不要在同一列表里混用对齐);
 								// 流程控制靠类别胶囊 + 范围色条区分,不再靠居中
@@ -851,32 +882,6 @@ func (a *app) stepsView(c *ui.Context) {
 								}
 								// 色条保留区:两条竖线永远画在这里,不压胶囊
 								ui.Box(c).Width(12)
-								// 多选圆点:默认不画(太重)。按需出现:开了多选模式、
-								// 本行被悬停、或已在本行的选择里;悬停与已选时占位,
-								// 保证布局不跳
-								picked := a.chosen.Has(s.opUID)
-								if a.pickMode || picked || row.Hovered() {
-									dotColor := t.Border
-									if picked {
-										dotColor = t.Accent
-									}
-									pick := ui.ButtonBase(c).Size(16, 16).Radius(6).Border(1, dotColor)
-									if picked {
-										pick.Background(t.Accent)
-									}
-									pick.Children(func() {
-										if picked {
-											ui.Text(c, "✓").FontSize(12).TextColor(t.AccentText)
-										}
-									})
-									if pick.Clicked() {
-										if picked {
-											a.chosen.Remove(s.opUID)
-										} else {
-											a.chosen.Add(s.opUID)
-										}
-									}
-								}
 							})
 						})
 					}).Gap(0) // 行相接,范围竖线连续;行距由行内 Padding 提供
@@ -936,12 +941,36 @@ func (a *app) stepsView(c *ui.Context) {
 				})
 			}
 		}
-		// 多选(Ctrl+点击)时的批量操作
-		if a.chosen.Len() > 0 {
+		// 多选时的批量操作。多选模式一开就显示——"全选"要能选到东西,
+		// 而"一个都没选"正是最需要它的时刻;只有选中项而没有模式(边界)
+		// 时也留着,免得选中项无从下手。
+		if a.pickMode || a.chosen.Len() > 0 {
 			n := a.chosen.Len()
 			ui.Box(c).FillWidth().Height(1).Background(a.currentTheme().panes(a.isDark()).outline)
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, fmt.Sprintf("已选 %d 步", n)).Bold()
+			// 标签独占一行、按钮成组:挤在一行里时"删除所选"会被
+			// Wrap 甩到第二行单独一个,看着像排版出错而不是分组。
+			ui.Text(c, fmt.Sprintf("已选 %d 步", n)).Bold().SingleLine()
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Wrap().Children(func() {
+				// 全选/反选:步骤多起来之后,一个个点比拖一次还慢,而"删掉
+				// 中间那几步"通常等于"留下两头"——先全选再点掉不要的,比
+				// 逐个勾更接近人想做的事。
+				if ui.Button(c, "全选").Radius(6).Disabled(n == len(a.steps)).Clicked() {
+					for _, st := range a.steps {
+						a.chosen.Add(st.opUID)
+					}
+				}
+				if ui.Button(c, "反选").Radius(6).Disabled(len(a.steps) == 0).Clicked() {
+					for _, st := range a.steps {
+						if a.chosen.Has(st.opUID) {
+							a.chosen.Remove(st.opUID)
+						} else {
+							a.chosen.Add(st.opUID)
+						}
+					}
+				}
+				if ui.Button(c, "全不选").Radius(6).Disabled(n == 0).Clicked() {
+					a.chosen.Clear()
+				}
 				// 批量删除同样是"丢东西",和单步删除、清空列表共用一套语言
 				if a.confirmChosen && a.confirmStale() {
 					a.dropConfirm()
@@ -953,11 +982,8 @@ func (a *app) stepsView(c *ui.Context) {
 						a.deleteChosen()
 						a.dropConfirm()
 					}
-				} else if dangerButton(c, "删除所选", true).Clicked() {
+				} else if dangerButton(c, "删除所选", n > 0).Clicked() {
 					a.armConfirm("chosen")
-				}
-				if ui.Button(c, "全不选").Radius(6).Clicked() {
-					a.chosen.Clear()
 				}
 			})
 		}
