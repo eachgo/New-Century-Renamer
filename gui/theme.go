@@ -48,6 +48,9 @@ func (a *app) currentSeed() ui.Color {
 // selColors gives the catalog/steps selection colors for the current theme.
 func (a *app) selColors() (bg, fg ui.Color) {
 	dt := a.currentTheme()
+	if a.isDark() {
+		return dt.selBgDark, dt.selFg
+	}
 	return dt.selBg, dt.selFg
 }
 

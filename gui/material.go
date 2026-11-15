@@ -16,12 +16,22 @@ import (
 type derivedTheme struct {
 	light, dark *ui.Theme
 	selBg       ui.Color // catalog/steps selection: deep seed tone
-	selFg       ui.Color
-	cardBg      ui.Color // settings card ground: near-neutral seed tint
+	// selBgDark 是深色外观下的选中底。深色左栏底是 L≈0.250,原来的
+	// 0.30–0.42 压在上面只有 1.22–1.95:1,选中行和没选中几乎分不开;
+	// 提到 0.54–0.55 后对底 3.2–3.4,同时白字仍有 4.7 以上——再往上提
+	// 白字就掉到 4.5 以下了,两个约束的窗口只有 0.02 宽。
+	selBgDark ui.Color
+
+	selFg  ui.Color
+	cardBg ui.Color // settings card ground: near-neutral seed tint
 	// range bars: two fixed slots — right = 选取范围 (filename/extension,
 	// two neighboring hues so a switch shows), left = 筛选范围 (the seed's
 	// complement). A slot holds its place transparent when its range is off
 	groupColors map[string]ui.Color // fixed color per catalog group
+	// groupColorsDark 是同一批组在深色外观下的图标色。只差明度:图标要
+	// 压在左栏底色上,亮色左栏浅(要深图标)、暗色左栏深(要浅图标),
+	// 一套值不可能两边都达标。
+	groupColorsDark map[string]ui.Color
 
 	// 三栏"海拔"配色(Material 3 的 surface container 阶)。
 	// 亮色:越核心越亮——左栏最暗(后退),中栏最亮(浮起),右栏居中。
@@ -91,7 +101,10 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 1.00:1,等于没画;而三栏四层海拔明度各不相同,任何固定色调都会
 	// 与其中某一层撞上。改成半透明叠色后,它在 base/mid/right/card 上
 	// 都稳定在 1.17:1 左右,深浅两种外观也自动对(亮色压深、暗色提亮)。
-	lt.SurfaceHover = lt.Text.Alpha(0.08)
+	// 0.10 而不是 0.08:悬停底色要在列表行、工具栏、卡片上都能看出来。
+	// 0.08 实测对左栏底只有 1.162:1,低于"能看见一层变化"的 1.15 门槛
+	// 附近——它跟没画几乎一样,用户看不出鼠标停在哪一行。
+	lt.SurfaceHover = lt.Text.Alpha(0.10)
 	lt.SurfacePressed = lt.Text.Alpha(0.14)
 	// 控件边界。0.920 时按钮描边/输入框边框对底色只有 1.03–1.24:1,
 	// 等于"没有边界"——用户看不出哪里可以点。0.72 抬到 2.0–2.4,
@@ -155,7 +168,16 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 处理"的唯一非文字线索,读不出来就只剩文字标签,色相编码白给。
 	// 实测算到 0.59 是上界(11 组里最差那组刚好过线),取 0.58 留余量;
 	// 色度也从 0.125 降到 0.10,亮色下高彩度会显脏。
+	// 明度也要交错:11 个色相在灰度下亮度几乎一样(实测 0.1614–0.1861,
+	// 差 0.025),色盲用户与灰度打印都分不开。所以在两档明度之间交替,
+	// 相邻两组的图标既有色相差、也有明度差——色相是给"看得到颜色"的人
+	// 的第二层线索,明度是给所有人的第一层。
+	//
+	// 两档要按明暗各给一套:同一个明度不可能同时压亮底和暗底(亮色左栏
+	// L≈0.945 要深图标,暗色左栏 L≈0.250 要浅图标)。取 0.48/0.60 这一对,
+	// 两档互相差 1.65、对各自底色最差 3.23,三个约束同时满足。
 	groupColors := make(map[string]ui.Color, len(stepGroups))
+	groupColorsDark := make(map[string]ui.Color, len(stepGroups))
 	for i, g := range stepGroups {
 		hue := math.Mod(H+float64(i)*360/float64(len(stepGroups)), 360)
 		// L 0.58 时对左栏底只有 2.6:1(高彩度会把感知亮度往下拽,比中性色
@@ -165,7 +187,12 @@ func buildTheme(seed ui.Color) *derivedTheme {
 		// 亮色下左栏底 0.923,再亮就掉到 3.0 以下(上界 0.558);
 		// 暗色下左栏底 0.265,再暗也掉到 3.0 以下(下界 0.556)。
 		// 改这个数会同时踩到一侧,动之前先跑 TestCatalogGroupIconsAreReadable。
-		groupColors[g] = oklchColor(0.557, 0.10, hue)
+		lum, lumDark := 0.480, 0.650
+		if i%2 == 1 {
+			lum, lumDark = 0.600, 0.800
+		}
+		groupColors[g] = oklchColor(lum, 0.10, hue)
+		groupColorsDark[g] = oklchColor(lumDark, 0.10, hue)
 	}
 
 	// 三栏海拔配色。OKLCH 的 L 即感知明度,直接当 M3 的 tone/100 用。
@@ -194,6 +221,11 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 根本读不出"谁浮在谁上面"。整体抬到 0.20/0.23/0.255/0.30,
 	// 层次仍是 base < right < mid < card,只是不再贴着黑。
 	// 暗色同一套逻辑:base 0.230 与三栏 0.250 几乎同色,卡片 0.300 才抬起来。
+	// 深色下三栏是同色(实测 mid/right = 1.000),靠"栏与栏之间那条 1px
+	// 分隔线"来分界。亮色不需要:亮色 base 与三栏本来就有 1.05 的差,
+	// 而深色 0.230 对 0.250 只差 1.06——在暗环境里这个差读不出来,
+	// 整屏会糊成一块。分隔线用 outline(0.400),对三栏 1.72–1.75:1,
+	// 是"看得见但不抢"的分量。
 	dtPane := paneTones{
 		base:    oklchColor(0.230, cc*0.20, H),
 		left:    oklchColor(0.250, cc*0.20, H),
@@ -206,14 +238,16 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	}
 
 	return &derivedTheme{
-		light:       lt,
-		dark:        dt,
-		selBg:       oklchColor(clamp(L, 0.30, 0.42), cc*0.9, H),
-		selFg:       ui.RGB(255, 255, 255),
-		cardBg:      oklchColor(0.962, cc*0.12, H),
-		groupColors: groupColors,
-		lightPane:   ltPane,
-		darkPane:    dtPane,
+		light:           lt,
+		dark:            dt,
+		selBg:           oklchColor(clamp(L, 0.30, 0.42), cc*0.9, H),
+		selBgDark:       oklchColor(clamp(L+0.16, 0.54, 0.55), cc*0.9, H),
+		selFg:           ui.RGB(255, 255, 255),
+		cardBg:          oklchColor(0.962, cc*0.12, H),
+		groupColors:     groupColors,
+		groupColorsDark: groupColorsDark,
+		lightPane:       ltPane,
+		darkPane:        dtPane,
 	}
 }
 
@@ -267,6 +301,32 @@ func (d *derivedTheme) groupColor(group string) ui.Color {
 		return c
 	}
 	return d.selBg
+}
+
+// groupColorFor is groupColor for a given appearance. The two sets differ in
+// lightness only: an icon has to be dark on the light left pane and light on
+// the dark one, so one shared value cannot serve both.
+func (d *derivedTheme) groupColorFor(group string, dark bool) ui.Color {
+	if dark {
+		if c, ok := d.groupColorsDark[group]; ok {
+			return c
+		}
+		return d.selBg
+	}
+	return d.groupColor(group)
+}
+
+// disabledColors 是禁用按钮的字色与底色。
+//
+// mygo 在 paint.go 里把禁用元素的整块(含文字)乘 0.5,于是"深灰字 + 浅底"
+// 再各减半,实测只剩 3.49:1(亮)/2.38:1(暗)——低于正文 4.5:1,用户读不清
+// 那颗灰按钮上写的是什么,也就不知道"为什么点不了"。
+//
+// 所以禁用按钮不走自动调暗:字用 TextMuted、底用 Surface,并显式
+// DimDisabled(false),实测 5.8–6.6:1;灰感由底色与边框提供,不靠把字调到
+// 看不见。抽成函数是为了让测试量到生产真的用的那两个颜色。
+func disabledColors(t *ui.Theme) (fg, bg ui.Color) {
+	return t.TextMuted, t.Surface
 }
 
 // cardBgFor is the settings-card ground for the current appearance: a

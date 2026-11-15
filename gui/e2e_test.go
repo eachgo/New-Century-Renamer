@@ -67,6 +67,18 @@ func resetCopy(t *testing.T) (dir string, paths []string) {
 	return dir, paths
 }
 
+// openAllGroups 把左栏所有组展开。
+//
+// 目录默认只展开前两组(见 defaultOpenGroups),而端到端用例要点的条目
+// 分散在各组里——不展开就点不到,报"no element shows ...",看上去像
+// 功能坏了,其实只是折叠着。
+func openAllGroups(a *app) {
+	a.folded = map[string]bool{}
+	for _, g := range stepGroups {
+		a.folded[g] = false
+	}
+}
+
 // TestE2EApplyUndo drives the real app over real files: add → preview →
 // apply → verify on disk → undo → verify restored.
 func TestE2EApplyUndo(t *testing.T) {
@@ -74,6 +86,7 @@ func TestE2EApplyUndo(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	a.settings.Journal = filepath.Join(dir, ".journal.json")
 	a.addPaths(paths)
+	openAllGroups(a)
 	if len(a.files) != len(paths) {
 		t.Fatalf("added %d of %d files", len(a.files), len(paths))
 	}
@@ -130,6 +143,7 @@ func TestE2EMetadataFlow(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
 	a.settings.Journal = filepath.Join(dir, ".journal.json")
 	a.addPaths(paths)
+	openAllGroups(a)
 	tt := ui.NewTester(a.view, 1280, 2600)
 	tt.Frame()
 

@@ -21,10 +21,10 @@ func dropIllus() *ui.SVG {
 	illustrationOnce.Do(func() {
 		dropIllustration = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">` +
 			// 纸张轮廓,右下角折起
-			`<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M13 5h14l8 8v30H13z"/>` +
-			`<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M27 5v8h8"/>` +
+			`<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" d="M13 5h14l8 8v30H13z"/>` +
+			`<path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" d="M27 5v8h8"/>` +
 			// 三条内容线,弱化
-			`<path stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity="0.55" d="M19 22h10M19 28h10M19 34h6"/>` +
+			`<path stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity="0.55" d="M19 22h10M19 28h10M19 34h6"/>` +
 			`</svg>`))
 	})
 	return dropIllustration

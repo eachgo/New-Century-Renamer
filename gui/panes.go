@@ -1,6 +1,10 @@
 package main
 
-import "github.com/egoist/mygo/ui"
+import (
+	"strings"
+
+	"github.com/egoist/mygo/ui"
+)
 
 // splitPanes 把一栏分成左右两半，中间是一条**可拖拽的空白缝**，不画线。
 //
@@ -53,7 +57,19 @@ func (a *app) splitPanesInset(c *ui.Context, size *float32, pad, availW float32,
 		ui.Column(c).Width(*size).FillHeight().Clip().Children(first)
 
 		// 缝本身是拖拽把手：整条竖带都能抓，光标提示可拖。
-		grip := ui.Box(c).Width(gripW).FillHeight().Focusable().Cursor(ui.CursorResizeEW)
+		//
+		// 深色下三栏同色(实测 mid/right = 1.000),不加一条线整屏会糊成
+		// 一块——用户分不清哪块内容属于哪一栏。亮色不用:亮色 base 与
+		// 三栏本来就有 1.05 的差,再加线反而显得碎。
+		grip := ui.Row(c).Width(gripW).FillHeight().Focusable().Cursor(ui.CursorResizeEW).
+			AlignItems(ui.Center)
+		if a.isDark() {
+			// 缝有 10 DIP 宽(拖拽热区),但分界线只要 1 DIP:整条填色会变成
+			// 一根 10 像素粗的亮条,比三栏本身还抢眼。
+			grip.Children(func() {
+				ui.Box(c).Width(1).FillHeight().Background(a.currentTheme().panes(true).outline)
+			})
+		}
 		if dx, _, held := grip.Dragged(); held && dx != 0 {
 			*size = clampPane(*size+dx, minPane, avail-minPane)
 		}
@@ -69,6 +85,43 @@ func (a *app) splitPanesInset(c *ui.Context, size *float32, pad, availW float32,
 
 		ui.Column(c).Grow(1).FillHeight().Clip().Children(second)
 	})
+}
+
+// defaultOpenGroups 是第一次打开左栏时展开的组数。
+//
+// 11 组 32 条全摊开时一屏只放得下前三四组,剩下的要靠滚——用户既不知道
+// 下面还有多少,也不知道该从哪儿找起。展开两组、其余折起,一屏看到的是
+// "有哪十一个类别",而不是"前三个类别里的全部条目"。
+//
+// 但也不能全折:全折之后左栏只剩 11 行组名,第一次打开的人看不出这里面
+// 装的是能点来用的规则。留两组开着,一眼就能看出条目长什么样。
+const defaultOpenGroups = 2
+
+// groupOpen 决定某个组此刻是否展开。默认状态由位置决定(前两组开),
+// 用户点过的那几组以 a.folded 为准——两套状态分开存,免得"默认"把
+// 用户的选择覆盖掉,也免得用户的选择被当成默认带到别的组上。
+func (a *app) groupOpen(g string, groups []string) bool {
+	if g == pinGroup {
+		return true // 常用组是入口,折起来等于没有
+	}
+	if strings.TrimSpace(a.palQuery) != "" {
+		return true // 搜索结果本来就少,折起来只会多一次点击
+	}
+	if v, ok := a.folded[g]; ok {
+		return !v
+	}
+	for i, name := range groups {
+		if name != g {
+			continue
+		}
+		// 常用组不占默认展开的额度:它自己恒开,不该挤掉一个真分组
+		slot := i
+		if groups[0] == pinGroup {
+			slot = i - 1
+		}
+		return slot < defaultOpenGroups
+	}
+	return false
 }
 
 // clampPane 把分隔位置夹在 [lo, hi] 内。hi 小于 lo 时（窗口被拖得

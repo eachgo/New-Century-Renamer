@@ -94,8 +94,10 @@ func TestCatalogGroupIconsAreReadable(t *testing.T) {
 			}
 			// 图标坐在左栏那张卡片上,不是坐在窗口底上——左栏容器用的是
 			// pt.right(0.923),不是 pt.base(0.852)。量错底会低估 0.3 左右。
+			// 图标色按明暗各一套(见 material.go 的 groupColorsDark):
+			// 同一个明度不可能同时压亮底和暗底,所以这里也要按 dark 取。
 			for _, g := range stepGroups {
-				if c := contrastRatio(dt.groupColor(g), p.right); c < 3.0 {
+				if c := contrastRatio(dt.groupColorFor(g, dark), p.right); c < 3.0 {
 					t.Errorf("seed %v dark=%v: 目录图标 %q 对左栏底只有 %.2f:1,应 ≥3:1",
 						seed, dark, g, c)
 				}

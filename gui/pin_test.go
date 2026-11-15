@@ -47,6 +47,9 @@ func TestNoPinGroupWhenNothingPinned(t *testing.T) {
 func TestPinnedEntryKeepsItsOriginalGroup(t *testing.T) {
 	a := pinApp(t)
 	a.pinned = []string{"seq"}
+	// 默认只展开前两组,而"编号"排在后面——先把它展开,否则这条测试
+	// 量到的是"折叠状态下看不见",不是"钉选把条目搬走了"。
+	a.folded = map[string]bool{"编号": false}
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 	tt.Frame()

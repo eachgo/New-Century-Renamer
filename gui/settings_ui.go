@@ -82,12 +82,12 @@ func (a *app) settingsDialog(c *ui.Context) {
 		// (e.g. the prompt TextArea) instead of floating it to the middle.
 		row := func(label string, ctl func()) {
 			ui.Row(c).Gap(12).AlignItems(ui.Start).Children(func() {
-				ui.Text(c, label).Width(labelW).Padding(0, 6)
+				ui.Text(c, label).Width(labelW).Padding(0, 8)
 				ctl()
 			})
 		}
 		card := func(title string, fields func()) {
-			ui.Column(c).Fill().Gap(8).Padding(12, 14).Radius(10).
+			ui.Column(c).Fill().Gap(8).Padding(12, 12).Radius(10).
 				Background(cardBg).Children(func() {
 				ui.Text(c, title).FontSize(12).Bold().TextColor(t.TextMuted)
 				fields()

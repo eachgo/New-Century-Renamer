@@ -1086,6 +1086,9 @@ func TestStepLabelSurvivesNarrowWindow(t *testing.T) {
 	a.addPaths([]string{dir})
 	a.steps = []guiRule{step("seq"), step("case.lower"), step("scope.name"), step("pinyin")}
 	a.stepSel = -1
+	// 「追加序号」在「编号」组里,而默认只展开前两组——展开它,否则数到的
+	// 只有步骤行那一处,断言就变成"目录被折叠了"而不是"步骤名没被截断"。
+	a.folded = map[string]bool{"编号": false}
 	a.preview()
 	tt := ui.NewTester(a.view, 900, 480)
 	for i := 0; i < 4; i++ {

@@ -12,10 +12,11 @@ func TestCatalogFilterNarrowsList(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 720)
 	tt.Frame()
 
-	// 没过滤时目录里所有条目都在,只是大部分被滚出可视区
+	// 没过滤时只有默认展开那两组里的条目在(其余组折着),所以基准是
+	// "默认状态"的条数,不是整份目录 32 项。
 	before := catalogLabelsShown(tt)
-	if before < 20 {
-		t.Fatalf("未过滤时应当有整份目录,实际只渲染了 %d 项", before)
+	if before < 4 {
+		t.Fatalf("默认展开的组里应当有条目,实际只渲染了 %d 项", before)
 	}
 
 	a.palQuery = "nfo"
