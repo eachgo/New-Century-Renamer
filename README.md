@@ -2,6 +2,11 @@
 
 > 让你找回世纪初管理文件的感觉。
 
+> **一句话**：把「改名字」当成一条能反复走的流水线。十几条小规则随便串，
+> 随时看得见每个文件会变成什么；**默认不动文件**，先预览、再执行、改坏了整批回滚。
+>
+> 大多数改名工具把你变成正则表达式工程师，这里不用。
+
 [![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/apps/new-century-renamer)
 
 ![界面截图](docs/screenshot.png)
