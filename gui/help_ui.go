@@ -58,15 +58,24 @@ func (a *app) helpDialog(c *ui.Context) {
 					ui.Text(c, "模板里能用的变量").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
 					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
 						Background(cardBg).Children(func() {
+						// 与 README 的「变量」表逐条对齐:两处不一致时,
+						// 用户不知道该信哪一个。帮助页在程序里,是查得最快的
+						// 那一份,所以它不能比 README 少。
 						vars := []struct{ name, desc string }{
 							{"<NAME>", "原文件名（不含扩展名）"},
-							{"<EXT>", "原扩展名；<.EXT> 连点一起给"},
+							{"<EXT>", "原扩展名"},
+							{"<.EXT>", "原扩展名，连点一起给"},
+							{"<DIR>", "所在目录"},
+							{"<CRC32>", "文件内容 CRC32"},
 							{"<SEQ>", "当前序号（原始数字，不补零）"},
 							{"<DATE>", "文件修改日期，YYYY-MM-DD"},
+							{"<Pinyin:NAME>", "括号里那个变量的内容转拼音"},
 							{"<META:title>", "标题；音乐读 ID3，书读 EPUB，文档读 PDF"},
 							{"<META:artist>", "歌手；书里是作者"},
 							{"<META:album>", "专辑"},
 							{"<NFO:episode>", "从同目录 .nfo 里取的集数"},
+							{"<NFO:title>", "同一集在 .nfo 里的标题"},
+							{"<NFOName>", "组合好的「剧名 - S01E01 - 标题」"},
 							{"<AI:…>", "让模型按内容起名，需在设置里配接口"},
 						}
 						for _, v := range vars {

@@ -33,6 +33,14 @@ type Settings struct {
 		// Seed is a hex color; empty means follow the desktop accent.
 		Seed string `json:"seed,omitempty"`
 	} `json:"theme"`
+	// Pinned 是用户钉在左栏顶端的目录条目 id,按钉的顺序排。
+	//
+	// 左栏按"分组 + 类别色"组织:分组是语义(筛选、转换、编号……),
+	// 颜色是类别线索,两者都不能为"常用"让路——打散分组之后,用户
+	// 得靠记住位置来找东西,比按重要性排更糟。所以不动分组,另开一
+	// 个"常用"组放在最上面:用户自己决定哪几条进去,顺序就是他钉的
+	// 顺序。
+	Pinned []string `json:"pinned,omitempty"`
 }
 
 const settingsFile = "ncreamer-settings.json"

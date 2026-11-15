@@ -113,7 +113,11 @@ type app struct {
 	// 目录里被折起来的分组。默认全展开:第一次打开就把 26 项规则藏进
 	// 11 次点击后面,等于换个方式让人找不到;折叠是给"我已经知道要
 	// 什么、只是嫌长"的人用的。
-	folded    map[string]bool
+	folded map[string]bool
+	// pinned 是左栏顶部"常用"组的条目 id,与 settings.Pinned 同步。
+	// 单独存一份是因为目录每帧重建,而设置只在对话框里改;两处各读
+	// 各的会有一帧延迟,拖动排序时会看到条目跳一下。
+	pinned    []string
 	palScroll ui.ScrollState
 	catScroll ui.Handle // 目录滚动位置;用来判断"下面还有没有"
 	catRect   ui.Rect   // 上一帧的目录视口位置,测试用来量底缘渐隐
@@ -432,6 +436,19 @@ func (a *app) statusBar(c *ui.Context) {
 			}
 		}
 		applyEnabled := !a.busy && a.hasChanges()
+		// 执行前把 AI 请求量说出来。一次 300 个文件的批量,配上 4 路并发
+		// 和慢模型,是十几分钟的事;等到点下去才发现,用户能做的只有
+		// 干等或者中断。这条数字在点之前就有,所以放在按钮左边。
+		//
+		// 只在真的有 AI 步骤且要动磁盘时才占位:没配 AI 的批量里凭空
+		// 出现"0 次请求"只会让人以为哪里坏了。
+		if applyEnabled {
+			if n := a.aiCallCount(); n > 0 {
+				ui.Text(c, fmt.Sprintf("将调用 AI %d 次", n)).FontSize(12).
+					TextColor(t.TextMuted).SingleLine().
+					Tooltip(fmt.Sprintf("这次执行会向 AI 接口发 %d 次请求（%d 路并发）。\n本地模型可能要等一会儿，云端按次计费。", n, core.AIConcurrency()))
+			}
+		}
 		applyBtn := primaryButton(c, "执行更名", applyEnabled).Tooltip(shortcutTip("Ctrl+Enter"))
 		if applyEnabled && applyBtn.Clicked() {
 			go a.apply()
@@ -524,6 +541,18 @@ func (a *app) catalogView(c *ui.Context) {
 			groups = append(groups, d.group)
 		}
 	}
+	// 钉住的条目另起一组放在最前,名字叫「常用」。
+	//
+	// 不把它们从原分组里搬走:一个条目可以同时在「常用」和「转换」里
+	// 出现——用户钉它是因为常用,不是因为它改了归属。搬走会让原来那
+	// 组少一条,熟悉位置的人反而找不到。
+	// 搜索时不显示「常用」组:搜索的结果是一份"匹配了什么"的清单,
+	// 钉住的条目已经在下面的分组里出现过,再置顶一份就成了同一个结果
+	// 出现两次,看起来像两条不同的规则。
+	filtering := strings.TrimSpace(a.palQuery) != ""
+	if !filtering && len(a.pinnedEntries()) > 0 && len(groups) > 0 {
+		groups = append([]string{pinGroup}, groups...)
+	}
 	// a hand-built list rather than ui.Sidebar: its internal scroll
 	// container never received wheel events here, hiding the lower groups
 	//
@@ -548,17 +577,20 @@ func (a *app) catalogView(c *ui.Context) {
 		// 而这个判断要读它,不能靠猜。
 		a.catRect = a.catScroll.Bounds(c)
 		// FocusGroup:左栏这一整块只算一个 Tab 停留点,方向键在条目之间移动。
-		// 以前 34 个条目 + 11 个组标题各占一个停留点,Tab 要走 40 多次才
-		// 出得了左栏——文件列表排在第 60 个,键盘用户基本到不了。Tab 遍历
-		// 本身是 mygo 内建的(ui/input.go 的 moveFocus),这里只是告诉它
-		// "这一堆是一个整体"。搜索框留在组外,它自己是一个停留点。
+		// 以前每条规则 + 每个组标题各占一个停留点,三十多个条目下来 Tab
+		// 要走四十多次才出得了左栏——文件列表排在那之后,键盘用户基本
+		// 到不了。Tab 遍历本身是 mygo 内建的(ui/input.go 的 moveFocus),
+		// 这里只是告诉它"这一堆是一个整体"。搜索框留在组外,自己是一个
+		// 停留点。
+		//
+		// 数字不写死:catalog 条目数会变,写死的数字过一阵就又对不上了。
 		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).FocusGroup(ui.Vertical).Children(func() {
 			if len(shown) == 0 {
 				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
 			}
 			for _, g := range groups {
 				// 组标题本身就是折叠开关:11 组收起后一屏放得下,而且
-				// 分组名("编号""元数据")比 34 条规则名更好认。
+				// 分组名("编号""元数据")比一长串规则名更好认。
 				open := !a.folded[g]
 				arrow := "▾"
 				if !open {
@@ -585,8 +617,12 @@ func (a *app) catalogView(c *ui.Context) {
 				if !open {
 					continue
 				}
-				for _, d := range shown {
-					if d.group != g {
+				items := shown
+				if g == pinGroup {
+					items = a.pinnedEntries()
+				}
+				for _, d := range items {
+					if g != pinGroup && d.group != g {
 						continue
 					}
 					selBg, selFg := a.selColors()
@@ -626,6 +662,22 @@ func (a *app) catalogView(c *ui.Context) {
 							txt.TextColor(labelCol)
 						}
 					})
+					// 右键菜单:钉/取消钉。放在右键而不是条目上的小图标:
+					// 条目已经有一列类别色图标 + 一行文字,再塞一颗星会让
+					// 每行都多一个可点区域,而这是低频动作。
+					item.ContextMenu(func(m *ui.Menu) {
+						label := "钉到常用"
+						if a.isPinned(d.id) {
+							label = "取消钉住"
+						}
+						if m.Item(label).Chosen() {
+							a.togglePin(d.id)
+							a.settings.Pinned = a.pinned
+							if err := SaveSettings(a.settings); err != nil {
+								a.status = "钉住没能存下来：" + err.Error()
+							}
+						}
+					})
 					if item.Clicked() {
 						r := d.make()
 						r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
@@ -639,6 +691,46 @@ func (a *app) catalogView(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// pinGroup 是左栏顶部那个"常用"分组的名字。用一个不可能与真实分组
+// 撞名的字符串:真实分组名都来自 catalog 的 group 字段(筛选/范围、
+// 转换、编号……),不会有人取这个名字。
+const pinGroup = "常用"
+
+// pinnedEntries 按用户钉的顺序返回目录条目。id 在 catalog 里找不到时
+// 跳过——设置是磁盘上的 JSON,可能来自删掉了某条规则的旧版本。
+func (a *app) pinnedEntries() []opDef {
+	out := make([]opDef, 0, len(a.pinned))
+	for _, id := range a.pinned {
+		if d, ok := opByID(id); ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// pinEntry 把一条目录条目钉到「常用」组末尾,已钉过就取消。
+// 返回新的钉选列表,调用方负责存盘——设置写盘只在对话框与这里发生,
+// 两处都要留痕。
+func (a *app) togglePin(id string) {
+	for i, v := range a.pinned {
+		if v == id {
+			a.pinned = append(a.pinned[:i], a.pinned[i+1:]...)
+			return
+		}
+	}
+	a.pinned = append(a.pinned, id)
+}
+
+// isPinned reports whether the catalog entry id is in the 常用 group.
+func (a *app) isPinned(id string) bool {
+	for _, v := range a.pinned {
+		if v == id {
+			return true
+		}
+	}
+	return false
 }
 
 // stepRangeBars returns, per step, the two fixed range-bar slots:
@@ -2730,6 +2822,20 @@ func (a *app) stepForSpec(n int) (int, bool) {
 	return 0, false
 }
 
+// aiCallCount 是这次执行会发出的 AI 请求数。规则解析失败时返回 0:
+// 那种情况下执行按钮本来就是灰的,不必再报一个数字。
+func (a *app) aiCallCount() int {
+	rules, err := core.ParseRules(a.stepSpecs())
+	if err != nil {
+		return 0
+	}
+	paths := make([]string, len(a.files))
+	for i, f := range a.files {
+		paths[i] = f.path
+	}
+	return core.AICallCount(rules, paths)
+}
+
 // specErrText 把 core 的「规则 N：…」换成「第 N 步「步骤名」：…」。
 //
 // 认不出规则号时原样返回——宁可少一层翻译,也不能因为解析失败把真正的
@@ -3159,6 +3265,9 @@ func main() {
 		return
 	}
 	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings()}
+	// 钉选从设置读进内存一份:目录每帧重建,逐帧读 settings 会在
+	// 设置对话框改动后出现一帧延迟(拖动时看得见条目跳一下)。
+	a.pinned = append([]string(nil), a.settings.Pinned...)
 	a.syncSeedUI()
 	a.ApplySettings()
 	// 第二个实例不再静默退出:用户再点一次图标、或者从"打开方式"里选了

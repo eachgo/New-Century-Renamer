@@ -477,15 +477,42 @@ func mod360(v float64) float64 {
 }
 
 // pathTail3 returns the last three folders of a directory, joined with ⁄.
+// pathTail3 把目录截成最后三段,用 " ⁄ " 连接,给卡片里那颗路径胶囊用。
+//
+// 这里不能用 filepath.Dir 一路往上走:Windows 上 "C:\a" 的 Dir 是
+// "C:\\"、再往上还是 "C:\\",Base 却是 "\\",于是两层的目录会显示成
+// "\ ⁄ \ ⁄ a"、一层的显示成 "\ ⁄ \ ⁄ \\"——用户看到的就是一串
+// 反斜杠。文件实际躺在 C:\a 里,界面上读不出这件事。
+//
+// 改成先切段再取尾三:盘符("C:")算一段、根 "/" 单独一段、中间的目录名
+// 各算一段,取最后三段。层级不够三段就有几段显示几段,不再拿分隔符填数。
 func pathTail3(dir string) string {
 	dir = filepath.Clean(dir)
+	vol := filepath.VolumeName(dir)
+	rest := strings.TrimPrefix(dir, vol)
+	root := ""
+	if strings.HasPrefix(rest, string(filepath.Separator)) {
+		root = string(filepath.Separator)
+		rest = strings.TrimPrefix(rest, string(filepath.Separator))
+	}
 	var parts []string
-	for i := 0; i < 3; i++ {
-		if dir == "" || dir == "." || dir == string(filepath.Separator) {
-			break
+	if vol != "" {
+		// 盘符单独算一段:"C:" 是有信息量的(文件在哪个盘),
+		// 而 "C:\\" 里的反斜杠不是。
+		parts = append(parts, vol)
+	}
+	for _, seg := range strings.Split(rest, string(filepath.Separator)) {
+		if seg == "" || seg == "." {
+			continue
 		}
-		parts = append([]string{filepath.Base(dir)}, parts...)
-		dir = filepath.Dir(dir)
+		parts = append(parts, seg)
+	}
+	if len(parts) == 0 {
+		// 整个路径就是根:此时唯一有信息量的字符就是根本身。
+		return root
+	}
+	if len(parts) > 3 {
+		parts = parts[len(parts)-3:]
 	}
 	return strings.Join(parts, " ⁄ ")
 }

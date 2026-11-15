@@ -122,6 +122,37 @@ func prefetchAI(rules []Rule, files []string) (cache map[string]string, aiErrs m
 	return prefetchAIProgress(rules, files, nil)
 }
 
+// AICallCount reports how many model requests a run over these files would
+// make, without making any. The GUI shows it before the user commits: a batch
+// that turns into 300 round-trips should say so up front, not after ten
+// minutes of waiting with no idea how long is left.
+//
+// It mirrors the job-building loop in prefetchAIProgress exactly, including
+// the duplicate-key reservation — a file mentioned twice (same path, same
+// instruction) is one request, and the estimate has to agree with the run or
+// the number in the dialog is worse than no number.
+func AICallCount(rules []Rule, files []string) int {
+	seen := map[string]bool{}
+	n := 0
+	for _, f := range files {
+		dir, name := filepath.Split(f)
+		dir = filepath.Clean(dir)
+		if _, needsAI := analyze(rules, name); !needsAI {
+			continue
+		}
+		self := filepath.Join(dir, name)
+		for _, instr := range aiInstructions(rules, name) {
+			key := self + "\x00" + instr
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			n++
+		}
+	}
+	return n
+}
+
 // prefetchAIProgress is prefetchAI with progress reporting: progress(done,
 // total) runs once per finished request, total being the number of distinct
 // (file, instruction) pairs queued.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -111,7 +112,11 @@ func TestSettingsCancelDiscardsEveryField(t *testing.T) {
 
 	a.closeSettings(false)
 
-	if a.settings != before {
+	// Settings 里有切片(Pinned),不能再用 == 比整体;比 JSON 等价,
+	// 顺带把"字段顺序/零值"这类差异也纳进来。
+	beforeJSON, _ := json.Marshal(before)
+	afterJSON, _ := json.Marshal(a.settings)
+	if string(beforeJSON) != string(afterJSON) {
 		t.Fatalf("取消后设置不该有任何改动:\n before=%+v\n after=%+v", before, a.settings)
 	}
 	if a.settingsOpen {
