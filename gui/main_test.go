@@ -119,8 +119,8 @@ func TestCatalogCoversAllGroups(t *testing.T) {
 	seen := map[string]bool{}
 	for _, d := range catalog {
 		seen[d.group] = true
-		if d.group == "高级" && d.act != "" {
-			continue // action entries (import-csv, settings) build no step
+		if d.act != "" || d.opens != "" || d.make == nil {
+			continue // 动作条目与选择器条目都不产出步骤
 		}
 		r := d.make()
 		if r.spec() == "" && d.id != "ext.del" {

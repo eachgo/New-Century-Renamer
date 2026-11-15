@@ -169,6 +169,11 @@ type app struct {
 	importPending *Settings
 	importPath    string
 	importOpen    bool
+	// flowOpen 是"流程"弹窗。它替代了原来只在空态出现的四张意图卡:
+	// 排到一半想换做法时,那四张卡已经不在屏幕上了。
+	flowOpen   bool
+	flowName   string
+	flowScroll ui.ScrollState
 }
 
 // dragOverProbe 让测试造出"文件正被拖在窗口上方"这一帧。Tester 没有只发
@@ -194,6 +199,8 @@ func (a *app) view(c *ui.Context) {
 	} else if a.pickMode && c.Shortcut(0, ui.KeyEscape) {
 		a.pickMode = false
 		a.chosen.Clear()
+	} else if a.flowOpen && c.Shortcut(0, ui.KeyEscape) {
+		a.flowOpen = false
 	} else if a.helpOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.helpOpen = false
 	} else if a.settingsOpen && c.Shortcut(0, ui.KeyEscape) {
@@ -325,6 +332,7 @@ func (a *app) view(c *ui.Context) {
 	a.settingsDialog(c)
 	a.importDialog(c)
 	a.helpDialog(c)
+	a.flowDialog(c)
 	// 焦点要等这一帧构建完才有值:列表在构建时才把行标成可聚焦,
 	// 所以记在帧尾,给下一帧的 handleShortcuts 用。
 	a.fileFocus = a.table.FocusWithin(c)
@@ -678,6 +686,12 @@ func (a *app) catalogView(c *ui.Context) {
 						}
 					})
 					if item.Clicked() {
+						// opens 是选择器入口(目前只有"自定义流程"),不直接
+						// 加步骤:它把流程弹窗摊开,用户在那里挑完才落地。
+						if d.opens != "" {
+							a.openFlows()
+							return
+						}
 						r := d.make()
 						r.opID, r.opLabel, r.opDesc, r.opFlow, r.opGroup = d.id, d.label, d.desc, d.flow, d.group
 						a.stepUID++
@@ -833,6 +847,10 @@ func (a *app) stepsView(c *ui.Context) {
 			// 标题吃剩余宽度并单行省略:中栏能拖到只剩一百多 DIP,那时
 			// "任务步骤（1）"会被压成一列单字("任务"/"步骤"/"（1）"),
 			// 比截断更难看,也让右侧的多选按钮跳来跳去。
+			//
+			// 窄的时候先收按钮、再收标题:标题说的是"这一栏是什么"(方位感),
+			// 按钮说的是"还有一个功能"。把功能收成一个图标,用户还看得出
+			// 这里能点;把标题截成"任务步…",这一栏叫什么就没了。
 			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(14).
 				Grow(1).SingleLine().Ellipsis("…")
 			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
@@ -840,7 +858,15 @@ func (a *app) stepsView(c *ui.Context) {
 			if a.pickMode {
 				label = "完成"
 			}
-			if ui.Button(c, label).Radius(6).Clicked() {
+			narrowHead := a.splitM < 210
+			if narrowHead {
+				label = "⋯"
+			}
+			btn := ui.Button(c, label).Radius(6)
+			if narrowHead {
+				btn = btn.Tooltip("多选：点开后在每步前面显示勾选框")
+			}
+			if btn.Clicked() {
 				a.pickMode = !a.pickMode
 				if !a.pickMode {
 					a.chosen.Clear()
@@ -1475,6 +1501,13 @@ func (a *app) filesView(c *ui.Context) {
 	if !showResultText {
 		resultW = 14
 	}
+	// 结果列在右缘,离名字有几百像素:扫"这个名字对不对"的时候,眼睛
+	// 不会往那儿走。宽到一定程度就在名字后面补一颗同色的点——它是结果
+	// 列的色彩回声,不是第二套状态,颜色永远和右边那一颗一样。
+	//
+	// 窄的时候不要:右栏一窄,结果列本来就贴在名字右边十几像素,再补
+	// 一颗就成了同一个圆点画两遍。
+	showEcho := innerW >= 320
 	// 右边栏:结果空间,浮在基底之上的一张浅卡片(比中栏低一阶),也是圆角。
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.right).Clip().
@@ -1614,14 +1647,6 @@ func (a *app) filesView(c *ui.Context) {
 					a.pendingMove = &[2]int{from, dest}
 				}
 			}
-			// 只有一个分组时,标题栏右侧已经在说「N 个文件」,组头再说一遍
-			// 就是同一句话并排出现两次;多组时才需要每组各说各的。
-			nGroups := 0
-			for _, r := range rows {
-				if r.header {
-					nGroups++
-				}
-			}
 			// 执行完之后,右栏顶部要说清"刚才发生了什么、还能不能退":
 			// 以前只有左下角一行 12px 灰字,而改名是当天最重要的事。
 			if a.applied && a.appliedCount > 0 && !a.appliedAt.IsZero() {
@@ -1735,10 +1760,13 @@ func (a *app) filesView(c *ui.Context) {
 					// 读起来像"钉住"的标签条。
 					ui.Row(c).Fill().Gap(8).Padding(8).
 						Background(dt.panes(a.isDark()).right).Children(func() {
-						ui.Text(c, r.group).FontSize(14).Bold().TextColor(t.Text)
-						if nGroups > 1 {
-							ui.Text(c, fmt.Sprintf("%d 个文件", r.count)).FontSize(12).TextColor(t.TextMuted)
-						}
+						ui.Text(c, r.group).FontSize(14).Bold().TextColor(t.Text).SingleLine().Ellipsis("…")
+						// 组头必须带数量:只有一个分组时,标题栏右侧那句
+						// 「N 个文件」说的是整个清单,而组头说的是"这个
+						// 文件夹里有多少"——两者不是同一句话。何况折叠、
+						// 排序之后,用户最常问的正是"这一组里到底几个"。
+						ui.Text(c, fmt.Sprintf("%d 个", r.count)).FontSize(12).
+							TextColor(t.TextMuted).SingleLine().Shrink(0)
 						ui.Spacer(c)
 					})
 					return
@@ -1907,6 +1935,18 @@ func (a *app) filesView(c *ui.Context) {
 									ui.Text(c, "等步骤修好").FontSize(14).Padding(2, 10).Radius(6).
 										Background(t.SurfaceHover).TextColor(t.TextMuted).SingleLine()
 								})
+							}
+							// 结果的颜色回声:名字旁边一颗同色点。
+							if showEcho {
+								if i < len(a.ops) {
+									res, echo := a.resultChip(a.ops[i])
+									ui.Box(c).Size(6, 6).Radius(6 / 2).
+										Background(echo).Shrink(0).Tooltip(res)
+								} else if a.previewErr != "" {
+									ui.Box(c).Size(6, 6).Radius(6 / 2).
+										Background(t.Border).Shrink(0).
+										Tooltip("预览算不出来：" + a.previewErr)
+								}
 							}
 							ui.Spacer(c)
 							// 悬停出 ×:200 个文件里只有 3 个不想改时,不必
@@ -2949,7 +2989,7 @@ func (a *app) previewSync(withProgress bool) {
 func (a *app) handleShortcuts(c *ui.Context) {
 	// 对话框/面板开着时不接管:它们有自己的 Esc 与默认按钮,
 	// 底下这层要是还响应 Ctrl+O,就成了"看不见的窗口在后台动作"。
-	if a.settingsOpen || a.pickOpen || a.pickMode || a.importOpen {
+	if a.settingsOpen || a.pickOpen || a.pickMode || a.importOpen || a.flowOpen {
 		return
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyO) && !a.busy {

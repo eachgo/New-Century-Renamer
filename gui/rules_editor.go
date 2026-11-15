@@ -62,7 +62,11 @@ type opDef struct {
 	icon             string // flowbite icon op id
 	make             func() guiRule
 	act              string // non-empty: runs an action instead of a step
-	flow             bool   // 流程控制(筛选/范围): not a direct rename
+	// opens 非空表示"点了打开一个选择器,不直接加步骤"。和 act 的区别:
+	// act 是"点了就跑",opens 只是把另一处已经存在的选择摊开——用户
+	// 还得在那边挑,挑完才决定加什么。目录里放一个选择器不算混入动作。
+	opens string
+	flow  bool // 流程控制(筛选/范围): not a direct rename
 }
 
 var ruleKinds = []struct{ key, label string }{
@@ -243,6 +247,11 @@ var catalog = []opDef{
 	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名，可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
 		return baseRule("template")
 	}},
+	// 自定义流程:排到一半想换做法时的入口。它不直接加步骤,而是把
+	// "流程"弹窗摊开——预设和用户存过的都在那里。放在"高级"组,
+	// 因为它不是一条规则,而是"换一整套规则"。
+	{id: "flow.open", icon: "act.settings", group: "高级", label: "自定义流程",
+		desc: "打开流程列表：套用预设，或把当前步骤存成自己的流程", opens: "flows"},
 }
 
 // stepFrom builds a task step from a catalog entry, label and all. The

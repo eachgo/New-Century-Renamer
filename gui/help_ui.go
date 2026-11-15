@@ -37,6 +37,18 @@ func (a *app) helpDialog(c *ui.Context) {
 			})
 			ui.Scroll(c).Grow(1).TrackScroll(&a.helpScroll).Children(func() {
 				ui.Column(c).FillWidth().Gap(10).Children(func() {
+					// 五步是操作序列,先给一张心智地图:读者要知道"这五步
+					// 在做什么",才看得懂每一步为什么这么排。缺了这句,
+					// 五步读起来像五条规定,而不是一条流水线。
+					ui.Column(c).FillWidth().Gap(4).Padding(10, 12).Radius(10).
+						Background(t.Accent.Alpha(0.08)).Children(func() {
+						ui.Text(c, "一句话说完").FontSize(12).Bold().TextColor(t.Accent)
+						ui.Text(c, "这里把“改名”当成一条流水线：文件从左边进，依次经过你排好的每一步，"+
+							"每一步只做一件小事（筛选、替换、加序号、套模板……），"+
+							"右边随时显示走完这条线之后每个文件叫什么。"+
+							"预览不动磁盘，只有点“执行更名”才真的改。").
+							FontSize(12).TextColor(t.Text)
+					})
 					steps := []struct{ n, title, body string }{
 						{"1", "先放文件，或者先排步骤", "两条路都行，顺序不影响结果：右栏可以拖文件/文件夹进来，也可以点“添加文件…”；中栏空着的时候有四张卡片，点一张就把步骤配好，等文件进来立刻套上去。"},
 						{"2", "说清想改成什么", "中栏的卡片是现成的四种常见改法；要别的效果，就从左栏“功能”里自己挑，一项一项往上叠。"},

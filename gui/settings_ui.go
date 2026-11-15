@@ -20,6 +20,13 @@ func (a *app) openHelp() {
 	a.helpOpen = true
 }
 
+// openFlows 打开流程弹窗。每次从顶部开始,并清掉上次没存下来的名字。
+func (a *app) openFlows() {
+	a.flowScroll.Y = 0
+	a.flowName = ""
+	a.flowOpen = true
+}
+
 // openSettings starts editing on a copy of the current settings. Every widget
 // in the dialog writes to the draft, so「取消」/Esc just drop it — the table
 // no longer has two behaviours where some fields revert and some don't.

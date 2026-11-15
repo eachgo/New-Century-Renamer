@@ -41,6 +41,10 @@ type Settings struct {
 	// 个"常用"组放在最上面:用户自己决定哪几条进去,顺序就是他钉的
 	// 顺序。
 	Pinned []string `json:"pinned,omitempty"`
+	// Flows 是用户自己存下来的流程(一串排好的步骤)。内置预设不进这里:
+	// 它们每次从 intents 现算,升级后跟着更新,不会在设置文件里留一份
+	// 旧快照。
+	Flows []flow `json:"flows,omitempty"`
 }
 
 const settingsFile = "ncreamer-settings.json"
