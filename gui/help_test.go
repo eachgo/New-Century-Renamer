@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -51,7 +52,12 @@ func TestHelpOpensWithF1AndClosesWithEsc(t *testing.T) {
 	}
 }
 
-// 帮助内容得真的覆盖五个步骤和模板变量:写一个空壳对话框等于没做。
+// 帮助内容得真的覆盖两条路和模板变量:写一个空壳对话框等于没做。
+//
+// 以前这里断言的是五条编号步骤。那五条已经删了——图和它下面那几句
+// 把同一件事说完了,再列一遍编号步骤,读者会在两套说法之间对不上号。
+// 现在断言的是"两条路都走到了撤回"这件事:图里画的字不在元素树里,
+// 所以靠图的文字替代来验,那是读屏软件读到的同一句。
 func TestHelpExplainsTheWholeFlow(t *testing.T) {
 	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1280, 900)
@@ -60,20 +66,41 @@ func TestHelpExplainsTheWholeFlow(t *testing.T) {
 	tt.Key(0, ui.KeyF1)
 	tt.Frame()
 
-	for _, want := range []string{
-		"五步就够",
-		// 第一步不再写"把文件拖进来":这个软件既能先放文件也能先排步骤,
-		// 把其中一条写成第一步,就是在暗示另一条顺序不对。
-		"先放文件，或者先排步骤",
-		"说清想改成什么",
-		"调参数，看右栏",
-		"确认没问题再执行",
-		"改坏了就回滚",
-		"<META:title>",
-		"<NFO:episode>",
-	} {
+	var label string
+	for _, n := range tt.AccessAll() {
+		if strings.HasPrefix(n.Name, "流程图：两条起手方式") {
+			label = n.Name
+			break
+		}
+	}
+	if label == "" {
+		t.Fatal("帮助里没有主流程图")
+	}
+	// 第一条路:先加文件。第二条路:先排步骤。两条都要有。
+	for _, want := range []string{"增加文件", "调整步骤", "预览", "执行更名", "撤回"} {
+		if !strings.Contains(label, want) {
+			t.Errorf("主流程图的文字替代里没提到 %q: %q", want, label)
+		}
+	}
+	if !strings.Contains(label, "预设") && !strings.Contains(label, "添加步骤") {
+		t.Errorf("主流程图没说第二条路从预设/添加步骤起手: %q", label)
+	}
+
+	// 存档那条小流程与主流程是两件事,得分开说。
+	for _, want := range []string{"这套排法可以带走", "存成流程", "导出设置"} {
 		if !tt.HasText(want) {
-			t.Fatalf("帮助里没有 %q", want)
+			t.Errorf("帮助里没有 %q", want)
+		}
+	}
+	for _, want := range []string{"<META:title>", "<NFO:episode>"} {
+		if !tt.HasText(want) {
+			t.Errorf("帮助里没有 %q", want)
+		}
+	}
+	// 五步文字删掉之后不能再冒出来。
+	for _, gone := range []string{"五步就够", "先放文件，或者先排步骤", "改坏了就回滚"} {
+		if tt.HasText(gone) {
+			t.Errorf("五步文字还在: %q", gone)
 		}
 	}
 }

@@ -6,14 +6,17 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// helpDialog is the five-step cheat sheet. It exists because the app has 32
-// catalog entries, 9 template variables, NFO numbering and a CSV round-trip
-// — and, before this, zero words anywhere in the interface explaining any of
-// it. "Figure it out by trying" is not an onboarding plan.
+// helpDialog 讲清楚"这个程序是怎么运转的"。
 //
-// Deliberately a list of five lines rather than screenshots: a screenshot
-// goes stale the first time a button moves, and this dialog is the thing
-// users open when they are already confused.
+// 它以前是五条编号的步骤,写的是操作顺序。但用户真正要建立的是"这是个
+// 流水线"的心智模型,而操作顺序只是它的一个投影——五条读完,还是有人
+// 问"顺序重要吗""改坏了怎么办"。现在改成两条泳道的图:一条从"增加
+// 文件"起手,一条从"预设/添加步骤"起手,各自走到"执行更名",再经由
+// "撤回"回到"调整步骤"——那个回环就是"它是可以反复走的"这句话本身。
+//
+// 五步文字已经删掉:图和它下面那几句已经把同一件事说完了,再列一遍
+// 编号步骤,读者会在两套说法之间对不上号(而且那五条里的"先放文件"
+// 与"先排步骤"本来就在自相矛盾地并列)。
 func (a *app) helpDialog(c *ui.Context) {
 	t := c.Theme()
 	dt := a.currentTheme()
@@ -29,7 +32,7 @@ func (a *app) helpDialog(c *ui.Context) {
 
 		dialogPanel(c, dw, dh).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "五步就够").Bold().FontSize(18)
+				ui.Text(c, "它是这么一条线").Bold().FontSize(18)
 				ui.Spacer(c)
 				if ui.Button(c, "知道了").Radius(6).Clicked() {
 					a.helpOpen = false
@@ -37,35 +40,38 @@ func (a *app) helpDialog(c *ui.Context) {
 			})
 			ui.Scroll(c).Grow(1).TrackScroll(&a.helpScroll).Children(func() {
 				ui.Column(c).FillWidth().Gap(10).Children(func() {
-					// 五步是操作顺序,但用户要建立的是"这是个流水线"这个
-					// 心智模型——它是空间性的,写成句子读者得在脑子里搭一遍。
-					// 所以先画一张图:两条入口各自出发,到"预览"之前汇合,
-					// 汇合点就是那句话的重点(前两步谁先谁后都行)。
+					// 两条完整的路,都从起手走到"撤回"再回到"调整步骤"。
+					// 只画到"执行更名"就停,等于把最需要被知道的那一步
+					// (改坏了能退回来)留在了图外面。
 					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
 						Background(t.Accent.Alpha(0.08)).Children(func() {
-						ui.Text(c, "它是这么一条线").FontSize(12).Bold().TextColor(t.Accent)
-						flowDiagram(c)
-						ui.Text(c, "两条入口谁先谁后都行，到“预览”就并成一条路。"+
-							"预览不动磁盘，只有“执行更名”会真的改。").
+						ui.Text(c, "两条起手，最后是同一条路").FontSize(12).Bold().TextColor(t.Accent)
+						flowDiagram(c, [][]string{
+							{"增加文件", "调整步骤", "预览", "执行更名", "撤回", "调整步骤"},
+							{"预设/添加步骤", "调整步骤", "增加文件", "预览", "执行更名", "撤回", "调整步骤"},
+						}, "流程图：两条起手方式。第一条先增加文件再调整步骤；"+
+							"第二条先点预设或从空白添加步骤，再增加文件。"+
+							"两条都在预览处看到结果，点执行更名才真的改，改完可以撤回，然后接着调整步骤再来一轮。")
+						ui.Text(c, "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。"+
+							"改完不满意，底栏“回滚上次”整批退回去，回来接着调。").
 							FontSize(12).TextColor(t.TextMuted)
 					})
-					steps := []struct{ n, title, body string }{
-						{"1", "先放文件，或者先排步骤", "两条路都行，顺序不影响结果：右栏可以拖文件/文件夹进来，也可以点“添加文件…”；中栏空着的时候有四张卡片，点一张就把步骤配好，等文件进来立刻套上去。"},
-						{"2", "说清想改成什么", "中栏的卡片是现成的四种常见改法；要别的效果，就从左栏“功能”里自己挑，一项一项往上叠。"},
-						{"3", "调参数，看右栏", "改任何一步，右栏的“原名 → 新名”都会立刻重算。这里不会动磁盘。"},
-						{"4", "确认没问题再执行", "点右下角“执行更名”。只有这一步会真的改文件名，改完可以整批撤销。"},
-						{"5", "改坏了就回滚", "底栏“回滚上次（N 个）”会把上一批改回去；想更保险，先“导出CSV”留个底。"},
-					}
-					for _, s := range steps {
-						ui.Column(c).FillWidth().Gap(4).Padding(10, 12).Radius(10).
-							Background(cardBg).Children(func() {
-							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-								ui.Text(c, s.n).FontSize(12).Bold().TextColor(t.Accent).Width(14)
-								ui.Text(c, s.title).FontSize(14).TextColor(t.Text).SingleLine()
-							})
-							ui.Text(c, s.body).FontSize(12).TextColor(t.TextMuted)
-						})
-					}
+
+					// 存档是另一件事,不该混进主流程:它不产生新名字,只
+					// 让你把"这套排法"带走。
+					ui.Text(c, "这套排法可以带走").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
+					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
+						Background(cardBg).Children(func() {
+						flowDiagram(c, [][]string{
+							{"排好步骤", "存成流程", "下次套用"},
+							{"导出设置", "换台机器", "导入设置"},
+						}, "流程图：存档。排好步骤后存成流程，下次从“自定义流程”里直接套用；"+
+							"导出设置成文件，换台机器后导入设置就回来了。")
+						ui.Text(c, "左栏“高级 → 自定义流程”里能套用预设，也能把当前步骤存成自己的流程。"+
+							"整套设置（含主色、AI 接口、已存流程）可以“导出设置…”存成一个文件，"+
+							"在另一台机器上“导入设置…”。").
+							FontSize(12).TextColor(t.TextMuted)
+					})
 
 					ui.Text(c, "模板里能用的变量").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
 					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
@@ -109,7 +115,7 @@ func (a *app) helpDialog(c *ui.Context) {
 						FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, "Tab / Shift+Tab 换区域，方向键在区域内移动（左栏目录是一整块，进去后用上下键挑条目）").
 						FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "Delete 删除：焦点在文件列表时删文件，在步骤列表时删步骤（都要按两次确认）").
+					ui.Text(c, "Delete 删除：焦点在文件列表时删文件，在步骤列表时删步骤（删步骤可以撤回）").
 						FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, fmt.Sprintf("%s 复制步骤 · %s 把步骤上移/下移（改的是执行顺序，底栏会说移到第几位）",
 						shortcutTip("Ctrl+D"), shortcutTip("Alt+↑↓"))).
