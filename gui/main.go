@@ -633,16 +633,18 @@ func (a *app) catalogView(c *ui.Context) {
 
 // stepRangeBars returns, per step, the two fixed range-bar slots:
 // [0] = left slot for the 筛选 range (seed complement), [1] = right slot for
-// the 选取 range — filename and extension take two neighboring hues so a
-// switch from 选取文件名 to 选取扩展名 shows as a color change instead of one
-// continuous bar. A zero Color means the slot is off (transparent).
+// the 选取 range — filename and extension share the brand hue and differ in
+// lightness, so a switch from 选取文件名 to 选取扩展名 shows as a value change
+// (visible in grayscale too) instead of one continuous bar. A zero Color
+// means the slot is off (transparent).
 // Slots never move: at most two ranges can be open, each owning its place.
 //
 // 为什么是色条而不是文字:文字只能说明"这一行是什么范围",色条还能说明
 // "范围持续到哪一行"——第 4 行设了"仅文件名"、第 12 行才"恢复整体",
 // 中间每一行右边都有一条同色竖线连成一竖,一眼看出这 8 行都在范围内;
 // 写成文字则每行都要读一遍,还占宽度。所以这里保留色条,另配图例。
-func (a *app) stepRangeBars(dt *derivedTheme) [][2]ui.Color {
+func (a *app) stepRangeBars(dt *derivedTheme, dark bool) [][2]ui.Color {
+	rp := dt.ranges(dark)
 	out := make([][2]ui.Color, len(a.steps))
 	filterOn := false
 	scopeCol := ui.Color{} // zero = off
@@ -659,13 +661,13 @@ func (a *app) stepRangeBars(dt *derivedTheme) [][2]ui.Color {
 			case "整体":
 				scopeCol = ui.Color{}
 			case "扩展名":
-				scopeCol = dt.rangeScopeExt
+				scopeCol = rp.ext
 			default: // 文件名
-				scopeCol = dt.rangeScopeName
+				scopeCol = rp.name
 			}
 		}
 		if filterOn {
-			out[i][0] = dt.rangeFilter
+			out[i][0] = rp.filter
 		}
 		out[i][1] = scopeCol
 	}
@@ -676,14 +678,15 @@ func (a *app) stepRangeBars(dt *derivedTheme) [][2]ui.Color {
 // 报告原本的批评是"色条没有图例",不是"色条错了":编码本身最省宽度,缺的
 // 只是让它自解释。图例与色条同色同形(4px 竖条),看一次就能对上。
 func (a *app) rangeLegend(c *ui.Context, t *ui.Theme, dt *derivedTheme) {
-	bars := a.stepRangeBars(dt)
+	bars := a.stepRangeBars(dt, t.Dark)
+	rp := dt.ranges(t.Dark)
 	var filt, name, ext bool
 	for _, b := range bars {
 		if b[0].A != 0 {
 			filt = true
 		}
 		if b[1].A != 0 {
-			if b[1] == dt.rangeScopeExt {
+			if b[1] == rp.ext {
 				ext = true
 			} else {
 				name = true
@@ -702,13 +705,13 @@ func (a *app) rangeLegend(c *ui.Context, t *ui.Theme, dt *derivedTheme) {
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, "范围").FontSize(12).TextColor(t.TextMuted)
 		if filt {
-			chip(dt.rangeFilter, "筛选")
+			chip(rp.filter, "筛选")
 		}
 		if name {
-			chip(dt.rangeScopeName, "仅文件名")
+			chip(rp.name, "仅文件名")
 		}
 		if ext {
-			chip(dt.rangeScopeExt, "仅扩展名")
+			chip(rp.ext, "仅扩展名")
 		}
 	})
 }
@@ -749,7 +752,7 @@ func (a *app) stepsView(c *ui.Context) {
 			a.intentCards(c)
 		} else {
 			dt := a.currentTheme()
-			bars := a.stepRangeBars(dt)
+			bars := a.stepRangeBars(dt, t.Dark)
 			// 始终可选中、可编辑;多选与拖动也不需要模式开关
 			a.stepList.Key = func(i int) any { return a.steps[i].opUID }
 			a.stepList.Selected = &a.stepSel
@@ -1213,6 +1216,12 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 		zone = zone.Background(pt.card).Border(1, ui.Color{})
 	}
 	zone.Children(func() {
+		// 空态给一张插图:纯文字的空白区读起来像"这里什么都没有",
+		// 而一张说明"能放什么"的图在同一个位置回答"我该干什么"。
+		// 图标用 currentColor 描边,跟着弱化文字色走,不抢标题。
+		if !narrow {
+			ui.Icon(c, dropIllus()).FontSize(48).TextColor(t.TextMuted.Alpha(0.75))
+		}
 		title := "把文件或文件夹拖到这里"
 		if over {
 			title = "松开就加进来"
@@ -1226,10 +1235,15 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 		}
 		ui.Row(c).Gap(8).Wrap().Justify(ui.Center).Padding(4, 0).Children(func() {
 			// 大号:空态里这是唯一的主动作,不该和工具栏里那些次要按钮同尺寸。
-			add := ui.ButtonBase(c).Radius(10).Padding(10, 20).TextColor(accentInk(t)).
-				Background(t.Accent.Alpha(0.14))
+			//
+			// 实心主色而不是 14% 淡底:空态是"还没开始"的屏幕,唯一的主
+			// 动作必须是这一屏最重的东西。淡底按钮和工具栏里的次要按钮
+			// 长得几乎一样,用户扫一眼分不出该点哪个。字色用 AccentText
+			// (随主色深浅自动取黑或白),不用 accentInk——后者是给淡底用的。
+			add := ui.ButtonBase(c).Radius(10).Padding(10, 20).TextColor(t.AccentText).
+				Background(t.Accent)
 			if add.Hovered() {
-				add = add.Background(t.Accent.Alpha(0.22))
+				add = add.Background(t.AccentHover)
 			}
 			add.Children(func() { ui.Text(c, "添加文件…").FontSize(14).SingleLine() })
 			if add.Clicked() {
@@ -2011,22 +2025,21 @@ func outlinedButton(c *ui.Context, label string, enabled bool) ui.Element {
 	return b
 }
 
-// dangerButton 是"危险动作"按钮:清空列表这种不可逆操作,用错误色描边 +
-// 错误色文字,平时不填底(避免太扎眼),悬停时给一层淡淡的错误色底。
+// dangerButton 是 outlinedButton 的悬停变体,不是第四种按钮样式。
+//
+// 它原来自己一档:错误色描边 + 错误色文字,平时就红着。问题是"清空列表"
+// 和"删除"坐在工具栏里,一进场就是两个红框——一个还没发生的动作喊得比
+// 当前要做的事还响。危险该在"手要落下去"的那一刻才显现,不是常驻。
+//
+// 所以平时和 outlined 一模一样(同样的字色、同样的边框),只在悬停时换成
+// 错误色的底与字;真正的确认仍然走实心红(armConfirm 之后那颗),那里才是
+// "这一下真的会删"。这样按钮只剩三种样式:实心主色、主色淡底、描边。
 func dangerButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
-	fg := t.Danger
-	bg := ui.Color{}
-	if !enabled {
-		fg = t.TextMuted
+	b := outlinedButton(c, label, enabled)
+	if enabled && b.Hovered() {
+		b = b.TextColor(t.Danger).Background(t.Danger.Alpha(0.10)).Border(1, t.Danger.Alpha(0.45))
 	}
-	b := ui.ButtonBase(c).Radius(6).Padding(6, 14).TextColor(fg).Background(bg).Border(1, t.Danger.Alpha(0.5))
-	if !enabled {
-		b = b.Border(1, t.Border)
-	} else if b.Hovered() {
-		b = b.Background(t.Danger.Alpha(0.12))
-	}
-	b.Children(func() { ui.Text(c, label).SingleLine() })
 	return b
 }
 

@@ -21,10 +21,7 @@ type derivedTheme struct {
 	// range bars: two fixed slots — right = 选取范围 (filename/extension,
 	// two neighboring hues so a switch shows), left = 筛选范围 (the seed's
 	// complement). A slot holds its place transparent when its range is off
-	rangeFilter    ui.Color
-	rangeScopeName ui.Color
-	rangeScopeExt  ui.Color
-	groupColors    map[string]ui.Color // fixed color per catalog group
+	groupColors map[string]ui.Color // fixed color per catalog group
 
 	// 三栏"海拔"配色(Material 3 的 surface container 阶)。
 	// 亮色:越核心越亮——左栏最暗(后退),中栏最亮(浮起),右栏居中。
@@ -209,18 +206,14 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	}
 
 	return &derivedTheme{
-		light:  lt,
-		dark:   dt,
-		selBg:  oklchColor(clamp(L, 0.30, 0.42), cc*0.9, H),
-		selFg:  ui.RGB(255, 255, 255),
-		cardBg: oklchColor(0.962, cc*0.12, H),
-		// 补色给筛选范围,相近色给选取范围(文件名/扩展名两个相邻色相)
-		rangeFilter:    oklchColor(0.62, 0.13, math.Mod(H+180, 360)),
-		rangeScopeName: oklchColor(0.62, 0.13, math.Mod(H+30, 360)),
-		rangeScopeExt:  oklchColor(0.62, 0.13, math.Mod(H+60, 360)),
-		groupColors:    groupColors,
-		lightPane:      ltPane,
-		darkPane:       dtPane,
+		light:       lt,
+		dark:        dt,
+		selBg:       oklchColor(clamp(L, 0.30, 0.42), cc*0.9, H),
+		selFg:       ui.RGB(255, 255, 255),
+		cardBg:      oklchColor(0.962, cc*0.12, H),
+		groupColors: groupColors,
+		lightPane:   ltPane,
+		darkPane:    dtPane,
 	}
 }
 
@@ -315,4 +308,34 @@ func clamp(v, lo, hi float64) float64 {
 		return hi
 	}
 	return v
+}
+
+// ---- 范围色条:两个色相 + 两个明度 ----
+//
+// 范围色条只有两个色相,不是四个。
+//
+// 原来三个额外色相 H+180 / H+30 / H+60 全是同一个明度(0.62),于是
+// 「仅文件名」与「仅扩展名」两根 4px 竖条实测对比度只有 1.01–1.02——
+// 数值上就是同一个颜色,读的人只能靠猜。而且全靠色相区分,灰度或色觉
+// 异常下三条一模一样。
+//
+// 现在:筛选范围是"另一种范围"(它管的是文件,不是名字的哪一段),用
+// 一个补色;选取范围的两个子档是"同一种范围的两段",共用品牌色,靠
+// 明度分开。明度差在灰度里也成立,这是色相做不到的。
+//
+// 明度必须按主题分别给:亮色底(L≈0.94)上要压深才看得见,暗色底
+// (L≈0.25)上要提亮才看得见——同一个值在两种底上不可能都达标。
+type rangePalette struct{ filter, name, ext ui.Color }
+
+func (d *derivedTheme) ranges(dark bool) rangePalette {
+	_, _, H := colorToOklch(d.selBg)
+	deep, shallow, filterL := 0.48, 0.60, 0.50
+	if dark {
+		deep, shallow, filterL = 0.80, 0.64, 0.78
+	}
+	return rangePalette{
+		filter: oklchColor(filterL, 0.13, math.Mod(H+180, 360)),
+		name:   oklchColor(deep, 0.13, H),
+		ext:    oklchColor(shallow, 0.13, H),
+	}
 }

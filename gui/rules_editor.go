@@ -547,20 +547,33 @@ func numDecimals(step float64) int {
 // Here the field and the stepper are one height, the field's text is
 // centered, and the width is ours to set.
 // width is the whole control, stepper included: the stepper is a fixed
-// 20 DIP (Theme.Space(5)) plus the 6 DIP gap, and the field takes the rest.
-// Callers size the pair once instead of guessing the two parts separately.
+// 20 DIP (Theme.Space(5)) and the field takes the rest. Callers size the
+// pair once instead of guessing the two parts separately.
+//
+// The two live inside one bordered box with no gap between them, so the
+// control reads as one field with a step area, not as two controls that
+// happen to sit next to each other.
 func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
 	const h = 32
-	const stepperW, gap = float32(20), float32(6)
-	fieldW := width - stepperW - gap
+	const stepperW = float32(20)
+	fieldW := width - stepperW
 	if fieldW < 28 {
 		fieldW = 28
 	}
 	format := func(v float64) string { return strconv.FormatFloat(v, 'f', numDecimals(float64(step)), 64) }
-	row := ui.Row(c).Gap(gap).AlignItems(ui.Center)
-	text := ui.Local(row, "text", func() string { return format(*value) })
-	row.Children(func() {
-		in := ui.TextInput(c, text).Width(fieldW).Height(h).TextAlign(ui.Center)
+	// 一个容器装下输入框和步进器,而不是两个各自描边的框并排。
+	//
+	// 以前是「圆角框 + 6 DIP 缝 + 圆角框」:同一行里两条竖边紧挨着,中间
+	// 还夹一条底色,看上去像两个控件拼在一起(它们本来就是一个)。现在
+	// 容器画唯一的边框与圆角,里面的输入框和步进器都去掉自己的边框,
+	// 于是只剩一条外轮廓。
+	t := c.Theme()
+	box := ui.Row(c).Gap(0).AlignItems(ui.Center).Width(width).Height(h).
+		Radius(6).Border(1, t.Border).Background(t.Surface).Clip()
+	text := ui.Local(box, "text", func() string { return format(*value) })
+	box.Children(func() {
+		in := ui.TextInput(c, text).Width(fieldW).Height(h).TextAlign(ui.Center).
+			Border(0, ui.Color{}).Background(ui.Color{})
 		if in.Changed() {
 			if v, err := strconv.ParseFloat(strings.TrimSpace(*text), 64); err == nil {
 				*value = clamp(v, float64(lo), float64(hi))
@@ -577,7 +590,8 @@ func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
 		if !in.Focused() {
 			*text = format(*value)
 		}
-		ui.Stepper(c, value, float64(lo), float64(hi), float64(step)).Height(h)
+		ui.Stepper(c, value, float64(lo), float64(hi), float64(step)).
+			Height(h).Border(0, ui.Color{})
 	})
 }
 
@@ -599,8 +613,8 @@ func numField(c *ui.Context, value *float64, lo, hi, step, width float32) {
 func intField(c *ui.Context, label string, out *string, lo, hi, def int, width float32) {
 	t := c.Theme()
 	const h = 32
-	const stepperW, gap = float32(20), float32(6)
-	fieldW := width - stepperW - gap
+	const stepperW = float32(20)
+	fieldW := width - stepperW
 	if fieldW < 28 {
 		fieldW = 28
 	}
@@ -622,8 +636,12 @@ func intField(c *ui.Context, label string, out *string, lo, hi, def int, width f
 	// 显式配置——之后再想"留空用默认"就没法表达了。
 	touched := ui.Local(box, "int-touched", func() bool { return false })
 	box.Children(func() {
-		ui.Row(c).Gap(gap).AlignItems(ui.Center).Children(func() {
-			in := ui.TextInput(c, text).Width(fieldW).Height(h).TextAlign(ui.Center).Label(label)
+		// 与 numField 同样的单容器:一条外轮廓装下输入框和步进器,
+		// 不是两个各自描边的框并排(那会在相接处留两条竖边)。
+		ui.Row(c).Gap(0).AlignItems(ui.Center).Width(width).Height(h).
+			Radius(6).Border(1, t.Border).Background(t.Surface).Clip().Children(func() {
+			in := ui.TextInput(c, text).Width(fieldW).Height(h).TextAlign(ui.Center).
+				Label(label).Border(0, ui.Color{}).Background(ui.Color{})
 			if in.Focused() {
 				*touched = true
 			}
@@ -648,7 +666,8 @@ func intField(c *ui.Context, label string, out *string, lo, hi, def int, width f
 				*out = *text
 				*touched = true
 			}
-			ui.Stepper(c, value, float64(lo), float64(hi), 1).Height(h)
+			ui.Stepper(c, value, float64(lo), float64(hi), 1).
+				Height(h).Border(0, ui.Color{})
 			if !in.Focused() && *touched {
 				*touched = false
 				if strings.TrimSpace(*text) == "" {

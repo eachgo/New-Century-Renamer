@@ -187,6 +187,26 @@ func TestRadiusFollowsOneLadder(t *testing.T) {
 // 差 1px 谁也分不出,那种"差一点"不构成层级,只是噪音:读者找不到
 // "哪个更重要"的规律,只会觉得字忽大忽小。15 也曾在帮助页当过标题,
 // 已并到 18。现在相邻两档差 2px 与 4px,层级一眼看得出。
+// isIconCall reports whether the FontSize call at the end of a chain sizes an
+// icon rather than text, by walking back for a ui.Icon(c, ...) call.
+func isIconCall(call *ast.CallExpr) bool {
+	for e := call; e != nil; {
+		sel, ok := e.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		if sel.Sel.Name == "Icon" {
+			return true
+		}
+		inner, ok := sel.X.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		e = inner
+	}
+	return false
+}
+
 func TestFontSizesFollowOneLadder(t *testing.T) {
 	allowed := map[string]string{
 		"12": "弱",
@@ -211,6 +231,12 @@ func TestFontSizesFollowOneLadder(t *testing.T) {
 			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)
 			if !ok || sel.Sel.Name != "FontSize" {
+				return true
+			}
+			// 图标尺寸不是字号。ui.Icon 没有 Size 之类的入口,只能用
+			// FontSize 定图标画多大——那是图形尺寸,和"文字层级"是两件
+			// 事,混进这条阶梯只会逼着插图用一个正文级的尺寸。
+			if isIconCall(call) {
 				return true
 			}
 			for _, arg := range call.Args {

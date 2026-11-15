@@ -519,7 +519,8 @@ func TestStepRangeBars(t *testing.T) {
 	a.steps = append(a.steps, step("unfilter"), step("scope.all"))
 
 	dt := a.currentTheme()
-	bars := a.stepRangeBars(dt)
+	bars := a.stepRangeBars(dt, false)
+	rp := dt.ranges(false)
 	if len(bars) != len(a.steps) {
 		t.Fatalf("色条行数 %d 与步骤数 %d 不符", len(bars), len(a.steps))
 	}
@@ -532,15 +533,15 @@ func TestStepRangeBars(t *testing.T) {
 	}
 	// 4..11: 选取文件名一直开着——这是文字做不到的"持续到哪一行"
 	for i := 3; i <= 10; i++ {
-		if bars[i][1] != dt.rangeScopeName {
+		if bars[i][1] != rp.name {
 			t.Fatalf("第 %d 步应当仍在仅文件名范围内", i+1)
 		}
 	}
 	// 12..13: 切到扩展名
-	if bars[11][1] != dt.rangeScopeExt {
+	if bars[11][1] != rp.ext {
 		t.Fatalf("第 12 步(选取扩展名)右槽应是扩展名色")
 	}
-	if bars[12][1] != dt.rangeScopeExt {
+	if bars[12][1] != rp.ext {
 		t.Fatalf("第 13 步(清除筛选)不该结束选取范围")
 	}
 	// 14: 恢复整体,两槽都空
@@ -554,7 +555,7 @@ func TestStepRangeBars(t *testing.T) {
 		}
 	}
 	for i := 8; i <= 11; i++ {
-		if bars[i][0] != dt.rangeFilter {
+		if bars[i][0] != rp.filter {
 			t.Fatalf("第 %d 步应当仍在筛选范围内", i+1)
 		}
 	}

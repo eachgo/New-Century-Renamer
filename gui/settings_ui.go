@@ -94,8 +94,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 			})
 		}
 
-		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(14).
-			Background(t.Surface).Shadow(0, 12, 32, 0, ui.RGBA(0x10, 0x30, 0x1F, 0.10)).Children(func() {
+		dialogPanel(c, dw, dh).Children(func() {
 			ui.Text(c, "设置").Bold().FontSize(18)
 
 			// 表单在宽裕的窗口里贴着内容(不留被拉伸的空白),在矮窗口里滚动,
@@ -553,8 +552,7 @@ func (a *app) importDialog(c *ui.Context) {
 		}
 		dh := h - 48
 		diffs := settingsDiff(a.settings, *a.importPending)
-		ui.Column(c).Width(dw).MaxHeight(dh).Gap(12).Padding(20).Radius(14).
-			Background(t.Surface).Children(func() {
+		dialogPanel(c, dw, dh).Children(func() {
 			ui.Text(c, "导入设置？").Bold().FontSize(18)
 			ui.Text(c, "将用 "+filepath.Base(a.importPath)+" 整份替换当前设置。").
 				FontSize(12).TextColor(t.TextMuted)
