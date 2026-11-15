@@ -206,6 +206,15 @@ func aiSystemPrompt() string {
 	return base
 }
 
+// AIConfigured reports whether an API key is available, so the UI can say
+// "go configure it" before the user runs a batch that would fail on every
+// file. Without this the first sign of a missing key is a whole list of red
+// rows after a click that looked like it should work.
+func AIConfigured() bool {
+	_, _, _, ok := aiConfig()
+	return ok
+}
+
 func aiGenerate(path, instruction string) (string, error) {
 	base, key, model, ok := aiConfig()
 	if !ok {

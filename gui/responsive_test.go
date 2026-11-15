@@ -42,7 +42,16 @@ func TestParamsFormFitsNarrowMiddlePane(t *testing.T) {
 		tt.Frame()
 
 		limit := middleRight(220, m) - 8 // 卡片自身还有 10 的内边距
-		for _, label := range []string{"编号类型", "不足位补齐", "分组方式", "起始 / 步长", "编号模板"} {
+		// 窄到 stacked 之后,"起始 / 步长"会拆成两行、各带自己的标签
+		// (并排时两个数字框共用一个标签,折行之后第二个框就没有说明
+		// 了)。所以断言用的标签名也跟着宽度走。
+		seqLabels := []string{"起始 / 步长"}
+		if m-32 < 96+8+150 {
+			seqLabels = []string{"起始", "步长"}
+		}
+		labels := append([]string{"编号类型", "不足位补齐", "分组方式"}, seqLabels...)
+		labels = append(labels, "编号模板")
+		for _, label := range labels {
 			r, ok := tt.Find(label)
 			if !ok {
 				t.Fatalf("splitM=%v:找不到标签 %q", m, label)

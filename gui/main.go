@@ -68,27 +68,37 @@ type app struct {
 	flashUntil time.Time
 	lastSpec   string
 
-	settings          Settings
-	settingsOpen      bool
-	helpOpen          bool
-	helpScroll        ui.ScrollState
-	setScroll         ui.ScrollState      // 设置对话框表单的滚动位置
-	setBody           ui.Handle           // 设置表单滚动区,用来判断要不要淡出底边
-	setBodyRect       ui.Rect             // 上一帧的滚动视口位置,测试用来量淡出
-	settingsDraft     Settings            // 设置对话框里正在编辑的副本;取消即丢弃
-	extColors         map[string]ui.Color // per-extension chip colors (main-thread)
-	seedFollow        bool                // theme seed follows the desktop accent
-	seedPick          ui.Color            // theme seed when not following
-	confirmClear      bool                // 清空列表 needs a second click
-	confirmAt         time.Time           // 二次确认的截止时间:挂太久自动收回
-	confirmDelStep    bool                // 删除步骤 needs a second click
-	confirmChosen     bool                // 删除所选 needs a second click
-	confirmUndo       bool                // 回滚上次 needs a second click
-	saveErr           string              // settings dialog save error, shown in-dialog
-	aiTimeoutText     string              // 设置里"等待秒数"输入框的文本缓冲
-	aiConcurrencyText string              // 设置里"并发路数"输入框的文本缓冲
-	aiPromptText      string              // 设置里"默认提示词"多行输入框的缓冲
-	keyShown          bool                // 设置里 API Key 是否明文显示(默认掩码)
+	settings      Settings
+	settingsOpen  bool
+	helpOpen      bool
+	helpScroll    ui.ScrollState
+	setScroll     ui.ScrollState      // 设置对话框表单的滚动位置
+	setBody       ui.Handle           // 设置表单滚动区,用来判断要不要淡出底边
+	setBodyRect   ui.Rect             // 上一帧的滚动视口位置,测试用来量淡出
+	settingsDraft Settings            // 设置对话框里正在编辑的副本;取消即丢弃
+	extColors     map[string]ui.Color // per-extension chip colors (main-thread)
+	seedFollow    bool                // theme seed follows the desktop accent
+	seedPick      ui.Color            // theme seed when not following
+	confirmClear  bool                // 清空列表 needs a second click
+	confirmAt     time.Time           // 二次确认的截止时间:挂太久自动收回
+	// deletedStep / deletedAt 是"刚删掉的那一步"和删除时刻。
+	//
+	// 删除单个步骤原来和"清空列表"一样要点两下,但两者差着数量级:
+	// 清空是"一整批文件从列表里消失",删一步是"从管道里拿掉一条,想
+	// 加回来点一下就行"。同样的红色二次确认套在两件事上,用久了会变成
+	// "看到红按钮就点第二下"——防错反而失效。所以低危的这个改成可撤销:
+	// 删完在步骤区顶部留一条「已删除「X」 撤回」,几秒后自己消失。
+	// 高危的两个(回滚、清空列表)仍然保留二次确认。
+	deletedStep       guiRule
+	deletedAt         time.Time
+	deletedIdx        int
+	confirmChosen     bool   // 删除所选 needs a second click
+	confirmUndo       bool   // 回滚上次 needs a second click
+	saveErr           string // settings dialog save error, shown in-dialog
+	aiTimeoutText     string // 设置里"等待秒数"输入框的文本缓冲
+	aiConcurrencyText string // 设置里"并发路数"输入框的文本缓冲
+	aiPromptText      string // 设置里"默认提示词"多行输入框的缓冲
+	keyShown          bool   // 设置里 API Key 是否明文显示(默认掩码)
 
 	steps    []guiRule // ordered task steps
 	stepSel  int       // selected step, -1 = none
@@ -770,6 +780,26 @@ func (a *app) stepsView(c *ui.Context) {
 			// 仍由行首色条表达)、参数胶囊、再是编号。
 			rowW := a.splitM - 20
 			showGroupChip, showSummary := rowW >= 300, rowW >= 210
+			// 撤回条:刚删掉一步时出现在列表上方,几秒后自己消失。
+			//
+			// 位置选在列表顶部而不是底栏:删除这个动作的效果就发生在
+			// 列表里(那一行不见了),撤回的入口也该在同一个视线落点上。
+			// 底栏已经承担了"执行/回滚"这类全局动作,再塞一条局部撤销
+			// 会让"哪个按钮撤销哪个东西"变得要读文字才能分辨。
+			if a.deletedStep.opUID != 0 && !a.undoDeleteExpired() {
+				ui.Row(c).FillWidth().Gap(8).Padding(6, 10).Radius(6).
+					Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, fmt.Sprintf("已删除「%s」", a.deletedStep.opLabel)).
+						FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
+					if ui.Button(c, "撤回").Radius(6).Clicked() {
+						a.undoDelete()
+					}
+				})
+			} else if a.deletedStep.opUID != 0 {
+				// 过期的槽要在帧里清掉,否则它会在下一次删除之前一直
+				// 占着"有东西可撤回"这个状态。
+				a.clearDeleted()
+			}
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
 					// 图例:色条只在真有范围时出现,所以图例也只列此刻生效的那几种。
@@ -907,6 +937,27 @@ func (a *app) stepsView(c *ui.Context) {
 					if r.opDesc != "" {
 						ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
 					}
+					// AI 步骤没配 Key 时,先在这里说清楚。
+					//
+					// 「AI 按内容命名」本质是一条 template 规则,参数面板里
+					// 只有模板文本——第一次用的人看到的是「<AI:根据文件内容
+					// 起一个简短的名字><.EXT>」,既看不出这是要联网的,也看
+					// 不出缺什么。等到点「执行更名」才发现整列变红,那时他
+					// 已经对着这段模板猜了半天。
+					//
+					// 所以:模板里出现 <AI: 且没有可用 Key,就在卡片顶部
+					// 直接给一条提示 + 一个「去配置」入口。配好之后这条
+					// 自然消失,不需要用户再去别处确认状态。
+					if strings.Contains(r.tpl, "<AI:") && !core.AIConfigured() {
+						ui.Row(c).FillWidth().Gap(8).Padding(6, 8).Radius(6).
+							Background(t.Danger.Alpha(0.10)).AlignItems(ui.Center).Children(func() {
+							ui.Text(c, "这一步要调用 AI 接口，但还没填 API Key。").
+								FontSize(12).TextColor(t.Danger).Grow(1).SingleLine().Ellipsis("…")
+							if ui.Button(c, "去配置").Radius(6).Clicked() {
+								a.openSettings()
+							}
+						})
+					}
 					// 参数表单要知道自己实际有多宽:中栏的分隔缝可以一路拖到
 					// 几乎关闭,固定 96 的标签加上控件在那种宽度下会顶出栏外。
 					// 减去卡片左右各 10 的内边距,再留出滚动条的余量。
@@ -921,21 +972,15 @@ func (a *app) stepsView(c *ui.Context) {
 						if ui.Button(c, "下移").Disabled(a.stepSel >= len(a.steps)-1).Tooltip(shortcutTip("Alt+↓")).Clicked() {
 							a.swapSteps(a.stepSel, a.stepSel+1)
 						}
-						// 删除步骤和"清空列表"是同一类动作(丢东西),所以用同一套语言:
-						// 错误色 + 二次确认 + 确认态三秒自动收回。以前它和"复制"同款,
-						// 一个像不可逆、一个像随手,用户分不出轻重。
-						if a.confirmDelStep && a.confirmStale() {
-							a.dropConfirm()
-						}
-						if a.confirmDelStep {
-							confirm := ui.ButtonBase(c).Radius(6).Padding(6, 14).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
-							confirm.Children(func() { ui.Text(c, "确认删除?").SingleLine() })
-							if confirm.Clicked() {
-								a.deleteStep(a.stepSel)
-								a.dropConfirm()
-							}
-						} else if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
-							a.armConfirm("step")
+						// 删除单步不需要二次确认:它删的是"管道里的一条",
+						// 不是磁盘上的文件,而且删完立刻在列表上方给出
+						// 「已删除「X」 撤回」。以前它和"清空列表"共用
+						// 同一套红按钮 + 两次点击,把两种不同量级的动作
+						// 说成一样重——用久了人会形成"看到红就点第二下"
+						// 的肌肉记忆,那时确认框已经不再拦任何东西。
+						// 真正不可逆的两个(回滚、清空列表)仍然保留确认。
+						if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
+							a.deleteStep(a.stepSel)
 						}
 						if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
 							a.duplicateStep(a.stepSel)
@@ -1068,16 +1113,69 @@ func (a *app) swapSteps(i, j int) {
 	}
 }
 
-// deleteStep 删掉第 i 步。鼠标的「确认删除?」和键盘的第二次 Delete
-// 走同一条路——两条路径各写一遍,迟早会长歪。
+// deleteStep 删掉第 i 步,并把它记进撤回槽。
+//
+// 鼠标的「删除」和键盘的 Delete 走同一条路——两条路径各写一遍,迟早
+// 会长歪。删除本身不再需要二次确认(见 deletedStep 的注释),所以这里
+// 必须留下足够的信息把它原样放回去:内容、位置、以及选中哪一行。
 func (a *app) deleteStep(i int) {
 	if i < 0 || i >= len(a.steps) {
 		return
 	}
+	a.deletedStep = a.steps[i]
+	a.deletedIdx = i
+	a.deletedAt = time.Now()
 	a.steps = append(a.steps[:i], a.steps[i+1:]...)
 	if a.stepSel >= len(a.steps) {
 		a.stepSel = len(a.steps) - 1
 	}
+	a.status = fmt.Sprintf("已删除「%s」，可以撤回", a.deletedStep.opLabel)
+	// 界面只在有事件时重画。撤回条要在几秒后自己消失,而用户删完
+	// 通常就撒手了——没有事件,那条就会一直挂在屏幕上。
+	a.scheduleUndoExpiry()
+}
+
+// undoDelete 把刚删掉的那一步放回原位并选中它。
+func (a *app) undoDelete() {
+	if a.deletedStep.opUID == 0 {
+		return
+	}
+	i := a.deletedIdx
+	if i < 0 {
+		i = 0
+	}
+	if i > len(a.steps) {
+		i = len(a.steps)
+	}
+	a.steps = append(a.steps, guiRule{})
+	copy(a.steps[i+1:], a.steps[i:])
+	a.steps[i] = a.deletedStep
+	a.stepSel = i
+	a.status = fmt.Sprintf("已恢复「%s」", a.deletedStep.opLabel)
+	a.clearDeleted()
+}
+
+// clearDeleted 清掉撤回槽。
+func (a *app) clearDeleted() {
+	a.deletedStep = guiRule{}
+	a.deletedAt = time.Time{}
+	a.deletedIdx = 0
+}
+
+// undoDeleteExpired reports whether the undo offer has outlived its window.
+func (a *app) undoDeleteExpired() bool {
+	return !a.deletedAt.IsZero() && time.Since(a.deletedAt) > undoDeleteWindow
+}
+
+// scheduleUndoExpiry 排一次重画,让撤回条到点自己消失。
+func (a *app) scheduleUndoExpiry() {
+	at := a.deletedAt
+	go func() {
+		time.Sleep(undoDeleteWindow + 100*time.Millisecond)
+		if a.deletedAt.Equal(at) {
+			a.update()
+		}
+	}()
 }
 
 // duplicateStep 复制第 i 步到列表末尾并选中它。
@@ -1822,22 +1920,30 @@ func (a *app) filesView(c *ui.Context) {
 						res, col := a.resultChip(a.ops[i])
 						// 极窄的右栏放不下"状态点 + 三个字":整列会被挤到
 						// 视口外,只剩半个字被裁掉。那时只留状态点,词收进
-						// Tooltip——颜色和位置仍然能一眼分辨成功/失败。
+						// Tooltip。
+						//
+						// 但"只留颜色"等于把状态编码进色觉:红绿不分的人
+						// 看到的是五个一样的小圆点。所以收掉文字时,点本身
+						// 带上形状——实心圆=已更名、叉=失败、短横=跳过、
+						// 空心圆=不变、箭头=将更名。形状在灰度下也读得出,
+						// 颜色只是第二层线索。
 						ui.Row(c).Width(resultW).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
 							ui.Spacer(c)
-							dot := ui.Box(c).Size(7, 7).Radius(7 / 2).Background(col)
 							if showResultText {
+								ui.Box(c).Size(7, 7).Radius(7 / 2).Background(col)
 								txt := ui.Text(c, res).FontSize(12).TextColor(col).SingleLine()
 								if a.ops[i].Err != nil {
 									txt.Tooltip(a.ops[i].Err.Error())
 								}
 								return
 							}
-							tip := res
+							mark, shapeTip := resultMark(a.rowOutcome(a.ops[i]))
+							glyph := ui.Text(c, mark).FontSize(12).TextColor(col).SingleLine()
+							tip := shapeTip + "：" + res
 							if a.ops[i].Err != nil {
-								tip = res + "：" + a.ops[i].Err.Error()
+								tip = shapeTip + "：" + res + "：" + a.ops[i].Err.Error()
 							}
-							dot.Tooltip(tip)
+							glyph.Tooltip(tip)
 						})
 					}
 				})
@@ -2600,6 +2706,67 @@ func (a *app) aiProgress() (done, total int) {
 
 func (a *app) preview() { a.previewSync(false) }
 
+// stepForSpec maps a 1-based rule number from core.ParseRules back to the
+// step it came from.
+//
+// 两个序号不是一回事:stepSpecs() 会跳过 spec 为空白的步骤(比如一个刚
+// 加进来、还没选类型的),所以"规则 3"可能是列表里的第 5 步。core 报的
+// 是规则号,用户在列表里数的是步骤号——直接把 core 的原文摆出来,他会
+// 对着第 3 步发呆,而真正出问题的是第 5 步。
+func (a *app) stepForSpec(n int) (int, bool) {
+	if n <= 0 {
+		return 0, false
+	}
+	seen := 0
+	for i := range a.steps {
+		if a.steps[i].fullSpec() == "" {
+			continue
+		}
+		seen++
+		if seen == n {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// specErrText 把 core 的「规则 N：…」换成「第 N 步「步骤名」：…」。
+//
+// 认不出规则号时原样返回——宁可少一层翻译,也不能因为解析失败把真正的
+// 错误信息吞掉。
+func (a *app) specErrText(msg string) string {
+	const prefix = "规则 "
+	if !strings.HasPrefix(msg, prefix) {
+		return msg
+	}
+	rest := msg[len(prefix):]
+	digits := 0
+	for digits < len(rest) && rest[digits] >= '0' && rest[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 {
+		return msg
+	}
+	n, err := strconv.Atoi(rest[:digits])
+	if err != nil {
+		return msg
+	}
+	// 规则号后面紧跟的是 "：" 或 "（"。两者都从冒号之后开始接原文。
+	tail := rest[digits:]
+	tail = strings.TrimPrefix(tail, "：")
+	tail = strings.TrimPrefix(tail, ":")
+	i, ok := a.stepForSpec(n)
+	if !ok {
+		return msg
+	}
+	label := a.steps[i].opLabel
+	if label == "" {
+		label = "第 " + strconv.Itoa(i+1) + " 步"
+		return fmt.Sprintf("%s：%s", label, tail)
+	}
+	return fmt.Sprintf("第 %d 步「%s」：%s", i+1, label, tail)
+}
+
 // previewSync runs the pipeline. withProgress=true wires the AI prefetch's
 // progress into the status bar; the live (in-view-pass) preview leaves it off
 // because it never runs AI steps — addPaths skips the auto-preview for those.
@@ -2608,9 +2775,13 @@ func (a *app) previewSync(withProgress bool) {
 	if err != nil {
 		// 整轮算不出来:记住原因,a.ops 置空(没有可信的新名字可用),
 		// 但界面不能因此装作"没有预览这回事"——见 previewErr 的注释。
+		//
+		// 原因先翻译成"第几步":core 只知道规则号,而列表里可能因为
+		// 空 spec 的步骤而错位(见 stepForSpec)。
+		msg := a.specErrText(err.Error())
 		a.ops = nil
-		a.previewErr = err.Error()
-		a.status = err.Error()
+		a.previewErr = msg
+		a.status = msg
 		return
 	}
 	a.previewErr = ""
@@ -2688,14 +2859,9 @@ func (a *app) handleShortcuts(c *ui.Context) {
 		return
 	}
 	if c.Shortcut(0, ui.KeyDelete) {
-		// 与鼠标点「删除」走同一条路:先挂确认态,三秒不点自动收回。
-		// 已经挂着确认态时再按一次 Delete 就是"确认",不必去够鼠标。
-		if a.confirmDelStep && !a.confirmStale() {
-			a.deleteStep(a.stepSel)
-			a.dropConfirm()
-		} else {
-			a.armConfirm("step")
-		}
+		// 与鼠标点「删除」走同一条路:直接删,删完可以撤回。
+		// 键盘不该比鼠标更容易,也不该更难——两条路径必须一样。
+		a.deleteStep(a.stepSel)
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyD) {
 		a.duplicateStep(a.stepSel)
@@ -2732,7 +2898,6 @@ func (a *app) confirmStale() bool {
 // 同时挂着两个"再点一下就删"是没道理的状态。
 func (a *app) armConfirm(which string) {
 	a.confirmClear = which == "clear"
-	a.confirmDelStep = which == "step"
 	a.confirmChosen = which == "chosen"
 	a.confirmUndo = which == "undo"
 	a.confirmAt = time.Now()
@@ -2749,7 +2914,6 @@ func (a *app) armConfirm(which string) {
 // dropConfirm 收回所有二次确认态。
 func (a *app) dropConfirm() {
 	a.confirmClear = false
-	a.confirmDelStep = false
 	a.confirmChosen = false
 	a.confirmUndo = false
 	a.confirmAt = time.Time{}
@@ -3131,9 +3295,34 @@ func (a *app) commitAIPrompt() {
 }
 
 const (
+	// undoDeleteWindow 是"删掉的步骤还能撤回"的窗口。
+	// 比二次确认的 3 秒长一些:撤回是给"我点错了"留的余地,而人意识
+	// 到自己点错往往要看完那一步消失之后的列表才反应过来。
+	undoDeleteWindow = 8 * time.Second
+
 	// flashDuration 是一行"刚改完"高亮的总时长。报告建议 120–160ms,
 	// 那是单行的节奏;这里整批行同时亮,需要更长一点才看得出
 	// "这些一起变了",所以取 320ms。
 	flashDuration = 320 * time.Millisecond
 	flashStep     = 40 * time.Millisecond
 )
+
+// resultMark 是"没有文字时"结果列用的形状标记。
+//
+// 极窄的右栏收掉了状态词,只剩一个 7×7 的圆点。只靠颜色编码状态对
+// 色觉障碍用户是读不出来的(红/绿是最常见的混淆对),而且灰度打印、
+// 截图传阅这两种场景也会把颜色丢掉。形状在灰度下仍然可分,颜色退回
+// 成第二层线索。
+func resultMark(s rowState) (mark, label string) {
+	switch s {
+	case rowApplied:
+		return "●", "已更名"
+	case rowFailed:
+		return "✕", "失败"
+	case rowSkipped:
+		return "–", "跳过"
+	case rowUnchanged:
+		return "○", "不变"
+	}
+	return "→", "将更名"
+}

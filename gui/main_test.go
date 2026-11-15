@@ -1130,9 +1130,10 @@ func TestChipContrast(t *testing.T) {
 	}
 }
 
-// 删除动作统一 danger 语言:步骤删除与批量删除都要二次确认,且确认态
-// 会自己收回(挂太久等于把"再点一下就删"的按钮永远留在屏幕上)。
-func TestDeleteNeedsConfirmAndExpires(t *testing.T) {
+// 删除单步不再要二次确认:它删的是管道里的一条,不是磁盘上的文件,
+// 删完立刻在列表上方给出可撤回的入口。真正不可逆的两个(回滚、清空
+// 列表)仍然保留确认——这里顺带守着"删除不再挂确认态"。
+func TestDeleteIsUndoableNotConfirmed(t *testing.T) {
 	a := &app{stepSel: 0, settings: defaultSettings()}
 	a.steps = []guiRule{step("pinyin"), step("case.lower")}
 	for i := range a.steps {
@@ -1144,36 +1145,63 @@ func TestDeleteNeedsConfirmAndExpires(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if len(a.steps) != 2 {
-		t.Fatal("第一次点击就删了,应该只是进入确认态")
+	if len(a.steps) != 1 {
+		t.Fatalf("点一次「删除」就该删掉,实际还剩 %d 步", len(a.steps))
 	}
-	if !a.confirmDelStep {
-		t.Fatal("未进入确认态")
+	if a.confirmClear || a.confirmChosen || a.confirmUndo {
+		t.Fatal("删除单步不该再挂任何二次确认态")
 	}
-	// 超时:三秒没点就当用户改主意
-	a.confirmAt = time.Now().Add(-4 * time.Second)
-	tt.Frame()
-	if a.confirmDelStep {
-		t.Fatal("确认态挂过三秒应自动收回")
+	if a.deletedStep.opLabel != "文件名转拼音" {
+		t.Fatalf("撤回槽里记的不是被删的那一步: %q", a.deletedStep.opLabel)
 	}
-	if len(a.steps) != 2 {
-		t.Fatal("收回确认态不该删东西")
+	// 撤回入口必须在屏幕上,且点一下能把这一步放回原位
+	if !tt.HasText("撤回") {
+		t.Fatal("删完没有给出「撤回」入口")
 	}
-	// 再走一遍,这次真的点确认
-	if err := tt.Click("删除"); err != nil {
+	if err := tt.Click("撤回"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if err := tt.Click("确认删除?"); err != nil {
-		t.Fatal(err)
+	if len(a.steps) != 2 || a.steps[0].opLabel != "文件名转拼音" {
+		t.Fatalf("撤回没把步骤放回原位: %d 步, 首步 %q", len(a.steps), a.steps[0].opLabel)
 	}
-	tt.Frame()
-	if len(a.steps) != 1 || a.steps[0].opLabel != "全部转小写" {
-		t.Fatalf("确认删除失败: %d 步", len(a.steps))
+	if a.stepSel != 0 {
+		t.Fatalf("撤回后应选中恢复的那一步,实际选中 %d", a.stepSel)
+	}
+	if a.deletedStep.opUID != 0 {
+		t.Fatal("撤回后撤回槽该清空")
 	}
 }
 
-// 同时只允许挂一个"再点一下就删":点清空会收回删除步骤的确认态。
+// 撤回窗口过期后,那条提示要自己消失——挂着一个点不动的按钮比没有更糟。
+func TestUndoOfferExpires(t *testing.T) {
+	a := &app{stepSel: 0, settings: defaultSettings()}
+	a.steps = []guiRule{step("pinyin"), step("case.lower")}
+	for i := range a.steps {
+		a.stepUID++
+		a.steps[i].opUID = a.stepUID
+	}
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	a.deleteStep(0)
+	tt.Frame()
+	if !tt.HasText("撤回") {
+		t.Fatal("刚删完应有「撤回」入口")
+	}
+	// 把窗口拨到过去,再跑一帧
+	a.deletedAt = time.Now().Add(-undoDeleteWindow - time.Second)
+	tt.Frame()
+	if tt.HasText("撤回") {
+		t.Fatal("撤回窗口过期后,提示应消失")
+	}
+	if a.deletedStep.opUID != 0 {
+		t.Fatal("过期后撤回槽该清空")
+	}
+}
+
+// 同时只允许挂一个"再点一下就删":点清空列表会收回回滚的确认态。
+// 两个高危动作都是"动磁盘/丢一批",确认态叠在一起时用户根本不知道
+// 第二下会执行哪一个。
 func TestOnlyOneConfirmAtATime(t *testing.T) {
 	a := &app{stepSel: 0, settings: defaultSettings()}
 	a.steps = []guiRule{step("pinyin")}
@@ -1181,19 +1209,18 @@ func TestOnlyOneConfirmAtATime(t *testing.T) {
 	a.steps[0].opUID = a.stepUID
 	a.files = []fileInfo{statFile(newTestFile(t, "a.txt"))}
 	tt := ui.NewTester(a.view, 1280, 800)
-	if err := tt.Click("删除"); err != nil {
-		t.Fatal(err)
-	}
 	tt.Frame()
-	if !a.confirmDelStep {
-		t.Fatal("未进入删除确认")
+	a.armConfirm("undo")
+	tt.Frame()
+	if !a.confirmUndo {
+		t.Fatal("未进入回滚确认")
 	}
 	if err := tt.Click("清空列表"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if a.confirmDelStep || !a.confirmClear {
-		t.Fatalf("两个确认态同时挂着: delStep=%v clear=%v", a.confirmDelStep, a.confirmClear)
+	if a.confirmUndo || !a.confirmClear {
+		t.Fatalf("两个确认态同时挂着: undo=%v clear=%v", a.confirmUndo, a.confirmClear)
 	}
 }
 

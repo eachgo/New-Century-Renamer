@@ -21,7 +21,10 @@ type guiRule struct {
 	kind                  string // label of the rule type, for spec()
 	// replace
 	oldStr, newStr string
-	regex          bool
+	// oldTouched 记"查找框被用户动过没有"。没动过时空值是正常的
+	// (步骤刚建出来),只有动过又清空才是真的填错了。
+	oldTouched bool
+	regex      bool
 	// template
 	tpl string
 	// case (stores the label)
@@ -411,7 +414,23 @@ func (r *guiRule) spec() string {
 }
 
 // fullSpec is the step's CLI spec.
-func (r *guiRule) fullSpec() string { return r.spec() }
+func (r *guiRule) fullSpec() string {
+	// 一条还没填的「查找替换」不参与整轮预览,而不是让整轮预览失败。
+	//
+	// 空查找串在 core 里是硬错误(它会把替换文本插到每个字符之间),
+	// 所以 spec 一旦生成就是 "replace=," → ParseRules 直接报错 →
+	// previewErr 非空 → 右栏顶部一条红条、所有文件的新名列变成
+	// "等步骤修好"。用户刚点了一下"查找替换",什么都还没输,屏幕上
+	// 就已经"整轮算不出来"——这正是"开局就错"。
+	//
+	// 没碰过的空步骤是"还没写完的草稿",不是"写错的规则":它不产生
+	// spec,预览里就少一条规则,其余照常算。用户填了之后(或填过又
+	// 清空,oldTouched 为真)才进 spec——那时报错才是对的。
+	if key, ok := kindByLabel[r.kind]; ok && key == "replace" && r.oldStr == "" && !r.oldTouched {
+		return ""
+	}
+	return r.spec()
+}
 
 // summary is the one-line description of the step in the task list.
 func (r *guiRule) summary() string {
@@ -739,12 +758,12 @@ func (r *guiRule) paramsEditor(c *ui.Context, t *ui.Theme, w float32) {
 			ctl()
 		})
 	}
-	ui.Column(c).FillWidth().Gap(10).Children(func() { r.paramsFields(c, t, pline, fit) })
+	ui.Column(c).FillWidth().Gap(10).Children(func() { r.paramsFields(c, t, pline, fit, stacked) })
 }
 
 // paramsFields is the per-kind body of the form: one pline call per
 // parameter. Split out so paramsEditor stays about layout.
-func (r *guiRule) paramsFields(c *ui.Context, t *ui.Theme, pline func(label string, ctl func()), fit func(float32) float32) {
+func (r *guiRule) paramsFields(c *ui.Context, t *ui.Theme, pline func(label string, ctl func()), fit func(float32) float32, stacked bool) {
 	key, _ := kindByLabel[r.kind]
 	switch key {
 	case "pinyin", "sanitize", "unfilter", "romaji":
@@ -756,16 +775,40 @@ func (r *guiRule) paramsFields(c *ui.Context, t *ui.Theme, pline func(label stri
 		pline("选取范围", func() { ui.Select(c, &r.scopeSel, []string{"文件名", "扩展名", "整体"}).Width(fit(160)) })
 	case "replace":
 		pline("查找", func() {
+			// touched 记"用户动过这一格没有"。
+			//
+			// 新建一条「查找替换」步骤时 oldStr 天生是空的,而空查找串
+			// 是条会执行成功的坏规则(见下面的注释)。以前的做法是直接
+			// 按 oldStr=="" 判红——于是用户刚点完"查找替换",还没来得
+			// 及填,屏幕上就已经是一条红字,像是他做错了什么。
+			//
+			// 现在分两档:没碰过 → 中性灰提示(说清这一步会怎么走);
+			// 碰过又清空 → 才是红的。同样的信息,但"还没开始"和
+			// "填错了"不再长成一个样子。
 			ui.Column(c).Gap(4).Children(func() {
-				ui.TextInput(c, &r.oldStr).Placeholder("查找").FillWidth()
-				// 空查找串不是"没填",它是一条会执行成功的规则:替换会把
-				// 替换文本插到每个字符之间,正则在每个位置匹配一次。预览
-				// 会显示每个文件名被切碎,执行出来就是一堆谁也不认识的
-				// 名字。core 里已经拒绝,这里就地说明,省得用户对着一条
-				// 报错的步骤猜是哪一格没填。
+				in := ui.TextInput(c, &r.oldStr).Placeholder("查找").FillWidth()
+				// 输入框一有内容就说明碰过了;清空之后 touched 仍留着,
+				// 所以"先填再删"能正确落进红色那一档。
+				if r.oldStr != "" {
+					r.oldTouched = true
+				}
+				// 粘贴等路径不一定经过按键,失焦时再确认一次。
+				if !in.Focused() && r.oldStr != "" {
+					r.oldTouched = true
+				}
 				if r.oldStr == "" {
-					ui.Text(c, "还没填查找内容——空字符串会匹配每个字符之间，这一步现在不会执行。").
-						FontSize(12).TextColor(t.Danger).SingleLine()
+					// 空查找串不是"没填",它是一条会执行成功的规则:替换会把
+					// 替换文本插到每个字符之间,正则在每个位置匹配一次。预览
+					// 会显示每个文件名被切碎,执行出来就是一堆谁也不认识的
+					// 名字。core 里已经拒绝,这里就地说明,省得用户对着一条
+					// 报错的步骤猜是哪一格没填。
+					if r.oldTouched {
+						ui.Text(c, "查找内容不能为空——空字符串会匹配每个字符之间，这一步现在不会执行。").
+							FontSize(12).TextColor(t.Danger).SingleLine()
+					} else {
+						ui.Text(c, "填上要查找的内容，这一步才会生效。").
+							FontSize(12).TextColor(t.TextMuted).SingleLine()
+					}
 				}
 			})
 		})
@@ -805,11 +848,23 @@ func (r *guiRule) paramsFields(c *ui.Context, t *ui.Theme, pline func(label stri
 		pline("分组方式", func() {
 			ui.Select(c, &r.numGroup, []string{"不分组", "按扩展名", "按文件夹"}).Width(fit(180))
 		})
-		pline("起始 / 步长", func() {
-			numField(c, &r.seqStart, -9999, 999999, 1, fit(70))
-			ui.Text(c, "/").TextColor(t.TextMuted)
-			numField(c, &r.seqStep, -999, 999, 1, fit(70))
-		})
+		// 起始 / 步长:并排时是一行两组(中间一个 "/"),窄栏下拆成
+		// 两行、各带自己的标签。
+		//
+		// 以前 stacked 时这一行被 Wrap 折成两行,但两个数字框共用一个
+		// 「起始 / 步长」标签,折完之后第二个框前面没有任何说明——
+		// 读者看到的是 [1] 换行 [1],只能靠记住左边那个是起始。
+		// 拆开之后两行各自完整:"起始 1" / "步长 1"。
+		if stacked {
+			pline("起始", func() { numField(c, &r.seqStart, -9999, 999999, 1, fit(90)) })
+			pline("步长", func() { numField(c, &r.seqStep, -999, 999, 1, fit(90)) })
+		} else {
+			pline("起始 / 步长", func() {
+				numField(c, &r.seqStart, -9999, 999999, 1, fit(70))
+				ui.Text(c, "/").TextColor(t.TextMuted)
+				numField(c, &r.seqStep, -999, 999, 1, fit(70))
+			})
+		}
 		pline("编号模板", func() { ui.TextInput(c, &r.numTpl).Placeholder("如 第<N>话_<NAME><.EXT>，空=追加").FillWidth() })
 	case "nfo":
 		pline("命名模板", func() {

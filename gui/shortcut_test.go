@@ -32,9 +32,10 @@ func TestShortcutDuplicateStep(t *testing.T) {
 	}
 }
 
-// Delete 删步骤要两次:第一次挂确认态,第二次才真删。
-// 与鼠标点「删除」同一套语言——键盘不能成为绕过防错的捷径。
-func TestShortcutDeleteNeedsTwoPresses(t *testing.T) {
+// Delete 删步骤:一次就删,删完可以撤回。键盘和鼠标必须一样——
+// 以前两条路径各自维护一套二次确认,删单步改可撤销之后如果只改了
+// 鼠标那条,键盘就成了"绕过防错"的捷径(或者反过来,键盘比鼠标难用)。
+func TestShortcutDeleteDeletesAndCanUndo(t *testing.T) {
 	a := &app{stepSel: 0, settings: defaultSettings()}
 	a.steps = []guiRule{step("pinyin"), step("case.lower")}
 	a.stepUID = a.steps[1].opUID
@@ -42,19 +43,15 @@ func TestShortcutDeleteNeedsTwoPresses(t *testing.T) {
 	tt.Frame()
 	tt.Key(0, ui.KeyDelete)
 	tt.Frame()
-	if len(a.steps) != 2 {
-		t.Fatal("第一次 Delete 就删了,应该只是进入确认态")
-	}
-	if !a.confirmDelStep {
-		t.Fatal("第一次 Delete 未进入确认态")
-	}
-	tt.Key(0, ui.KeyDelete)
-	tt.Frame()
 	if len(a.steps) != 1 || a.steps[0].opLabel != "全部转小写" {
-		t.Fatalf("第二次 Delete 没删掉选中步骤: %d 步", len(a.steps))
+		t.Fatalf("Delete 没删掉选中步骤: %d 步", len(a.steps))
 	}
-	if a.confirmDelStep {
-		t.Fatal("删完后确认态没收起")
+	if a.deletedStep.opLabel != "文件名转拼音" {
+		t.Fatalf("撤回槽里记的不是被删的那一步: %q", a.deletedStep.opLabel)
+	}
+	a.undoDelete()
+	if len(a.steps) != 2 || a.steps[0].opLabel != "文件名转拼音" {
+		t.Fatalf("撤回没把步骤放回原位: %d 步", len(a.steps))
 	}
 }
 
