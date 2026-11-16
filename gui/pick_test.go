@@ -141,12 +141,11 @@ func TestBatchBarHiddenWithoutPickMode(t *testing.T) {
 	}
 }
 
-// TestCheckboxOnlyWhenPicking 勾选框只在"确实在多选"时出现。
+// TestCheckboxOnlyWhenPicking 勾选框只在多选开关打开时出现。
 //
-// 以前条件是"多选模式开着、或本行被悬停、或已选中"。悬停那一条让勾选框
-// 在正常浏览时随机出现又消失:一列步骤里突然多出一个方框,读流程的人会
-// 以为那一步有什么特殊状态。现在只剩"开了多选"或"已经有选中项"两种,
-// 后者是边界兜底——选中项在模式关掉后仍留着时,得有地方取消它。
+// 以前条件是"多选模式开着、或本行被悬停、或已选中"。后两条让勾选框在
+// 正常浏览时随机出现又消失:一列步骤里突然多出一个方框,读流程的人会
+// 以为那一步有什么特殊状态。现在只剩"开关开着"一种。
 //
 // 注意这里守的是"模式开关"这一半:悬停那一半守不住,因为无头 Tester 的
 // Move 不产生悬停链(实测加回 row.Hovered() 后本测试仍 PASS)。悬停归
@@ -156,7 +155,7 @@ func TestCheckboxOnlyWhenPicking(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 	if tt.HasText("选中第 1 步") {
-		t.Error("没开多选、也没选中项时不该有勾选框")
+		t.Error("没开多选时不该有勾选框")
 	}
 
 	a.pickMode = true
@@ -165,16 +164,75 @@ func TestCheckboxOnlyWhenPicking(t *testing.T) {
 		t.Error("开了多选就该有勾选框")
 	}
 
-	// 关掉多选但留着选中项:勾选框还在,否则那一项无从取消。
+	// 关掉多选:勾选框与批量条一起消失,集合也清空。
 	a.pickMode = false
-	a.chosen.Add(a.steps[0].opUID)
-	tt.Frame()
-	if !tt.HasText("选中第 1 步") {
-		t.Error("有选中项时勾选框应当保留,否则取消不了")
-	}
-	a.chosen.Clear()
 	tt.Frame()
 	if tt.HasText("选中第 1 步") {
-		t.Error("清空选中项后勾选框该消失")
+		t.Error("关掉多选后不该还有勾选框")
+	}
+	if tt.HasText("已选 0 步") {
+		t.Error("关掉多选后不该还有批量条")
+	}
+	if a.chosen.Len() != 0 {
+		t.Errorf("关掉多选后选中集合应清空,实际 %d 项", a.chosen.Len())
+	}
+}
+
+// TestClickingRowsWithoutPickModeDoesNotSelect 不点开关就点不出一堆选中项。
+//
+// 这是用户报的那个 bug:多选开关关着,只要在步骤行上多点几下,勾选框
+// 就冒出来了——因为 List 一直挂着 Selection,而 mygo 的 List 一有
+// Selection,普通单击就走 choose()(清空集合只留被点那行),于是集合
+// 非空、勾选框的"已有选中项"分支成立。开关从没被打开过,多选却已经
+// 在工作。
+func TestClickingRowsWithoutPickModeDoesNotSelect(t *testing.T) {
+	a := pickApp(t)
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+	for i := 0; i < 3; i++ {
+		if err := tt.Click("1."); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+	}
+	if a.chosen.Len() != 0 {
+		t.Fatalf("没开多选,连点几下之后却选中了 %d 项", a.chosen.Len())
+	}
+	if tt.HasText("选中第 1 步") {
+		t.Error("没开多选,连点几下之后冒出了勾选框")
+	}
+	if tt.HasText("已选") {
+		t.Error("没开多选,连点几下之后冒出了批量条")
+	}
+	// 单选本身必须还在:开关关掉的是"多选",不是"选中"。
+	if a.stepSel != 0 {
+		t.Errorf("点第一行后 stepSel 应为 0,实际 %d", a.stepSel)
+	}
+}
+
+// TestPickModeOffKeepsSingleSelection 关掉多选不等于取消选中。
+//
+// 用户关开关的意思是"我选完了",不是"把当前这步也取消掉"——参数
+// 编辑器还停在那一步上。
+func TestPickModeOffKeepsSingleSelection(t *testing.T) {
+	a := pickApp(t)
+	a.pickMode = true
+	a.chosen.Add(a.steps[1].opUID)
+	a.stepSel = 1
+	tt := ui.NewTester(a.view, 1280, 800)
+	tt.Frame()
+
+	if err := tt.Click("完成"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.pickMode {
+		t.Fatal("点「完成」应当关掉多选")
+	}
+	if a.chosen.Len() != 0 {
+		t.Errorf("关掉多选后选中集合应清空,实际 %d 项", a.chosen.Len())
+	}
+	if a.stepSel != 1 {
+		t.Errorf("关掉多选后单选应保持不变,实际 %d", a.stepSel)
 	}
 }

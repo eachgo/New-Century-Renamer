@@ -623,6 +623,9 @@ func TestStepsMultiMode(t *testing.T) {
 		a.stepUID++
 		a.steps[i].opUID = a.stepUID
 	}
+	// 多选开关必须真的打开:选中集合本身不再能让勾选框和批量条出现,
+	// 否则"开关是关的、多选却还在工作"——那正是用户报的那个 bug。
+	a.pickMode = true
 	// select steps 1 (pinyin) and 3 (truncate) by uid
 	a.chosen.Add(a.steps[0].opUID)
 	a.chosen.Add(a.steps[2].opUID)

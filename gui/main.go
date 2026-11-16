@@ -575,10 +575,7 @@ func (a *app) catalogView(c *ui.Context) {
 		// 栏头与中/右栏同构:一行 Row,标题靠左,不再用 Padding 去凑基线。
 		// 栏头统一 MinHeight(34) + 垂直居中:三栏的标题就落在同一条基线上。
 		// 不固定高度是因为右栏的工具栏在窄窗口下会折行,折了就该长高。
-		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "功能 · 点击加入步骤").Bold().FontSize(14)
-			ui.Spacer(c)
-		})
+		paneHeader(c, "功能 · 点击加入步骤", nil)
 		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth()
 		// TrackScroll 记住滚动位置:底缘渐隐只在真还有内容时出现,
 		// 而这个判断要读它,不能靠猜。
@@ -843,17 +840,8 @@ func (a *app) stepsView(c *ui.Context) {
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
-		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Center).Children(func() {
-			// 标题吃剩余宽度并单行省略:中栏能拖到只剩一百多 DIP,那时
-			// "任务步骤（1）"会被压成一列单字("任务"/"步骤"/"（1）"),
-			// 比截断更难看,也让右侧的多选按钮跳来跳去。
-			//
-			// 窄的时候先收按钮、再收标题:标题说的是"这一栏是什么"(方位感),
-			// 按钮说的是"还有一个功能"。把功能收成一个图标,用户还看得出
-			// 这里能点;把标题截成"任务步…",这一栏叫什么就没了。
-			ui.Text(c, fmt.Sprintf("任务步骤（%d）", len(a.steps))).Bold().FontSize(14).
-				Grow(1).SingleLine().Ellipsis("…")
-			// 触摸入口:点开后才显示行内多选圆点(Ctrl+点击亦可,随时可用)
+		paneHeader(c, fmt.Sprintf("任务步骤（%d）", len(a.steps)), func() {
+			// 触摸入口:点开后才显示行内勾选框(Ctrl+点击亦可)
 			label := "多选"
 			if a.pickMode {
 				label = "完成"
@@ -868,6 +856,8 @@ func (a *app) stepsView(c *ui.Context) {
 			}
 			if btn.Clicked() {
 				a.pickMode = !a.pickMode
+				// 关掉开关 = 退出多选:选中集合一并清掉,勾选框与批量条
+				// 随之消失。留着集合会让"开关是关的、多选却还在"。
 				if !a.pickMode {
 					a.chosen.Clear()
 				}
@@ -878,12 +868,30 @@ func (a *app) stepsView(c *ui.Context) {
 		if len(a.steps) == 0 {
 			a.intentCards(c)
 		} else {
+			// 不变量:选中集合只在多选开关打开时存在。开关关掉的地方
+			// 已经清过一次,这里再兜一次——集合只要非空,勾选框与批量条
+			// 就还有理由出现,而那时开关是关的。
+			if !a.pickMode && a.chosen.Len() > 0 {
+				a.chosen.Clear()
+			}
 			dt := a.currentTheme()
 			bars := a.stepRangeBars(dt, t.Dark)
-			// 始终可选中、可编辑;多选与拖动也不需要模式开关
+			// 单选随时可用;多选只在开关打开时接上。
+			//
+			// mygo 的 List 只要挂了 Selection,普通单击就会走 choose()——
+			// 那是"清空整个集合、只留被点的那行"。于是开关关着的时候,
+			// 随手点两行也会让 chosen 非空,而勾选框的显示条件里又有
+			// "已经有选中项"这一条,屏幕上就冒出勾选框:开关看着是关的,
+			// 多选却随时可用,这个开关等于没有。现在 Selection 只在
+			// pickMode 为真时挂上,关掉开关 = 集合清空 + 退回单选,
+			// 勾选框与批量条随之消失。
 			a.stepList.Key = func(i int) any { return a.steps[i].opUID }
 			a.stepList.Selected = &a.stepSel
-			a.stepList.Selection = &a.chosen
+			if a.pickMode {
+				a.stepList.Selection = &a.chosen
+			} else {
+				a.stepList.Selection = nil
+			}
 			a.stepList.Reorder = func(rows []int, to int) {
 				a.moveSteps(rows, to)
 			}
@@ -967,7 +975,7 @@ func (a *app) stepsView(c *ui.Context) {
 								// 不管这一行选没选:否则勾选一行会让整行文字横移
 								// 16 DIP,读流程时最刺眼的正是这种跳动。
 								picked := a.chosen.Has(s.opUID)
-								if a.pickMode || a.chosen.Len() > 0 {
+								if a.pickMode {
 									dotColor := t.Border
 									if picked {
 										dotColor = t.Accent
@@ -1106,10 +1114,13 @@ func (a *app) stepsView(c *ui.Context) {
 				})
 			}
 		}
-		// 多选时的批量操作。多选模式一开就显示——"全选"要能选到东西,
-		// 而"一个都没选"正是最需要它的时刻;只有选中项而没有模式(边界)
-		// 时也留着,免得选中项无从下手。
-		if a.pickMode || a.chosen.Len() > 0 {
+		// 多选时的批量操作,跟着开关走。
+		//
+		// 条件里原来还有"或已有选中项"这一条兜底,但那条兜底本身就是
+		// bug 的一半:选中项只可能在开关开着时产生,关掉开关又不清空,
+		// 屏幕就留下一条没有归属的批量条。现在关开关必清集合,兜底
+		// 不再需要——留着它只会掩盖"关不干净"。
+		if a.pickMode {
 			n := a.chosen.Len()
 			ui.Box(c).FillWidth().Height(1).Background(a.currentTheme().panes(a.isDark()).outline)
 			// 标签独占一行、按钮成组:挤在一行里时"删除所选"会被
@@ -1381,6 +1392,32 @@ func revealInFileManager(path string) {
 
 // ---- right pane: file table with drop zone ----
 
+// paneHeader 是三栏标题栏的唯一写法:一个 34 DIP 的固定槽,标题在槽里垂直居中。
+//
+// 以前三处各写一遍,写法还不一样:左栏 MinHeight(34) + Center,中栏多一个
+// Grow + SingleLine + Ellipsis,右栏 Height(34) 套 MinHeight(34) + Start。
+// 三种写法里,中栏那份会按多行量文本高度、右栏那份按单行量,而 Pango(Linux)
+// 对两种量法给出的高度不同——CI 的 ubuntu 上中栏标题因此比左栏低 1 DIP,
+// 落不到同一条基线上;Windows 和 macOS 的度量恰好一致,所以只有 ubuntu 红。
+//
+// 现在高度由槽决定,文本只负责在槽里居中:不管哪种字体、哪种量法,槽都是
+// 34,居中结果就都是同一个 y。
+func paneHeader(c *ui.Context, title string, extra func()) {
+	ui.Row(c).Gap(8).Height(34).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, title).Bold().FontSize(14).Grow(1).SingleLine().Ellipsis("…")
+		if extra != nil {
+			extra()
+		}
+	})
+}
+
+// paneTitle 是不带右侧控件的标题,和 paneHeader 共用同一个 34 DIP 槽。
+func paneTitle(c *ui.Context, title string) {
+	ui.Row(c).Height(34).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, title).Bold().FontSize(14).SingleLine().Shrink(0)
+	})
+}
+
 // resultColW 是右缘"结果"那一列的固定宽度:表头与每行卡片共用同一个
 // 值,两处各写一个 64 的话,改一处忘另一处,表头就不再压在结果上方。
 const resultColW float32 = 64
@@ -1519,14 +1556,7 @@ func (a *app) filesView(c *ui.Context) {
 		// 撑高度(实测右栏标题 y=63.00,另两栏 63.67),三栏标题就差半像素
 		// 落不到同一条基线上。
 		ui.Row(c).MinHeight(34).AlignItems(ui.Start).Children(func() {
-			// 标题固定在自己的 34 高槽里:工具栏换行时外层会变高,
-			// 若让标题跟着居中,它就会往下漂半行,三栏标题又对不齐了。
-			ui.Row(c).Height(34).AlignItems(ui.Center).Children(func() {
-				// SingleLine + Shrink(0):右栏窄到 412 DIP 时,"文件"两个字
-				// 会被压成竖排(实测 21.89×37.34,两字上下叠),既难读又把
-				// 整行撑高。标题只有两个字,该让按钮去换行。
-				ui.Text(c, "文件").Bold().FontSize(14).SingleLine().Shrink(0)
-			})
+			paneTitle(c, "文件")
 			ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 				// 排序菜单紧挨着"文件":它改的是这一整列的次序,和"添加/导出"
 				// 那种"对清单做一件事"不同,所以放在标题与动作之间。
