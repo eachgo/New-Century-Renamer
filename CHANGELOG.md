@@ -2,6 +2,16 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/);里程碑对应 git 标签。
 
+## [Unreleased]
+
+### 修复 · 步骤参数胶囊
+
+- **参数长的步骤不再被截成「<META:aut…」**。中栏每一步的参数胶囊原来
+  `SingleLine` + `MaxWidth(150)`，模板类参数（`<META:author> - <META:title><.EXT>`）
+  正好超出一点，被切成 `<META:aut…`——那一步恰恰是用户最需要看清的。
+  改成最多两行（`MaxLines(2)`），超长才省略；同时补 `Tooltip`，鼠标停上去
+  能看到完整参数。README 的截图按 0.1.9 重拍。
+
 ## [0.1.9] - 2026-11-16
 
 0.1.3 发出去之后的用户反馈。都是"看着不对劲但说不清哪不对"的那类问题,

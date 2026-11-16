@@ -1009,16 +1009,16 @@ func (a *app) stepsView(c *ui.Context) {
 										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && showSummary {
 											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Ellipsis("…").
-												Background(cat.Alpha(0.16)).TextColor(t.Text)
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).MaxLines(2).Ellipsis("…").
+												Background(cat.Alpha(0.16)).TextColor(t.Text).Tooltip(v)
 										}
 									})
 								} else {
 									ui.Row(c).Fill().Gap(6).Children(func() {
 										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && v != s.opLabel && showSummary {
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Ellipsis("…").
-												Background(cat.Alpha(0.16)).TextColor(t.Text)
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).MaxLines(2).Ellipsis("…").
+												Background(cat.Alpha(0.16)).TextColor(t.Text).Tooltip(v)
 										}
 									})
 								}
