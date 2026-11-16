@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/);里程碑对应 git 标签。
 
-## [Unreleased]
+## [0.1.9] - 2026-11-16
 
 0.1.3 发出去之后的用户反馈。都是"看着不对劲但说不清哪不对"的那类问题,
 根因一条条量出来才清楚。
