@@ -170,3 +170,34 @@ func contrastInRect(t *testing.T, tt *ui.Tester, r ui.Rect) (float64, int) {
 	}
 	return worst, len(counts)
 }
+
+// 禁用的主按钮要保留"主色的形状"，不能退成一块中性白底。
+//
+// 原来 disabledPrimaryColors 直接返回 (TextMuted, Surface)，于是
+// 「执行更名」禁用时和「撤销上次」（灰框描边）长得一模一样——主次
+// 关系在禁用态整个消失，而"这颗是按不动的主操作"恰恰是要读出来的。
+// 现在底色是主色褪掉大半饱和、往地面靠的一块淡色，仍然"像主按钮"。
+func TestDisabledPrimaryKeepsTheAccentShape(t *testing.T) {
+	for _, hex := range []string{"#2F7A52", "#F2703C", "#3140A8", "#F5C518", "#00BCD4", "#FFFFFF", "#000000"} {
+		dt := themeFor(ui.Hex(hex))
+		for _, dark := range []bool{false, true} {
+			th := dt.light
+			if dark {
+				th = dt.dark
+			}
+			fg, bg := disabledPrimaryColors(th)
+			// 1) 它必须不是中性面——否则和白底描边按钮撞脸。
+			if _, c, _ := colorToOklch(bg); c < 0.004 {
+				t.Errorf("%s(dark=%v): 禁用主按钮的底色彩度只有 %.4f,退成了中性面", hex, dark, c)
+			}
+			// 2) 字要读得出来。
+			if r := contrastRatio(fg, bg); r < 4.5 {
+				t.Errorf("%s(dark=%v): 禁用主按钮上字/底只有 %.2f:1,应 ≥4.5", hex, dark, r)
+			}
+			// 3) 与启用态要分得开（不然"按不动"读不出来）。
+			if r := contrastRatio(th.Accent, bg); r < 1.8 {
+				t.Errorf("%s(dark=%v): 启用态与禁用态只差 %.2f:1,分不出能不能按", hex, dark, r)
+			}
+		}
+	}
+}

@@ -2830,8 +2830,20 @@ func primaryButton(c *ui.Context, label string, enabled bool) ui.Element {
 // 测试能拿到"生产真的用的那两个颜色"——测试里自己重算一遍
 // (TextMuted 配 Surface)的话,把按钮改回裸 Disabled 它也照样通过,
 // 等于没守。
+//
+// 底色不是中性面(t.Surface):那样「执行更名」和白底描边的「撤销上次」
+// 长得一模一样,主次关系在禁用态整个消失——而"这颗是按不动的主操作"
+// 恰恰是要读出来的信息。做法是把主色**褪掉大半饱和、往地面靠**:
+// 明度 0.90(亮)/0.30(暗)、彩度乘 0.35。它仍然是一块"主色的形状",
+// 但淡到不像能按;实测字/底 5.06–5.45:1(全 10 个种子 × 明暗),
+// 启用态与禁用态差 2.07–7.80:1,一眼分得开。
 func disabledPrimaryColors(t *ui.Theme) (fg, bg ui.Color) {
-	return disabledColors(t)
+	_, c, h := colorToOklch(t.Accent)
+	l := 0.90
+	if isDarkTheme(t) {
+		l = 0.30
+	}
+	return t.TextMuted, oklchColor(l, c*0.35, h)
 }
 
 // plainButton 是"最普通"的按钮:有框、次要。
