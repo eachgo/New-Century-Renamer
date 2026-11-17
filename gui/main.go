@@ -1757,13 +1757,19 @@ func (a *app) filesView(c *ui.Context) {
 				if addBtn.Clicked() {
 					go a.addFilesDialog()
 				}
-				expBtn := tonalButton(c, "导出CSV", len(a.files) > 0)
+				// 按钮只说"清单",不说"CSV":用户不知道 CSV 里存了什么,
+				// 更不知道它为什么能救回被改乱的名字。解释放进 Tooltip,
+				// 那里有位置把"四列 + sha256 指纹"说完整。
+				expBtn := tonalButton(c, "导出清单…", len(a.files) > 0).Tooltip(
+					"把这一批文件导出成一张表：每行有文件指纹（sha256）、所在文件夹、现在的名字、想改成的新名字。\n" +
+						"在 Excel 里改 new_name 列，再点「导入清单」——因为带指纹，文件就算已经被改过名，也能对回自己那一行。")
 				if expBtn.Clicked() {
 					go a.exportCSV()
 				}
 				// 导入CSV 原来在左栏"高级"组里,可它作用于文件清单——和导出
 				// 是同一件事的两头,被拆到两个栏里谁也找不到另一半。
-				impBtn := tonalButton(c, "导入CSV", !a.busy)
+				impBtn := tonalButton(c, "导入清单…", !a.busy).Tooltip(
+					"读回改好的清单，按每行的 sha256 找文件：文件被改过名也找得到；内容被改过会标成「有问题」，不会硬改。")
 				if impBtn.Clicked() {
 					go a.importCSV()
 				}
@@ -2644,7 +2650,7 @@ func (a *app) exportCSV() {
 	a.update()
 	out, err := a.saveDialog(mygo.SaveDialogOptions{
 		Parent:      a.win,
-		Title:       "导出文件列表 CSV",
+		Title:       "导出清单（CSV）",
 		DefaultPath: "ncreamer-list.csv",
 	})
 	a.busy = false
@@ -2674,7 +2680,7 @@ func (a *app) exportTo(path string) error {
 		a.update()
 		return err
 	}
-	a.status = fmt.Sprintf("已导出 %d 行到 %s；编辑 new_name 列后点“导入CSV”", len(a.files), path)
+	a.status = fmt.Sprintf("已导出 %d 行清单到 %s；改 new_name 列，再点「导入清单」", len(a.files), path)
 	a.update()
 	return nil
 }
@@ -2686,7 +2692,7 @@ func (a *app) importCSV() {
 	a.update()
 	paths, err := a.openDialog(mygo.OpenDialogOptions{
 		Parent: a.win,
-		Title:  "导入文件列表 CSV",
+		Title:  "导入清单（CSV）",
 	})
 	a.busy = false
 	if err != nil || len(paths) == 0 {

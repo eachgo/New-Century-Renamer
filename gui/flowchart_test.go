@@ -177,7 +177,7 @@ func TestFlowDiagramShowsBothLanesEndingInUndo(t *testing.T) {
 	}
 }
 
-// 存档是另一件事,得单独一张图、单独一句话。混进主流程会让"排步骤"
+// 导出清单是另一件事,得单独一张图、单独一句话。混进主流程会让"排步骤"
 // 看起来像流程的第七步。
 func TestHelpHasASeparateArchiveFlow(t *testing.T) {
 	a := helpApp(t)
@@ -186,15 +186,15 @@ func TestHelpHasASeparateArchiveFlow(t *testing.T) {
 
 	var label string
 	for _, n := range tt.AccessAll() {
-		if strings.HasPrefix(n.Name, "流程图：存档") {
+		if strings.HasPrefix(n.Name, "流程图：导出清单") {
 			label = n.Name
 			break
 		}
 	}
 	if label == "" {
-		t.Fatal("帮助页里没有存档小流程")
+		t.Fatal("帮助页里没有导出清单小流程")
 	}
-	for _, want := range []string{"存成流程", "导出设置", "导入设置"} {
+	for _, want := range []string{"导出清单", "改新名", "导入清单"} {
 		if !strings.Contains(label, want) {
 			t.Errorf("存档流程里没提到 %q: %q", want, label)
 		}

@@ -86,8 +86,8 @@ func TestHelpExplainsTheWholeFlow(t *testing.T) {
 		t.Errorf("主流程图没说第二条路从预设/添加步骤起手: %q", label)
 	}
 
-	// 存档那条小流程与主流程是两件事,得分开说。
-	for _, want := range []string{"这套排法可以带走", "存成流程", "导出设置"} {
+	// 导出清单那条小流程与主流程是两件事,得分开说;sha256 是它唯一的卖点。
+	for _, want := range []string{"导出成一张表，改完名也找得回来", "导出清单", "导入清单", "sha256"} {
 		if !tt.HasText(want) {
 			t.Errorf("帮助里没有 %q", want)
 		}
