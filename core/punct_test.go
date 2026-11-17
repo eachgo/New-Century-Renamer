@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -19,6 +20,22 @@ var allowedHalfWidth = []string{
 	"<META:",
 	"<NFO:",
 	"如 : / ? *",
+}
+
+// syntaxOnlyLiterals lists string literals that are pure regex syntax rather
+// than prose. They are handed to fmt.Sprintf as arguments, so the half-width
+// characters never appear inside a Chinese sentence — see regexErrHints.
+// Keeping them as separate literals is the point: a hint that reads
+// "缺少右方括号 ]，…" mixes prose with something the user must type verbatim,
+// and neither the punctuation gate nor a reader can tell which is which.
+var syntaxOnlyLiterals = []string{
+	"]",
+	")",
+	"{2,5}",
+	". ( ) [ ] { }",
+	"[:digit:]",
+	"(?=",
+	"(?<=",
 }
 
 // TestChinesePunctuationIsFullWidth enforces the rule the project's own design
@@ -63,6 +80,13 @@ func scanHalfWidthPunct(t *testing.T, dirs, allowed []string) []string {
 				}
 				for _, s := range allowed {
 					if strings.Contains(bl.Value, s) {
+						return true
+					}
+				}
+				// 纯语法字面量不算文案:它们会作为参数填进中文句子,
+				// 见 syntaxOnlyLiterals。
+				for _, s := range syntaxOnlyLiterals {
+					if bl.Value == strconv.Quote(s) || bl.Value == "`"+s+"`" {
 						return true
 					}
 				}

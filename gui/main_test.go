@@ -1158,8 +1158,8 @@ func TestDeleteIsUndoableNotConfirmed(t *testing.T) {
 	if a.confirmClear || a.confirmChosen || a.confirmUndo {
 		t.Fatal("删除单步不该再挂任何二次确认态")
 	}
-	if a.deletedStep.opLabel != "文件名转拼音" {
-		t.Fatalf("撤回槽里记的不是被删的那一步: %q", a.deletedStep.opLabel)
+	if last, ok := a.lastStepUndo(); !ok || last.step.opLabel != "文件名转拼音" {
+		t.Fatalf("撤回栈里记的不是被删的那一步: %+v", a.stepUndo)
 	}
 	// 撤回入口必须在屏幕上,且点一下能把这一步放回原位
 	if !tt.HasText("撤回") {
@@ -1175,8 +1175,8 @@ func TestDeleteIsUndoableNotConfirmed(t *testing.T) {
 	if a.stepSel != 0 {
 		t.Fatalf("撤回后应选中恢复的那一步,实际选中 %d", a.stepSel)
 	}
-	if a.deletedStep.opUID != 0 {
-		t.Fatal("撤回后撤回槽该清空")
+	if len(a.stepUndo) != 0 {
+		t.Fatal("撤回后撤回栈该清空")
 	}
 }
 
@@ -1196,13 +1196,16 @@ func TestUndoOfferExpires(t *testing.T) {
 		t.Fatal("刚删完应有「撤回」入口")
 	}
 	// 把窗口拨到过去,再跑一帧
-	a.deletedAt = time.Now().Add(-undoDeleteWindow - time.Second)
+	if last, ok := a.lastStepUndo(); ok {
+		last.at = time.Now().Add(-undoDeleteWindow - time.Second)
+		a.stepUndo[len(a.stepUndo)-1] = last
+	}
 	tt.Frame()
 	if tt.HasText("撤回") {
 		t.Fatal("撤回窗口过期后,提示应消失")
 	}
-	if a.deletedStep.opUID != 0 {
-		t.Fatal("过期后撤回槽该清空")
+	if len(a.stepUndo) != 0 {
+		t.Fatal("过期后撤回栈该清空")
 	}
 }
 

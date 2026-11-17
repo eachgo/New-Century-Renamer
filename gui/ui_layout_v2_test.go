@@ -55,7 +55,7 @@ func TestFolderHeaderSticksWhileScroll(t *testing.T) {
 	}
 }
 
-// 主次分工:执行更名/回滚上次属于"整个软件"的主操作,放在底部状态栏;
+// 主次分工:执行更名/撤销上次属于"整个软件"的主操作,放在底部状态栏;
 // 添加文件/导出/清空属于"文件列表"的操作,留在右栏顶部。
 func TestPrimaryActionInBottomBar(t *testing.T) {
 	a := &app{stepSel: -1, settings: defaultSettings()}
@@ -70,12 +70,12 @@ func TestPrimaryActionInBottomBar(t *testing.T) {
 	if apply.Y < 640 {
 		t.Errorf("执行更名应在底部状态栏(y≥640),实际 y=%.1f", apply.Y)
 	}
-	undo, ok := tt.Find("回滚上次")
+	undo, ok := tt.Find("撤销上次")
 	if !ok {
-		t.Fatal("找不到 回滚上次 按钮")
+		t.Fatal("找不到 撤销上次 按钮")
 	}
 	if undo.Y < 640 {
-		t.Errorf("回滚上次应在底部状态栏,实际 y=%.1f", undo.Y)
+		t.Errorf("撤销上次应在底部状态栏,实际 y=%.1f", undo.Y)
 	}
 }
 

@@ -334,7 +334,7 @@ func preflight(plan []RenameOp) {
 	// 名字本身是否合法(Windows 保留字符、结尾空格/点、保留设备名、控制
 	// 字符、路径分隔符)。这些以前一条都没查:预览里绿油油一片,执行时
 	// 要么在 Windows 上直接失败,要么更糟——被系统静默改名,于是日志里
-	// 记的名字和磁盘上的对不上,回滚也退不回去。
+	// 记的名字和磁盘上的对不上,撤销也退不回去。
 	for i := range plan {
 		op := &plan[i]
 		if op.Err != nil || op.OldName == op.NewName {
@@ -526,7 +526,7 @@ func ApplyPlanReport(plan []RenameOp, journal string, progress func(done, total 
 	if progress != nil {
 		progress(len(plan), len(plan))
 	}
-	// 只有真的改了东西才写日志。全失败时照常写会覆盖上一批的回滚记录,
+	// 只有真的改了东西才写日志。全失败时照常写会覆盖上一批的撤销记录,
 	// 用户既被"成功 0 失败 7"之外什么也没发生安抚,又失去了唯一的退路。
 	if len(ops) == 0 {
 		return rep, nil

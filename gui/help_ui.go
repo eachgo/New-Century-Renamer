@@ -63,7 +63,7 @@ func (a *app) helpDialog(c *ui.Context) {
 								"第二条先点预设或从空白添加步骤，再增加文件。"+
 								"两条都在预览处看到结果，点执行更名才真的改，改完可以撤回，然后接着调整步骤再来一轮。")
 							ui.Text(c, "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。"+
-								"改完不满意，底栏“回滚上次”整批退回去，回来接着调。").
+								"改完不满意，底栏“撤销上次”整批退回去，回来接着调。").
 								FontSize(12).TextColor(t.TextMuted)
 						})
 
@@ -121,7 +121,7 @@ func (a *app) helpDialog(c *ui.Context) {
 					// 组合键一律走 shortcutTip:这里以前把 "Ctrl+O" 写死,
 					// 而 macOS 上真正的修饰键是 ⌘——同一份说明在苹果机器上
 					// 教的是一个按不出来的键。
-					ui.Text(c, fmt.Sprintf("快捷键：%s 添加 · %s 执行 · %s 回滚 · %s 设置 · %s 帮助",
+					ui.Text(c, fmt.Sprintf("快捷键：%s 添加 · %s 执行 · %s 撤销 · %s 设置 · %s 帮助",
 						shortcutTip("Ctrl+O"), shortcutTip("Ctrl+Enter"), shortcutTip("Ctrl+Z"),
 						shortcutTip("Ctrl+,"), "F1")).
 						FontSize(12).TextColor(t.TextMuted)

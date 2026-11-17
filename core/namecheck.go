@@ -52,7 +52,7 @@ func CheckName(name string) string {
 		}
 	}
 	// 结尾的空格和点在 Windows 上会被静默吃掉:"改名"看起来成功了,
-	// 文件名却和预览里写的不一样,而回滚日志记的是带空格的那个名字。
+	// 文件名却和预览里写的不一样,而撤销日志记的是带空格的那个名字。
 	if strings.HasSuffix(name, " ") || strings.HasSuffix(name, ".") {
 		return "新名字不能以空格或点结尾（Windows 会把它悄悄去掉，改名结果和预览不一致）"
 	}

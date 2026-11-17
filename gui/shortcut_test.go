@@ -46,8 +46,8 @@ func TestShortcutDeleteDeletesAndCanUndo(t *testing.T) {
 	if len(a.steps) != 1 || a.steps[0].opLabel != "全部转小写" {
 		t.Fatalf("Delete 没删掉选中步骤: %d 步", len(a.steps))
 	}
-	if a.deletedStep.opLabel != "文件名转拼音" {
-		t.Fatalf("撤回槽里记的不是被删的那一步: %q", a.deletedStep.opLabel)
+	if last, ok := a.lastStepUndo(); !ok || last.step.opLabel != "文件名转拼音" {
+		t.Fatalf("撤回栈里记的不是被删的那一步: %+v", a.stepUndo)
 	}
 	a.undoDelete()
 	if len(a.steps) != 2 || a.steps[0].opLabel != "文件名转拼音" {

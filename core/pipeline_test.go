@@ -648,7 +648,7 @@ func TestCaseOnlyRenameNotConflict(t *testing.T) {
 	}
 }
 
-// 仅大小写不同时要真的改成功(两步改名),且能回滚
+// 仅大小写不同时要真的改成功(两步改名),且能撤销
 func TestCaseOnlyRenameApplies(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "THE UNION.mp3")
@@ -668,7 +668,7 @@ func TestCaseOnlyRenameApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "THE UNION.mp3")); err != nil {
-		t.Fatalf("回滚后原名不在: %v", err)
+		t.Fatalf("撤销后原名不在: %v", err)
 	}
 }
 

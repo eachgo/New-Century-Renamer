@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 全失败的一次执行不该覆盖上一批的回滚记录——那是用户唯一的退路。
+// 全失败的一次执行不该覆盖上一批的撤销记录——那是用户唯一的退路。
 func TestApplyPlanKeepsJournalWhenNothingApplied(t *testing.T) {
 	dir := t.TempDir()
 	journal := filepath.Join(dir, "j.json")
@@ -42,16 +42,16 @@ func TestApplyPlanKeepsJournalWhenNothingApplied(t *testing.T) {
 	if n := JournalCount(journal); n != 1 {
 		t.Fatalf("全失败后日志被覆盖了: 仍有 %d 条(应为上一批的 1 条)", n)
 	}
-	// 上一批仍然可以回滚
+	// 上一批仍然可以撤销
 	if err := UndoJournal(journal); err != nil {
-		t.Fatalf("上一批应仍可回滚: %v", err)
+		t.Fatalf("上一批应仍可撤销: %v", err)
 	}
 	if _, err := os.Stat(p1); err != nil {
-		t.Fatalf("回滚后旧名应回来: %v", err)
+		t.Fatalf("撤销后旧名应回来: %v", err)
 	}
 }
 
-// 空日志 / 不存在的日志都不能让界面以为"有东西可回滚"。
+// 空日志 / 不存在的日志都不能让界面以为"有东西可撤销"。
 func TestJournalCountEmpty(t *testing.T) {
 	dir := t.TempDir()
 	if n := JournalCount(filepath.Join(dir, "nope.json")); n != 0 {
@@ -66,7 +66,7 @@ func TestJournalCountEmpty(t *testing.T) {
 	}
 }
 
-// 回滚遇到单个失败要继续做完其余文件,并报出退了多少、哪些失败。
+// 撤销遇到单个失败要继续做完其余文件,并报出退了多少、哪些失败。
 func TestUndoJournalBestEffort(t *testing.T) {
 	dir := t.TempDir()
 	journal := filepath.Join(dir, "j.json")
@@ -84,7 +84,7 @@ func TestUndoJournalBestEffort(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := JournalCount(journal); n != 3 {
-		t.Fatalf("应有 3 条待回滚, got %d", n)
+		t.Fatalf("应有 3 条待撤销, got %d", n)
 	}
 
 	// 手动制造一个"改过的文件不见了"的失败:b-new.txt 被删掉
@@ -93,14 +93,14 @@ func TestUndoJournalBestEffort(t *testing.T) {
 	}
 	err := UndoJournal(journal)
 	if err == nil {
-		t.Fatal("有文件回滚不了时应当报错")
+		t.Fatal("有文件撤销不了时应当报错")
 	}
 	ue, ok := err.(*UndoError)
 	if !ok {
 		t.Fatalf("应返回 *UndoError, got %T: %v", err, err)
 	}
 	if ue.Done != 2 {
-		t.Errorf("应已回滚 2 个, got %d (%v)", ue.Done, err)
+		t.Errorf("应已撤销 2 个, got %d (%v)", ue.Done, err)
 	}
 	if len(ue.Failed) != 1 || !strings.Contains(ue.Failed[0], "b-new.txt") {
 		t.Errorf("失败清单应点名 b-new.txt, got %v", ue.Failed)
@@ -108,11 +108,11 @@ func TestUndoJournalBestEffort(t *testing.T) {
 	// 其余两个真的回去了
 	for _, n := range []string{"a.txt", "c.txt"} {
 		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
-			t.Errorf("%s 应当已回滚: %v", n, err)
+			t.Errorf("%s 应当已撤销: %v", n, err)
 		}
 	}
-	// 日志已标记为回滚过,再点一次不会再动任何文件
+	// 日志已标记为撤销过,再点一次不会再动任何文件
 	if n := JournalCount(journal); n != 1 {
-		t.Errorf("回滚后日志应只剩失败的那 1 条, got %d", n)
+		t.Errorf("撤销后日志应只剩失败的那 1 条, got %d", n)
 	}
 }

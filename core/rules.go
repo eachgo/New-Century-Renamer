@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -317,7 +318,7 @@ func newReplaceRule(args []string) (Rule, error) {
 	// 空查找串是"匹配所有东西"的一种写法:strings.ReplaceAll 会把它
 	// 插到每个字符之间,正则在每个位置匹配一次。两种都不是用户想要的
 	// ——预览会显示每个文件名被切碎成一堆替换文本,执行出来就是一堆
-	// 谁也不认识的名字,而且回滚日志记的也是那堆名字。宁可报错。
+	// 谁也不认识的名字,而且撤销日志记的也是那堆名字。宁可报错。
 	if args[0] == "" {
 		return nil, fmt.Errorf("查找内容不能为空（空字符串会匹配每个字符之间）")
 	}
@@ -325,7 +326,10 @@ func newReplaceRule(args []string) (Rule, error) {
 	if val(args, 2) == "regex" {
 		re, err := regexp.Compile(args[0])
 		if err != nil {
-			return nil, err
+			// 正则写错是这里唯一会失败的地方,而 Go 的原话是英文的
+			// "error parsing regexp: missing closing ]: ..."。见
+			// regexErrText:翻译成能照着改的中文,翻不出来的原样返回。
+			return nil, errors.New(regexErrText(err))
 		}
 		r.re = re
 	}

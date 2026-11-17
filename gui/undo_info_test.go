@@ -11,7 +11,7 @@ import (
 	"ncreamer/core"
 )
 
-// 「回滚上次」不能是三个字的哑按钮:它得说清是哪一次、几个文件。
+// 「撤销上次」不能是三个字的哑按钮:它得说清是哪一次、几个文件。
 // 日志里本来就写着时间与完整清单,以前 GUI 一次都没读过。
 func TestUndoButtonShowsWhatItWillUndo(t *testing.T) {
 	dir := t.TempDir()
@@ -32,12 +32,12 @@ func TestUndoButtonShowsWhatItWillUndo(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	if !tt.HasText("回滚上次（3 个）") {
+	if !tt.HasText("撤销上次（3 个）") {
 		t.Fatalf("回滚按钮没说明要回滚几个文件: %v", tt.Texts())
 	}
 }
 
-// 点了「回滚上次」不能立刻动磁盘:先挂确认态,再点一次才真回滚。
+// 点了「撤销上次」不能立刻动磁盘:先挂确认态,再点一次才真撤销。
 // 回滚和清空列表一样是"动磁盘"的动作,不该一键生效。
 func TestUndoNeedsConfirm(t *testing.T) {
 	dir := t.TempDir()
@@ -58,7 +58,7 @@ func TestUndoNeedsConfirm(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	if err := tt.Click("回滚上次（1 个）"); err != nil {
+	if err := tt.Click("撤销上次（1 个）"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
@@ -68,7 +68,7 @@ func TestUndoNeedsConfirm(t *testing.T) {
 	if !a.confirmUndo {
 		t.Fatal("第一次点击未进入确认态")
 	}
-	if err := tt.Click("确认回滚 1 个?"); err != nil {
+	if err := tt.Click("确认撤销 1 个?"); err != nil {
 		t.Fatalf("找不到确认按钮: %v", err)
 	}
 	for i := 0; i < 20; i++ {
@@ -107,7 +107,7 @@ func contains(s, sub string) bool {
 }
 
 // 日志默认路径必须是绝对的:相对路径跟着进程工作目录走,
-// 换个目录启动就"回滚上次"不可用,或者回滚到别处记录里的文件。
+// 换个目录启动就"撤销上次"不可用,或者撤销到别处记录里的文件。
 func TestDefaultJournalIsAbsolute(t *testing.T) {
 	p := defaultJournalPath()
 	if !filepath.IsAbs(p) {

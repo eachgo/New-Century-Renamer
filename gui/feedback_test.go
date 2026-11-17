@@ -279,14 +279,16 @@ func TestUndoSlotIsClearedNotJustHidden(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 	a.deleteStep(0)
-	a.deletedAt = time.Now().Add(-undoDeleteWindow - time.Second)
+	last, _ := a.lastStepUndo()
+	last.at = time.Now().Add(-undoDeleteWindow - time.Second)
+	a.stepUndo[len(a.stepUndo)-1] = last
 	tt.Frame()
-	if a.deletedStep.opUID != 0 {
-		t.Fatal("过期后撤回槽该清空")
+	if len(a.stepUndo) != 0 {
+		t.Fatal("过期后撤回栈该清空")
 	}
 	// 再删一步:上一次的残留不该被撤回回来
 	a.deleteStep(0)
-	if a.deletedStep.opLabel != "全部转小写" {
-		t.Fatalf("撤回槽记错了: %q", a.deletedStep.opLabel)
+	if last, ok := a.lastStepUndo(); !ok || last.step.opLabel != "全部转小写" {
+		t.Fatalf("撤回栈记错了: %+v", a.stepUndo)
 	}
 }

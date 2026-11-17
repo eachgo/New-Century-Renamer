@@ -36,7 +36,7 @@ func TestAppliedBannerShowsWhenAndHowMany(t *testing.T) {
 	if !tt.HasText("2 个文件") {
 		t.Fatalf("横幅没说清改了几个: %v", tt.Texts())
 	}
-	if !tt.HasText("撤销这次") {
+	if !tt.HasText("撤销上次") {
 		t.Fatalf("横幅上没有撤销入口: %v", tt.Texts())
 	}
 }

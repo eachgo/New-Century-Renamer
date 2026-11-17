@@ -100,12 +100,12 @@ func TestDisabledButtonIgnoresClicks(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 800)
 	tt.Frame()
 
-	if err := tt.Click("回滚上次"); err != nil {
-		t.Fatalf("点不到「回滚上次」: %v", err)
+	if err := tt.Click("撤销上次"); err != nil {
+		t.Fatalf("点不到「撤销上次」: %v", err)
 	}
 	tt.Frame()
 	if a.confirmUndo {
-		t.Error("没有可回滚的记录时点「回滚上次」,却进入了确认态——这颗按钮是禁用的,不该响应")
+		t.Error("没有可撤销的记录时点「撤销上次」,却进入了确认态——这颗按钮是禁用的,不该响应")
 	}
 
 	// 清单是空的:导出清单同理。
@@ -292,7 +292,7 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 				{"导入清单…", true, false},
 				{"添加文件夹…", true, true},
 				{"清空列表", false, true},
-				{"回滚上次", false, true},
+				{"撤销上次", false, true},
 				{"执行更名", false, true},
 				{"多选", false, true},
 			},
@@ -307,7 +307,7 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 				{"导出清单…", true, false},
 				{"导入清单…", true, false},
 				{"清空列表", true, true},
-				{"回滚上次", false, true},
+				{"撤销上次", false, true},
 				{"执行更名", true, false},
 				{"多选", true, true},
 			},
@@ -322,7 +322,7 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 				{"导出清单…", true, false},
 				{"导入清单…", true, false},
 				{"清空列表", true, true},
-				{"回滚上次", false, true},
+				{"撤销上次", false, true},
 				{"执行更名", false, true},
 				{"多选", false, true},
 			},
@@ -392,7 +392,7 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 // rectHasColor 判断这颗按钮自己的范围里,有没有一个像素正好是这个颜色。
 //
 // 外扩量按按钮的内边距(Padding(8, 12))定:文字左缘到外框是 12,上下是 8,
-// 各留 2 DIP 给抗锯齿。不能多扩——「执行更名」左边紧挨「回滚上次」,扩到
+// 各留 2 DIP 给抗锯齿。不能多扩——「执行更名」左边紧挨「撤销上次」,扩到
 // 16 DIP 就会把邻居的灰框算成自己的。
 func rectHasColor(img *image.RGBA, b ui.Rect, want ui.Color) bool {
 	x0, x1 := int(b.X)-14, int(b.X+b.W)+14

@@ -58,13 +58,13 @@ func TestPartialUndoKeepsFailedRowOnNewName(t *testing.T) {
 	if filepath.Base(a.files[1].path) != "B-elsewhere.txt" {
 		t.Fatalf("没退成的那行被改成了 %s", a.files[1].path)
 	}
-	// 状态里必须说清是部分完成,而不是"回滚失败"或"已回滚 2 个"
-	if want := "回滚部分完成"; !strings.Contains(a.status, want) {
+	// 状态里必须说清是部分完成,而不是"撤销失败"或"已撤销 2 个"
+	if want := "撤销部分完成"; !strings.Contains(a.status, want) {
 		t.Fatalf("status = %q, 应含 %q", a.status, want)
 	}
 }
 
-// 横幅里的「撤销这次」和底栏的「回滚上次」必须是同一套防错:
+// 横幅里的「撤销上次」和底栏的「撤销上次」是同一个动作、同一套防错:
 // 同一个动作有两套强度,用户迟早会在弱的那一侧误触。
 func TestBannerUndoAlsoNeedsConfirm(t *testing.T) {
 	dir := t.TempDir()
@@ -86,7 +86,7 @@ func TestBannerUndoAlsoNeedsConfirm(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		tt.Frame()
 	}
-	if err := tt.Click("撤销这次"); err != nil {
+	if err := tt.Click("撤销上次"); err != nil {
 		t.Fatalf("横幅里找不到撤销按钮: %v", err)
 	}
 	tt.Frame()
@@ -96,7 +96,7 @@ func TestBannerUndoAlsoNeedsConfirm(t *testing.T) {
 	if !a.confirmUndo {
 		t.Fatal("横幅的撤销没有走确认态")
 	}
-	if err := tt.Click("确认回滚 1 个?"); err != nil {
+	if err := tt.Click("确认撤销 1 个?"); err != nil {
 		t.Fatalf("横幅里找不到确认按钮: %v", err)
 	}
 	for i := 0; i < 20; i++ {

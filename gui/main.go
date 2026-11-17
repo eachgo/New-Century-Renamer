@@ -48,7 +48,7 @@ type app struct {
 	busy      bool
 	busyAI    bool      // busy because an AI (network) call is in flight — show spinner
 	busyStart time.Time // when the current busy op began (for the elapsed timer)
-	applied   bool      // true after 执行/回滚, until steps or files change
+	applied   bool      // true after 执行/撤销, until steps or files change
 	// appliedAt/appliedCount 是"刚才这一批"的时间与成功数,执行完的横幅用它。
 	// 一个 applied 布尔量说明不了"什么时候改了哪一批"。
 	appliedAt    time.Time
@@ -93,21 +93,33 @@ type app struct {
 	seedPick      ui.Color            // theme seed when not following
 	confirmClear  bool                // 清空列表 needs a second click
 	confirmAt     time.Time           // 二次确认的截止时间:挂太久自动收回
-	// deletedStep / deletedAt 是"刚删掉的那一步"和删除时刻。
+	// stepUndo 是"从流水线里拿掉的步骤"的栈,最近一批在末尾。
 	//
 	// 删除单个步骤原来和"清空列表"一样要点两下,但两者差着数量级:
 	// 清空是"一整批文件从列表里消失",删一步是"从管道里拿掉一条,想
 	// 加回来点一下就行"。同样的红色二次确认套在两件事上,用久了会变成
 	// "看到红按钮就点第二下"——防错反而失效。所以低危的这个改成可撤销:
 	// 删完在步骤区顶部留一条「已删除「X」 撤回」,几秒后自己消失。
-	// 高危的两个(回滚、清空列表)仍然保留二次确认。
-	deletedStep   guiRule
-	deletedAt     time.Time
-	deletedIdx    int
+	// 高危的两个(撤销、清空列表)仍然保留二次确认。
+	//
+	// 槽改成栈:原来只有一个槽,连着删两步第一步就永远回不来——而
+	// "删错了"从来不是一次性的,人多半是连删几下之后才发现删过头。
+	stepUndo []stepUndo
+	// clearedFiles 是"刚被清空的那一整个文件清单"。
+	//
+	// 清空列表原来只有"再点一下"的确认,点完就没了:31 个文件得重新
+	// 拖一遍,连添加顺序和当时的排序也回不来。删一步能撤回,清空一整
+	// 表更该能——保存的是整份快照,不是"再猜一遍刚才有什么"。
+	clearedFiles  []fileInfo
+	clearedOps    []core.RenameOp
+	clearedOrder  int
+	clearedSort   string
+	clearedDesc   bool
+	clearedAt     time.Time
 	confirmChosen bool // 删除所选 needs a second click
-	confirmUndo   bool // 回滚上次 needs a second click
+	confirmUndo   bool // 撤销上次 needs a second click
 	// confirmApply 是"执行更名"的二次确认。它是全产品唯一不可逆的
-	// 写盘动作,却原来反而是唯一没有确认的——清空列表和回滚都要点两下。
+	// 写盘动作,却原来反而是唯一没有确认的——清空列表和撤销都要点两下。
 	// 守卫装错了地方:越是改磁盘的越该拦。
 	confirmApply      bool
 	saveErr           string // settings dialog save error, shown in-dialog
@@ -130,7 +142,6 @@ type app struct {
 	// 在下边缘,h=0)。连续求几帧直到布局跟上。
 	revealLeft int
 	stepList   ui.ListState
-	palSel     string            // last catalog op added, highlighted in the list
 	stepUID    int               // 自增步骤身份
 	chosen     ui.Selection[int] // multi-selected step uids
 	pickMode   bool              // 显示行内多选圆点(触摸入口)
@@ -189,6 +200,10 @@ type app struct {
 	// 消失,看起来像"预览全没了"却又不说是为什么。现在留着原因,
 	// 右栏顶部明说,每行也标一句"等修好步骤"。
 	previewErr string
+	// previewErrStep 是 previewErr 指向的那一步(下标),-1 表示认不出
+	// 是哪一步。有它才能给一个「去修这一步」的按钮:只说"第 3 步有
+	// 问题",用户还得自己在列表里数到第三行。
+	previewErrStep int
 	// importPending 是"已经读进内存、还没落盘"的导入设置。
 	// 导入是整份替换:文件里没写的字段会回到默认值,API Key 会被清空,
 	// 日志路径会被改掉——这些都不该在点下"导入设置…"的那一下发生。
@@ -205,7 +220,7 @@ type app struct {
 	pendingFlow flow
 	confirmFlow bool
 	// recoveredSteps 是刚被流程套用替换掉的旧步骤,供「撤回」整批放回。
-	// 与 deletedStep(单步可撤回)同一条思路:删一步能撤回,换掉一整条
+	// 与 stepUndo(单步可撤回)同一条思路:删一步能撤回,换掉一整条
 	// 流水线凭什么不能。
 	recoveredSteps []guiRule
 	recoveredAt    time.Time
@@ -368,7 +383,7 @@ func (a *app) view(c *ui.Context) {
 			})
 		// ③ 应用级底部状态栏:这里是"对整个软件"的操作与反馈,与右栏
 		// "对文件列表"的操作分开。左边是警示/状态文字(多少将更名、报错),
-		// 右边是主操作"执行更名"和"回滚上次"——执行是主按钮实心,回滚镂空。
+		// 右边是主操作"执行更名"和"撤销上次"——执行是主按钮实心,撤销镂空。
 		a.statusBar(c)
 	})
 	a.settingsDialog(c)
@@ -456,14 +471,14 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		ui.Spacer(c)
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
-		// "回滚上次"必须说清是"哪一次、几个文件"。只写三个字,用户不
+		// "撤销上次"必须说清是"哪一次、几个文件"。只写三个字,用户不
 		// 知道自己即将撤销的是刚才那批,还是上周某个目录里的一批。
 		sum, canUndo := a.journalInfo()
 		if a.confirmUndo && a.confirmStale() {
 			a.dropConfirm()
 		}
 		if a.confirmUndo {
-			label := fmt.Sprintf("确认回滚 %d 个?", len(sum.Names))
+			label := fmt.Sprintf("确认撤销 %d 个?", len(sum.Names))
 			confirm := ui.ButtonBase(c).Radius(6).Padding(8, 12).Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 			if confirm.Hovered() {
 				confirm = confirm.Background(t.Danger.Alpha(0.85))
@@ -474,9 +489,9 @@ func (a *app) statusBar(c *ui.Context) {
 				go a.undo()
 			}
 		} else {
-			undoLabel := "回滚上次"
+			undoLabel := "撤销上次"
 			if canUndo {
-				undoLabel = fmt.Sprintf("回滚上次（%d 个）", len(sum.Names))
+				undoLabel = fmt.Sprintf("撤销上次（%d 个）", len(sum.Names))
 			}
 			undoBtn := outlinedButton(c, undoLabel, !a.busy && canUndo).Tooltip(a.undoTip(sum))
 			if undoBtn.Clicked() {
@@ -508,7 +523,7 @@ func (a *app) statusBar(c *ui.Context) {
 			ui.Text(c, why).FontSize(12).TextColor(t.TextMuted).SingleLine().
 				Tooltip("含 AI 步骤时不自动重算（会联网，一改就发请求）。点右边「预览」按当前步骤重新算一遍，再执行。")
 		}
-		// 执行更名:动磁盘的一次操作,和"清空列表""回滚上次"同一套语言——
+		// 执行更名:动磁盘的一次操作,和"清空列表""撤销上次"同一套语言——
 		// 第一下只挂确认态,第二下才真改。确认态用实心主色而不是红:它
 		// 不是危险动作,只是不可逆;红色留给"会删东西"的。
 		//
@@ -617,6 +632,18 @@ func (a *app) catalogHasMore() bool {
 
 // ---- left pane: grouped catalog of named operations ----
 
+// catalogSel 返回左栏目录里该高亮的那一条:当前选中步骤对应的功能。
+//
+// 派生而不是另存一份:两套高亮迟早会各说各话(见 catalogView 里的注释)。
+// 选中项不存在、或者那一步不是从目录里加的(opID 为空)时返回空串,
+// 目录里就一条都不亮——那正是实情:此刻没有哪条规则"正在被改"。
+func (a *app) catalogSel() string {
+	if a.stepSel < 0 || a.stepSel >= len(a.steps) {
+		return ""
+	}
+	return a.steps[a.stepSel].opID
+}
+
 func (a *app) catalogView(c *ui.Context) {
 	t := c.Theme()
 	// 过滤:34 项 11 组正落在"需要搜索"的量级(Colborne 第 5 章专讲
@@ -650,6 +677,14 @@ func (a *app) catalogView(c *ui.Context) {
 			groups = append(groups, d.group)
 		}
 	}
+	// 目录高亮跟着"当前选中的那一步"走,不再自己记一份"刚点了哪条"。
+	//
+	// 原来 palSel 与 stepSel 是两套状态:点步骤行换的是 stepSel,左栏
+	// 却还停在很久以前加进来的那条上——两处高亮说着两件不同的事,用户
+	// 没法从左边读出"我正在改的是哪条规则"。而"刚加进来的那条"本来就
+	// 是选中项(加完 a.stepSel 指向新行),派生出来的结果一样,少一份
+	// 要同步的状态。
+	sel := a.catalogSel()
 	// 钉住的条目另起一组放在最前,名字叫「常用」。
 	//
 	// 不把它们从原分组里搬走:一个条目可以同时在「常用」和「转换」里
@@ -773,7 +808,7 @@ func (a *app) catalogView(c *ui.Context) {
 					// (实测条目 Description 为空)。
 					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0).Tooltip(d.desc)
 					switch {
-					case a.palSel == d.id:
+					case sel == d.id:
 						item.Background(selBg)
 					case item.Hovered():
 						item.Background(t.SurfaceHover)
@@ -787,14 +822,14 @@ func (a *app) catalogView(c *ui.Context) {
 						// 选中时白——图标即类别指示,扫色即知
 						if ic := opIcon(d.icon); ic != nil {
 							ie := ui.Icon(c, ic).FontSize(14)
-							if a.palSel == d.id {
+							if sel == d.id {
 								ie.TextColor(selFg)
 							} else {
 								ie.TextColor(a.currentTheme().groupColorFor(d.group, a.isDark()))
 							}
 						}
 						labelCol := ui.Color{}
-						if a.palSel == d.id {
+						if sel == d.id {
 							labelCol = selFg
 						}
 						// 说明走 Tooltip:目录要在一屏里放下 32 条,每条占两行
@@ -835,7 +870,6 @@ func (a *app) catalogView(c *ui.Context) {
 						a.stepSel = len(a.steps) - 1
 						a.stepScrollTo = a.stepSel
 						a.revealLeft = 8
-						a.palSel = d.id
 					}
 				}
 			}
@@ -980,6 +1014,57 @@ func (a *app) rangeLegend(c *ui.Context, t *ui.Theme, dt *derivedTheme) {
 
 // ---- middle pane: ordered task steps + selected step's detail ----
 
+// undoStrips 画中栏顶部那两条"刚发生了什么、怎么退回去"的提示。
+//
+// 位置选在列表上方而不是底栏:动作的效果就发生在这一栏里(那一行不见了、
+// 整条流水线被换掉了),退路的入口也该在同一个视线落点上。底栏已经承担
+// 了"执行/撤销"这类全局动作,再塞一条局部撤销会让"哪个按钮撤销哪个
+// 东西"变成要读文字才能分辨。
+func (a *app) undoStrips(c *ui.Context, t *ui.Theme) {
+	if last, ok := a.lastStepUndo(); ok && !a.undoDeleteExpired() {
+		// 栈里多于一步时,条上要说出"还有几步",并给出"全部恢复":
+		// 连删三下之后一步步点撤回,等于让用户把刚才的误操作再演一遍。
+		label := fmt.Sprintf("已删除「%s」", last.step.opLabel)
+		if n := len(a.stepUndo); n > 1 {
+			label = fmt.Sprintf("已删除「%s」等 %d 步", last.step.opLabel, n)
+		}
+		ui.Row(c).FillWidth().Gap(8).Padding(8, 10).Radius(6).
+			Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).
+				FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
+			if n := len(a.stepUndo); n > 1 {
+				if frameButton(c, fmt.Sprintf("全部撤回（%d）", n), true).Radius(6).Clicked() {
+					a.undoAllDeleted()
+				}
+			}
+			if frameButton(c, "撤回", true).Radius(6).Clicked() {
+				a.undoDelete()
+			}
+		})
+	} else if len(a.stepUndo) > 0 {
+		// 过期的栈要在帧里清掉,否则它会在下一次删除之前一直占着
+		// "有东西可撤回"这个状态。
+		a.clearDeleted()
+	}
+	// 流程套用替换掉整条流水线时的撤回条。与删单步同一个位置、同一个
+	// 时限:被换掉的是一整批,更该给一条明确的退路。
+	if len(a.recoveredSteps) > 0 {
+		if a.flowReplaceExpired() {
+			a.recoveredSteps = nil
+			a.recoveredAt = time.Time{}
+		} else {
+			ui.Row(c).FillWidth().Gap(8).Padding(8, 10).Radius(6).
+				Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, fmt.Sprintf("已替换原来的 %d 步", len(a.recoveredSteps))).
+					FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
+				if frameButton(c, "撤回", true).Radius(6).Clicked() {
+					a.undoFlowReplace()
+				}
+			})
+		}
+	}
+}
+
 func (a *app) stepsView(c *ui.Context) {
 	t := c.Theme()
 	if a.stepSel >= len(a.steps) {
@@ -1050,6 +1135,10 @@ func (a *app) stepsView(c *ui.Context) {
 		})
 		// 选中行自绘浅色底(Selection),不用 List 的深 Accent 绘制:
 		// 选中时行内的彩色胶囊必须保持可读
+		// 撤回条要在两个分支之上画:把最后一步删掉之后清单就空了,而
+		// "刚删掉一步"恰恰是用户最需要退路的那一刻——把它留在 else 分支
+		// 里,删光步骤的同时退路也一起消失。
+		a.undoStrips(c, t)
 		if len(a.steps) == 0 {
 			a.intentCards(c)
 		} else {
@@ -1090,43 +1179,6 @@ func (a *app) stepsView(c *ui.Context) {
 			// 仍由行首色条表达)、参数胶囊、再是编号。
 			rowW := a.splitM - 20
 			showGroupChip, showSummary := rowW >= 300, rowW >= 210
-			// 撤回条:刚删掉一步时出现在列表上方,几秒后自己消失。
-			//
-			// 位置选在列表顶部而不是底栏:删除这个动作的效果就发生在
-			// 列表里(那一行不见了),撤回的入口也该在同一个视线落点上。
-			// 底栏已经承担了"执行/回滚"这类全局动作,再塞一条局部撤销
-			// 会让"哪个按钮撤销哪个东西"变得要读文字才能分辨。
-			if a.deletedStep.opUID != 0 && !a.undoDeleteExpired() {
-				ui.Row(c).FillWidth().Gap(8).Padding(8, 10).Radius(6).
-					Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, fmt.Sprintf("已删除「%s」", a.deletedStep.opLabel)).
-						FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
-					if frameButton(c, "撤回", true).Radius(6).Clicked() {
-						a.undoDelete()
-					}
-				})
-			} else if a.deletedStep.opUID != 0 {
-				// 过期的槽要在帧里清掉,否则它会在下一次删除之前一直
-				// 占着"有东西可撤回"这个状态。
-				a.clearDeleted()
-			}
-			// 流程套用替换掉整条流水线时的撤回条。与删单步同一个位置、
-			// 同一个时限:被换掉的是一整批,更该给一条明确的退路。
-			if len(a.recoveredSteps) > 0 {
-				if a.flowReplaceExpired() {
-					a.recoveredSteps = nil
-					a.recoveredAt = time.Time{}
-				} else {
-					ui.Row(c).FillWidth().Gap(8).Padding(8, 10).Radius(6).
-						Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, fmt.Sprintf("已替换原来的 %d 步", len(a.recoveredSteps))).
-							FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
-						if frameButton(c, "撤回", true).Radius(6).Clicked() {
-							a.undoFlowReplace()
-						}
-					})
-				}
-			}
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
 					// 图例:色条只在真有范围时出现,所以图例也只列此刻生效的那几种。
@@ -1312,7 +1364,7 @@ func (a *app) stepsView(c *ui.Context) {
 						// 同一套红按钮 + 两次点击,把两种不同量级的动作
 						// 说成一样重——用久了人会形成"看到红就点第二下"
 						// 的肌肉记忆,那时确认框已经不再拦任何东西。
-						// 真正不可逆的两个(回滚、清空列表)仍然保留确认。
+						// 真正不可逆的两个(撤销、清空列表)仍然保留确认。
 						if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
 							a.deleteStep(a.stepSel)
 						}
@@ -1408,25 +1460,6 @@ func (a *app) moveSteps(rows []int, to int) {
 	a.steps = out
 }
 
-// deleteChosen removes every multi-selected step.
-func (a *app) deleteChosen() {
-	drop := map[int]bool{}
-	for uid := range a.chosen.All() {
-		drop[uid] = true
-	}
-	kept := a.steps[:0]
-	for _, s := range a.steps {
-		if drop[s.opUID] {
-			continue
-		}
-		kept = append(kept, s)
-	}
-	n := len(a.steps) - len(kept)
-	a.steps = kept
-	a.chosen.Clear()
-	a.status = fmt.Sprintf("已删除 %d 个步骤", n)
-}
-
 // swapSteps 交换第 i 步与第 j 步。
 // 选中必须跟着"那一步"走,而不是跟着"那个位置":把第 2 步上移之后
 // 还停在第 2 行,用户再点一次"上移"动的就是原来第 1 步了。
@@ -1450,34 +1483,130 @@ func (a *app) swapSteps(i, j int) {
 	}
 }
 
-// deleteStep 删掉第 i 步,并把它记进撤回槽。
+// stepUndo 是撤回栈里的一项:被拿掉的那一步、它原来的位置、以及删除时刻。
+//
+// 位置必须跟着一起存:撤回的意义是"放回原处",不是"接到末尾"。删掉
+// 管道中间那一步之后,末尾已经不是它该待的地方了。
+type stepUndo struct {
+	step guiRule
+	idx  int
+	at   time.Time
+}
+
+// pushStepUndo 把一步压进撤回栈。
+func (a *app) pushStepUndo(st guiRule, idx int) {
+	a.stepUndo = append(a.stepUndo, stepUndo{step: st, idx: idx, at: time.Now()})
+}
+
+// lastStepUndo 取栈顶(最近一次删除)。ok=false 表示栈空。
+func (a *app) lastStepUndo() (stepUndo, bool) {
+	if len(a.stepUndo) == 0 {
+		return stepUndo{}, false
+	}
+	return a.stepUndo[len(a.stepUndo)-1], true
+}
+
+// deleteStep 删掉第 i 步,并把它压进撤回栈。
 //
 // 鼠标的「删除」和键盘的 Delete 走同一条路——两条路径各写一遍,迟早
-// 会长歪。删除本身不再需要二次确认(见 deletedStep 的注释),所以这里
+// 会长歪。删除本身不再需要二次确认(见 stepUndo 的注释),所以这里
 // 必须留下足够的信息把它原样放回去:内容、位置、以及选中哪一行。
 func (a *app) deleteStep(i int) {
 	if i < 0 || i >= len(a.steps) {
 		return
 	}
-	a.deletedStep = a.steps[i]
-	a.deletedIdx = i
-	a.deletedAt = time.Now()
+	st := a.steps[i]
+	a.pushStepUndo(st, i)
 	a.steps = append(a.steps[:i], a.steps[i+1:]...)
 	if a.stepSel >= len(a.steps) {
 		a.stepSel = len(a.steps) - 1
 	}
-	a.status = fmt.Sprintf("已删除「%s」，可以撤回", a.deletedStep.opLabel)
+	if n := len(a.stepUndo); n > 1 {
+		a.status = fmt.Sprintf("已删除「%s」，连这次共 %d 步可以撤回", st.opLabel, n)
+	} else {
+		a.status = fmt.Sprintf("已删除「%s」，可以撤回", st.opLabel)
+	}
 	// 界面只在有事件时重画。撤回条要在几秒后自己消失,而用户删完
 	// 通常就撒手了——没有事件,那条就会一直挂在屏幕上。
 	a.scheduleUndoExpiry()
 }
 
-// undoDelete 把刚删掉的那一步放回原位并选中它。
-func (a *app) undoDelete() {
-	if a.deletedStep.opUID == 0 {
+// deleteChosen 删掉多选的每一步,并把它们全部压进撤回栈。
+//
+// 批量删除原来是一条死路:31 步里点错两个勾,删完没有任何退路。既然
+// 单步删除可以撤回,批量删除更该可以——被一次拿掉的东西更多。
+func (a *app) deleteChosen() {
+	if a.chosen.Len() == 0 {
 		return
 	}
-	i := a.deletedIdx
+	drop := map[int]bool{}
+	for uid := range a.chosen.All() {
+		drop[uid] = true
+	}
+	// 先记下每个被删项的原下标,压栈时按下标**降序**:撤回是从栈顶往回
+	// 放的(后删的先归位),降序压进去正好让下标小的先归位。删 [B,C] 时
+	// 先插回 B 再插回 C 才得到 [A,B,C,D];反过来的话 C 先落位,插入 B
+	// 又把它顶到后面去,恢复出来是 [A,B,D,C]。
+	var dropped []stepUndo
+	kept := make([]guiRule, 0, len(a.steps))
+	for i, s := range a.steps {
+		if drop[s.opUID] {
+			dropped = append(dropped, stepUndo{step: s, idx: i, at: time.Now()})
+			continue
+		}
+		kept = append(kept, s)
+	}
+	for i := len(dropped) - 1; i >= 0; i-- {
+		a.stepUndo = append(a.stepUndo, dropped[i])
+	}
+	n := len(a.steps) - len(kept)
+	a.steps = kept
+	a.chosen.Clear()
+	if a.stepSel >= len(a.steps) {
+		a.stepSel = len(a.steps) - 1
+	}
+	if n == 0 {
+		a.status = "没有选中任何步骤"
+		return
+	}
+	a.status = fmt.Sprintf("已删除 %d 个步骤，可以撤回", n)
+	a.scheduleUndoExpiry()
+}
+
+// undoDelete 把栈顶那一步放回原位并选中它。
+func (a *app) undoDelete() {
+	last, ok := a.lastStepUndo()
+	if !ok {
+		return
+	}
+	a.stepUndo = a.stepUndo[:len(a.stepUndo)-1]
+	a.restoreStep(last)
+	a.status = fmt.Sprintf("已恢复「%s」", last.step.opLabel)
+	if n := len(a.stepUndo); n > 0 {
+		a.status += fmt.Sprintf("，还有 %d 步可以撤回", n)
+	}
+}
+
+// undoAllDeleted 把撤回栈里的每一步都放回去。
+//
+// 从栈顶往回放:栈顶是最后删的、下标最大,先归位它,前面那些的下标
+// 才仍然指向它们原来的位置。
+func (a *app) undoAllDeleted() {
+	if len(a.stepUndo) == 0 {
+		return
+	}
+	n := len(a.stepUndo)
+	for len(a.stepUndo) > 0 {
+		last := a.stepUndo[len(a.stepUndo)-1]
+		a.stepUndo = a.stepUndo[:len(a.stepUndo)-1]
+		a.restoreStep(last)
+	}
+	a.status = fmt.Sprintf("已恢复 %d 步", n)
+}
+
+// restoreStep 把一项撤回内容插回它原来的位置并选中它。
+func (a *app) restoreStep(u stepUndo) {
+	i := u.idx
 	if i < 0 {
 		i = 0
 	}
@@ -1486,30 +1615,101 @@ func (a *app) undoDelete() {
 	}
 	a.steps = append(a.steps, guiRule{})
 	copy(a.steps[i+1:], a.steps[i:])
-	a.steps[i] = a.deletedStep
+	a.steps[i] = u.step
 	a.stepSel = i
-	a.status = fmt.Sprintf("已恢复「%s」", a.deletedStep.opLabel)
-	a.clearDeleted()
+	a.stepScrollTo = i
+	a.revealLeft = 8
 }
 
-// clearDeleted 清掉撤回槽。
-func (a *app) clearDeleted() {
-	a.deletedStep = guiRule{}
-	a.deletedAt = time.Time{}
-	a.deletedIdx = 0
+// focusStep 把某一步选中并滚进视野,让右侧编辑器直接对着它。
+//
+// 「去修这一步」要的是"人已经站在那个编辑器前面",不是"列表里多亮了一
+// 行":中栏可能滚到别处去了,选中却看不见。
+func (a *app) focusStep(i int) {
+	if i < 0 || i >= len(a.steps) {
+		return
+	}
+	a.stepSel = i
+	a.stepScrollTo = i
+	a.revealLeft = 8
+	a.status = fmt.Sprintf("已选中第 %d 步，右边可以改参数", i+1)
+}
+
+// clearDeleted 清空撤回栈。
+func (a *app) clearDeleted() { a.stepUndo = nil }
+
+// undoClear 把刚被清空的文件清单整份放回去。
+//
+// 恢复的不只是"哪几个文件":添加顺序(order)、序号计数器、当时的排序
+// 依据都一起回来。只把文件塞回去的话,用户看到的是"文件回来了,但编号
+// 和顺序全乱了"——那和没恢复差不多。
+func (a *app) undoClear() {
+	if len(a.clearedFiles) == 0 {
+		return
+	}
+	n := len(a.clearedFiles)
+	a.files = a.clearedFiles
+	a.ops = a.clearedOps
+	a.nextOrder = a.clearedOrder
+	a.sortBy, a.sortDesc = a.clearedSort, a.clearedDesc
+	a.clearedFiles, a.clearedOps = nil, nil
+	a.clearedOrder = 0
+	a.clearedSort, a.clearedDesc = "", false
+	a.clearedAt = time.Time{}
+	a.fileSel = -1
+	a.assignExtColors(a.currentTheme())
+	a.status = fmt.Sprintf("已恢复 %d 个文件", n)
+	a.update()
+}
+
+// clearUndoExpired reports whether the clear-undo offer has outlived its window.
+func (a *app) clearUndoExpired() bool {
+	return !a.clearedAt.IsZero() && time.Since(a.clearedAt) > undoDeleteWindow
+}
+
+// dropClearUndo 丢掉"刚清空"的快照。清单被别的东西改过之后(加入新文件、
+// 导入清单),旧的快照就不再是"上一个状态"了,留着只会让撤回覆盖掉
+// 用户刚做的事。
+func (a *app) dropClearUndo() {
+	a.clearedFiles, a.clearedOps = nil, nil
+	a.clearedOrder = 0
+	a.clearedSort, a.clearedDesc = "", false
+	a.clearedAt = time.Time{}
+}
+
+// scheduleClearExpiry 排一次重画,让"已清空"的撤回条到点自己消失。
+func (a *app) scheduleClearExpiry() {
+	at := a.clearedAt
+	go func() {
+		time.Sleep(undoDeleteWindow + 100*time.Millisecond)
+		if a.clearedAt.Equal(at) {
+			a.update()
+		}
+	}()
 }
 
 // undoDeleteExpired reports whether the undo offer has outlived its window.
+//
+// 以栈顶(最近一次删除)为准:连着删几步时,窗口从最后一次删除重新计时
+// ——否则删到第三步时前两条已经过期,而用户正看着"可以撤回"的提示。
 func (a *app) undoDeleteExpired() bool {
-	return !a.deletedAt.IsZero() && time.Since(a.deletedAt) > undoDeleteWindow
+	last, ok := a.lastStepUndo()
+	if !ok || last.at.IsZero() {
+		return false
+	}
+	return time.Since(last.at) > undoDeleteWindow
 }
 
 // scheduleUndoExpiry 排一次重画,让撤回条到点自己消失。
 func (a *app) scheduleUndoExpiry() {
-	at := a.deletedAt
+	last, ok := a.lastStepUndo()
+	if !ok {
+		return
+	}
+	at := last.at
 	go func() {
 		time.Sleep(undoDeleteWindow + 100*time.Millisecond)
-		if a.deletedAt.Equal(at) {
+		if cur, still := a.lastStepUndo(); still && cur.at.Equal(at) {
 			a.update()
 		}
 	}()
@@ -1829,6 +2029,13 @@ func (a *app) filesView(c *ui.Context) {
 					}
 					confirm.Children(func() { ui.Text(c, "确认清空?").SingleLine() })
 					if confirm.Clicked() {
+						// 清空之前先把整份清单存起来:31 个文件、当时的
+						// 添加顺序、当时的排序,重新拖一遍都找不回来。
+						a.clearedFiles = a.files
+						a.clearedOps = a.ops
+						a.clearedOrder = a.nextOrder
+						a.clearedSort, a.clearedDesc = a.sortBy, a.sortDesc
+						a.clearedAt = time.Now()
 						a.files, a.ops, a.applied = nil, nil, false
 						a.appliedAt, a.appliedCount = time.Time{}, 0
 						// 序号从 #1 重新开始,排序回到"添加顺序":清空之后
@@ -1837,6 +2044,8 @@ func (a *app) filesView(c *ui.Context) {
 						a.nextOrder = 0
 						a.sortBy, a.sortDesc = "", false
 						a.dropConfirm()
+						a.status = fmt.Sprintf("已清空 %d 个文件，可以撤回", len(a.clearedFiles))
+						a.scheduleClearExpiry()
 					}
 				} else {
 					clrBtn := dangerButton(c, "清空列表", len(a.files) > 0)
@@ -1860,6 +2069,25 @@ func (a *app) filesView(c *ui.Context) {
 					a.previewAsync()
 				}
 			})
+		}
+		// 刚清空列表的撤回条:清空之后清单是空的,所以这条必须画在空态
+		// 之上——否则"已清空 31 个文件"和退路一起消失,用户只剩重拖一遍。
+		//
+		// 和删步骤的撤回条同一个时限、同一个位置逻辑:动作发生在这一栏,
+		// 退路也在这一栏。
+		if len(a.files) == 0 && len(a.clearedFiles) > 0 && !a.clearUndoExpired() {
+			ui.Row(c).FillWidth().Gap(8).Padding(8, 10).Radius(6).
+				Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, fmt.Sprintf("已清空 %d 个文件", len(a.clearedFiles))).
+					FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
+				if frameButton(c, "撤回", true).Radius(6).Clicked() {
+					a.undoClear()
+				}
+			})
+		} else if len(a.clearedFiles) > 0 && a.clearUndoExpired() {
+			// 过期就丢掉快照:留着它只会在下次清空时被覆盖,而中间这段时间
+			// 它一直占着内存(31 个文件的 fileInfo)。
+			a.dropClearUndo()
 		}
 		if len(a.files) == 0 {
 			a.dropZone(c, innerW)
@@ -1908,14 +2136,14 @@ func (a *app) filesView(c *ui.Context) {
 						a.appliedAt.Format("01-02 15:04"), a.appliedCount)).
 						FontSize(12).TextColor(t.Text)
 					ui.Spacer(c)
-					// 和底栏的「回滚上次」同一套防错:回滚会动磁盘,不能
+					// 和底栏的「撤销上次」同一套防错:撤销会动磁盘,不能
 					// 因为按钮画在横幅里就变成一点就退——同一个动作有两套
 					// 强度,用户迟早会在弱的那一侧误触。
 					if a.confirmUndo && a.confirmStale() {
 						a.dropConfirm()
 					}
 					if a.confirmUndo {
-						label := fmt.Sprintf("确认回滚 %d 个?", len(a.journalInfoNames()))
+						label := fmt.Sprintf("确认撤销 %d 个?", len(a.journalInfoNames()))
 						confirm := ui.ButtonBase(c).Radius(6).Padding(8, 12).
 							Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
 						if confirm.Hovered() {
@@ -1926,7 +2154,7 @@ func (a *app) filesView(c *ui.Context) {
 							a.dropConfirm()
 							go a.undo()
 						}
-					} else if outlinedButton(c, "撤销这次", !a.busy && a.journalExists()).Clicked() {
+					} else if outlinedButton(c, "撤销上次", !a.busy && a.journalExists()).Clicked() {
 						a.armConfirm("undo")
 					}
 				})
@@ -1942,6 +2170,14 @@ func (a *app) filesView(c *ui.Context) {
 					ui.Spacer(c)
 					ui.Text(c, a.previewErr).FontSize(12).TextColor(t.Danger).MaxWidth(280).
 						SingleLine().Ellipsis("…").Tooltip(a.previewErr)
+					// 知道是哪一步写坏了,就直接把人送到那一步的编辑器:
+					// 光说"第 3 步有问题",用户还得回列表里数到第三行。
+					if a.previewErrStep >= 0 && a.previewErrStep < len(a.steps) {
+						if frameButton(c, "去修这一步", true).Radius(6).
+							Tooltip("选中出问题的那一步，右边就是它的参数").Clicked() {
+							a.focusStep(a.previewErrStep)
+						}
+					}
 				})
 			}
 			// 失败的聚合条:60 个文件里 5 个失败时,逐行扫描找红字
@@ -2631,6 +2867,11 @@ func (a *app) addPaths(paths []string) {
 	a.assignExtColors(a.currentTheme())
 	note := addPathsNote(subDirs, unreadable, missing)
 	a.confirmClear = false
+	// 清单变了,旧的"刚清空"快照就不是上一个状态了:这时点撤回会把用户
+	// 刚加进来的文件整批盖掉。
+	if len(a.files) > 0 {
+		a.dropClearUndo()
+	}
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	// AI 步骤不能在这里自动预览:preview() 是同步的,一旦含 <AI:…> 就会在
 	// 主线程里联网阻塞几十秒,加入文件的瞬间 UI 卡死。AI 只走显式"预览"按钮。
@@ -2802,6 +3043,8 @@ func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
 	// 拿导入前的数量记,一进来就被判成过期。
 	a.planSpec, a.planFiles = a.specKey(), len(a.files)
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
+	// 导入换掉的是整份清单:此时"撤回清空"会把用户刚导入的东西整批盖掉。
+	a.dropClearUndo()
 	a.status = fmt.Sprintf("已导入 %d 行，%d 个将更名", len(plan), countChanges(plan))
 	if len(errs) > 0 {
 		a.status += fmt.Sprintf("，%d 个有问题", len(errs))
@@ -3238,9 +3481,34 @@ func (a *app) aiCallCount() int {
 // 认不出规则号时原样返回——宁可少一层翻译,也不能因为解析失败把真正的
 // 错误信息吞掉。
 func (a *app) specErrText(msg string) string {
+	i, tail, ok := a.specErrAt(msg)
+	if !ok {
+		return msg
+	}
+	label := a.steps[i].opLabel
+	if label == "" {
+		return fmt.Sprintf("第 %d 步：%s", i+1, tail)
+	}
+	// core 在错误前面还挂了一个内部规则名（如「（replace）：」）。既然
+	// 下一句就要显示用户看得懂的那一步叫什么,这截内部名字只会让人
+	// 去猜"replace 和「正则替换」是不是两回事"。
+	if strings.HasPrefix(tail, "（") {
+		if _, rest, ok := strings.Cut(tail, "）："); ok {
+			tail = rest
+		}
+	}
+	return fmt.Sprintf("第 %d 步「%s」：%s", i+1, label, tail)
+}
+
+// specErrAt 从 core 的「规则 N：…」里拆出步骤下标和错误正文。
+//
+// 拆出来是为了让界面能挂一个「去修这一步」:只说"第 3 步有问题",用户
+// 还得自己在那条列表里数到第三行。ok=false 表示认不出规则号——那时
+// 调用方原样显示,别硬编一个"第 1 步"。
+func (a *app) specErrAt(msg string) (int, string, bool) {
 	const prefix = "规则 "
 	if !strings.HasPrefix(msg, prefix) {
-		return msg
+		return 0, msg, false
 	}
 	rest := msg[len(prefix):]
 	digits := 0
@@ -3248,11 +3516,11 @@ func (a *app) specErrText(msg string) string {
 		digits++
 	}
 	if digits == 0 {
-		return msg
+		return 0, msg, false
 	}
 	n, err := strconv.Atoi(rest[:digits])
 	if err != nil {
-		return msg
+		return 0, msg, false
 	}
 	// 规则号后面紧跟的是 "：" 或 "（"。两者都从冒号之后开始接原文。
 	tail := rest[digits:]
@@ -3260,14 +3528,9 @@ func (a *app) specErrText(msg string) string {
 	tail = strings.TrimPrefix(tail, ":")
 	i, ok := a.stepForSpec(n)
 	if !ok {
-		return msg
+		return 0, msg, false
 	}
-	label := a.steps[i].opLabel
-	if label == "" {
-		label = "第 " + strconv.Itoa(i+1) + " 步"
-		return fmt.Sprintf("%s：%s", label, tail)
-	}
-	return fmt.Sprintf("第 %d 步「%s」：%s", i+1, label, tail)
+	return i, tail, true
 }
 
 // previewSync runs the pipeline. withProgress=true wires the AI prefetch's
@@ -3284,6 +3547,11 @@ func (a *app) previewSync(withProgress bool) {
 		msg := a.specErrText(err.Error())
 		a.ops = nil
 		a.previewErr = msg
+		if i, _, ok := a.specErrAt(err.Error()); ok {
+			a.previewErrStep = i
+		} else {
+			a.previewErrStep = -1
+		}
 		a.status = msg
 		// 算不出来也算"按当前步骤算过一遍":planSpec 跟上,免得界面同时
 		// 喊"算不出来"和"计划已过期"两句话。
@@ -3291,6 +3559,7 @@ func (a *app) previewSync(withProgress bool) {
 		return
 	}
 	a.previewErr = ""
+	a.previewErrStep = -1
 	paths := make([]string, len(a.files))
 	for i := range a.files {
 		paths[i] = a.files[i].path
@@ -3482,14 +3751,14 @@ func (a *app) journalInfoNames() []string {
 
 // journalExists: 回滚只在真有日志可回滚时可用.
 // 只看文件在不在不够——上一次执行如果全失败,日志里是空列表,
-// 按钮却亮着,点下去一个文件也不动还报"已回滚"。
+// 按钮却亮着,点下去一个文件也不动还报"已撤销"。
 func (a *app) journalExists() bool {
 	_, ok := a.journalInfo()
 	return ok
 }
 
 // journalInfo 读出日志里还能回滚的那一批:时间、几个文件、都是谁。
-// 界面上"回滚上次"要能说出这些,而不是三个字的哑按钮。
+// 界面上"撤销上次"要能说出这些,而不是三个字的哑按钮。
 func (a *app) journalInfo() (core.JournalSummary, bool) {
 	if a.settings.Journal == "" {
 		return core.JournalSummary{}, false
@@ -3497,12 +3766,12 @@ func (a *app) journalInfo() (core.JournalSummary, bool) {
 	return core.ReadJournalSummary(a.settings.Journal)
 }
 
-// undoTip 是"回滚上次"悬停时的说明:什么时候改的、前三个文件名。
+// undoTip 是"撤销上次"悬停时的说明:什么时候改的、前三个文件名。
 // 点之前就该知道要点掉什么。
 func (a *app) undoTip(sum core.JournalSummary) string {
 	tip := shortcutTip("Ctrl+Z")
 	if len(sum.Names) == 0 {
-		return tip + " · 没有可回滚的记录"
+		return tip + " · 没有可撤销的记录"
 	}
 	if !sum.Time.IsZero() {
 		tip = sum.Time.Format("01-02 15:04") + " 的更名 · " + tip
@@ -3526,7 +3795,7 @@ func (a *app) statusColor(t *ui.Theme) ui.Color {
 		return t.TextMuted
 	case strings.Contains(a.status, "失败") || strings.Contains(a.status, "有问题"):
 		return t.Danger
-	case strings.Contains(a.status, "已回滚") || strings.Contains(a.status, "成功"):
+	case strings.Contains(a.status, "已撤销") || strings.Contains(a.status, "成功"):
 		return t.Success
 	}
 	return t.TextMuted
@@ -3584,9 +3853,9 @@ func (a *app) apply() {
 			// 一次干净的成功不该带"失败 0"这条尾巴:它读起来像"出了 0 个
 			// 错",而用户扫底栏时只认"失败"两个字——见到就要去找是哪几个
 			// 文件出了问题。没有失败就一个字都不提。
-			a.status = fmt.Sprintf("成功 %d；可用“回滚上次”撤销", ok)
+			a.status = fmt.Sprintf("成功 %d；可用“撤销上次”退回", ok)
 		} else {
-			a.status = fmt.Sprintf("成功 %d，失败 %d；可用“回滚上次”撤销", ok, failed)
+			a.status = fmt.Sprintf("成功 %d，失败 %d；可用“撤销上次”退回", ok, failed)
 		}
 		for i := range a.files {
 			if i < len(a.ops) && a.ops[i].Applied {
@@ -3630,25 +3899,25 @@ func (a *app) undo() {
 	}
 	a.assignExtColors(a.currentTheme())
 	// 横幅说的是"刚才执行了哪一批",回滚之后那句话已经不成立——哪怕
-	// 只退了一部分,剩下的也由底栏的「回滚上次（N 个）」接着说,那里
+	// 只退了一部分,剩下的也由底栏的「撤销上次（N 个）」接着说,那里
 	// 的数字直接来自日志,比横幅可靠。
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	switch {
 	case len(rep.Restored) > 0 && len(rep.Failed) > 0:
 		// 尽力而为的回滚可能只退了一部分,状态里必须说清退了多少,
 		// 而不是一句"回滚失败"让用户以为文件没动过。
-		a.status = fmt.Sprintf("回滚部分完成：%d 个已退回，%d 个没退成（%s）",
+		a.status = fmt.Sprintf("撤销部分完成：%d 个已退回，%d 个没退成（%s）",
 			len(rep.Restored), len(rep.Failed), strings.Join(rep.Failed, "; "))
 	case len(rep.Restored) > 0 && err != nil:
 		// 文件退回去了,但日志没写成功:下次再点回滚会对着已经改回旧名的
 		// 文件再 rename 一次而失败。这件事必须说出来。
-		a.status = fmt.Sprintf("已回滚 %d 个，但日志未能更新：%v", len(rep.Restored), err)
+		a.status = fmt.Sprintf("已撤销 %d 个，但日志未能更新：%v", len(rep.Restored), err)
 	case len(rep.Restored) > 0:
-		a.status = fmt.Sprintf("已回滚 %d 个", len(rep.Restored))
+		a.status = fmt.Sprintf("已撤销 %d 个", len(rep.Restored))
 	case err != nil:
-		a.status = "回滚失败：" + err.Error()
+		a.status = "撤销失败：" + err.Error()
 	default:
-		a.status = "没有可回滚的更名"
+		a.status = "没有可撤销的更名"
 	}
 	a.update()
 }
@@ -3694,7 +3963,7 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
-	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings(), stepScrollTo: -1}
+	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings(), stepScrollTo: -1, previewErrStep: -1}
 	// 钉选从设置读进内存一份:目录每帧重建,逐帧读 settings 会在
 	// 设置对话框改动后出现一帧延迟(拖动时看得见条目跳一下)。
 	a.pinned = append([]string(nil), a.settings.Pinned...)

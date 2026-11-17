@@ -123,7 +123,7 @@ func main() {
 		if err := core.ApplyPlan(plan, *journal); err != nil {
 			fatal(err)
 		}
-		fmt.Printf("已执行，日志 %s；可用 ncreamer undo -journal %s 回滚\n", *journal, *journal)
+		fmt.Printf("已执行，日志 %s；可用 ncreamer undo -journal %s 撤销\n", *journal, *journal)
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "undo" {
@@ -215,7 +215,7 @@ func main() {
 	if err := core.ApplyPlan(plan, journal); err != nil {
 		fatal(err)
 	}
-	fmt.Printf("已执行，日志写入 %s；可用 `ncreamer undo -journal %s` 回滚\n", journal, journal)
+	fmt.Printf("已执行，日志写入 %s；可用 `ncreamer undo -journal %s` 撤销\n", journal, journal)
 }
 
 func countOK(plan []core.RenameOp) (n int) {
