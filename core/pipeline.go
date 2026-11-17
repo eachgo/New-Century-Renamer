@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -36,6 +37,17 @@ func RunPipeline(rules []Rule, files []string) (plan []RenameOp, errs []error) {
 // — the user cannot tell a slow local model from a dead gateway, and "第 3/40"
 // is the difference between waiting and killing the app.
 func RunPipelineProgress(rules []Rule, files []string, aiProgress func(done, total int)) (plan []RenameOp, errs []error) {
+	return RunPipelineProgressCtx(context.Background(), rules, files, aiProgress)
+}
+
+// RunPipelineProgressCtx is RunPipelineProgress with a context: canceling it
+// stops the AI prefetch at the next opportunity, and the requests already in
+// flight are dropped instead of waiting out their own timeout.
+//
+// The context only governs the network phase. Rule evaluation itself is pure
+// CPU work on a list the caller already has, so there is nothing to cancel —
+// and half-applying a rule chain would be worse than finishing it.
+func RunPipelineProgressCtx(runCtx context.Context, rules []Rule, files []string, aiProgress func(done, total int)) (plan []RenameOp, errs []error) {
 	metaCache := map[string]map[string]string{}
 	counters := map[string]int{} // shared across files: seq group numbering
 
@@ -45,7 +57,9 @@ func RunPipelineProgress(rules []Rule, files []string, aiProgress func(done, tot
 	// (file, instruction) pairs concurrently first, then the loop just reads
 	// the cache. The cache key must match ExpandVars' lookup: self + "\x00" +
 	// instruction (no "AI:" prefix), or the placeholder would never resolve.
-	aiCache, aiErrs := prefetchAIProgress(rules, files, aiProgress)
+	// 参数不能叫 ctx:下面的循环体里本来就有一个 *Ctx 叫 ctx(变量上下文),
+	// 撞名之后读代码的人会以为这里传的是那个东西。
+	aiCache, aiErrs := prefetchAIProgressCtx(runCtx, rules, files, aiProgress)
 
 	for i, f := range files {
 		dir, name := filepath.Split(f)
@@ -161,6 +175,10 @@ func AICallCount(rules []Rule, files []string) int {
 // much of the batch is behind us", not "how many succeeded" — a progress bar
 // that stalls on a failing request is worse than no bar.
 func prefetchAIProgress(rules []Rule, files []string, progress func(done, total int)) (cache map[string]string, aiErrs map[string]error) {
+	return prefetchAIProgressCtx(context.Background(), rules, files, progress)
+}
+
+func prefetchAIProgressCtx(runCtx context.Context, rules []Rule, files []string, progress func(done, total int)) (cache map[string]string, aiErrs map[string]error) {
 	cache = map[string]string{}
 	aiErrs = map[string]error{}
 
@@ -227,7 +245,18 @@ func prefetchAIProgress(rules []Rule, files []string, progress func(done, total 
 				mu.Unlock()
 				return
 			}
-			v, err := aiGenerate(j.file, j.instr)
+			// 用户点了「停止」:还在排队的活直接放手,不用等网络。
+			// 已经发出去的请求由 ctx 自己中断(aiGenerateCtx 用的是
+			// NewRequestWithContext),这里只负责不再发新的。
+			if runCtx.Err() != nil {
+				mu.Lock()
+				aiErrs[j.file] = fmt.Errorf("%s: AI: %w", j.file, errAICanceled)
+				delete(cache, j.key)
+				report()
+				mu.Unlock()
+				return
+			}
+			v, err := aiGenerateCtx(runCtx, j.file, j.instr)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

@@ -72,19 +72,68 @@ func (a *app) splitPanesInset(c *ui.Context, size *float32, pad, availW float32,
 		}
 		if dx, _, held := grip.Dragged(); held && dx != 0 {
 			*size = clampPane(*size+dx, minPane, avail-minPane)
+			a.splitDragging = true
+		} else if !held && a.splitDragging {
+			// 手一松就落盘。拖动途中每帧写文件既没必要(鼠标一动就是几十
+			// 次写盘),也会让"拖到一半崩了"留下一个半截的宽度。
+			a.splitDragging = false
+			a.persistSplit()
 		}
 		// 键盘：缝拿到焦点后左右键推，和拖动等价（可访问性底线）。
 		if grip.Focused() {
 			if c.Shortcut(0, ui.KeyLeft) {
 				*size = clampPane(*size-t.Space(2.5), minPane, avail-minPane)
+				a.persistSplit()
 			}
 			if c.Shortcut(0, ui.KeyRight) {
 				*size = clampPane(*size+t.Space(2.5), minPane, avail-minPane)
+				a.persistSplit()
 			}
 		}
 
 		ui.Column(c).Grow(1).FillHeight().Clip().Children(second)
 	})
+}
+
+// persistSplit 把两条分隔线的位置写回设置文件。
+//
+// 用户把左栏拖宽是要看完整的规则名,把右栏拖宽是因为文件名长——都是
+// "调过一次就不想再调"的东西。原来只在内存里,重启回到 220/330,于是
+// 每天开机第一件事是把两根线再拖一遍。
+//
+// 拖动结束才写:拖动中每帧写盘既没必要(鼠标一动几十次),也会让
+// "拖到一半崩了"留下半截宽度。
+func (a *app) persistSplit() {
+	a.settings.SplitL, a.settings.SplitM = a.splitL, a.splitM
+	_ = SaveSettings(a.settings)
+}
+
+// persistSteps 把中栏排着的步骤写回设置文件。
+//
+// 步骤是用户一点点调出来的:模板、正则、编号起始值、保留长度……关一次
+// 窗口就全没了,等于每次开机从头排一遍。和分栏宽度一样属于"调过一次就
+// 不想再调"的东西,区别只是它得在退出时写——步骤每帧都可能被改(打字),
+// 逐帧写盘会把磁盘打满。
+//
+// 存的是 flowFromRules 的结果:只留和默认值不同的参数,格式与用户自己存
+// 的流程完全一致,读回来走同一条 rules() 还原路径。
+func (a *app) persistSteps() {
+	a.settings.Steps = flowFromRules("", a.steps).Steps
+	_ = SaveSettings(a.settings)
+}
+
+// restoreSteps 把上次退出时的步骤装回来。
+//
+// 认不出的 opID(比如某个条目在新版本里改名了)由 rules() 跳过,不会让
+// 整串步骤作废——剩下的那些仍然能用,用户补一步就行。
+func (a *app) restoreSteps() {
+	if len(a.settings.Steps) == 0 {
+		return
+	}
+	a.steps = flow{Steps: a.settings.Steps}.rules()
+	a.stepSel = -1
+	// lastSpec 留空:第一帧照常跑一次实时预览,右栏一打开就有新名字,
+	// 而不是先显示一片空白再等用户动一下。
 }
 
 // defaultOpenGroups 是第一次打开左栏时展开的组数。

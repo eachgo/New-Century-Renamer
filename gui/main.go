@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
@@ -74,6 +75,14 @@ type app struct {
 	// 去执行的是改之前的计划。把 spec 记下来,和当前 spec 一比就知道这份
 	// 计划是不是已经过期;过期时主按钮置灰并说清"先点预览"。
 	planSpec string
+	// aiCancel 是"这一轮联网命名"的取消句柄。有它才能给「停止」:
+	// 一次 300 个文件的批量配上慢模型是十几分钟,而窗口只能干等——
+	// 用户唯一的出路是杀进程,那会把已经算出来的结果一起丢掉。
+	aiCancel context.CancelFunc
+	// aiStopped 记录"这一轮是被用户停掉的"。取消会让还没发的请求
+	// 以 errAICanceled 结束,但底栏不该把整批文件标成红字:用户自己
+	// 按的停止,不是接口坏了。
+	aiStopped bool
 	// planFiles 是算计划时的文件数。计划是按"这些文件"算出来的:含 AI 时
 	// 加入新文件不会自动重算,计划就只覆盖老的那几个,而列表里已经多了
 	// 一行没有新名字的文件。空串/零值表示"还没有计划",不算过期。
@@ -160,8 +169,11 @@ type app struct {
 	catRect   ui.Rect   // 上一帧的目录视口位置,测试用来量底缘渐隐
 
 	splitL, splitM float32 // pane divider positions
-	table          ui.ListState
-	fileSel        int // 文件列表里选中的行(rows 下标,不是 a.files 下标),-1 = 没选
+	// splitDragging 记着"这一帧之前缝还被抓着"。松手那一刻才落盘,
+	// 拖动途中每帧写文件没有意义。
+	splitDragging bool
+	table         ui.ListState
+	fileSel       int // 文件列表里选中的行(rows 下标,不是 a.files 下标),-1 = 没选
 	// nextOrder 是下一个 fileInfo.order 的值,单调递增;清空列表时归零。
 	nextOrder int
 	// sortBy 是当前的排序依据:"" = 添加顺序,"name"/"date"/"size"。
@@ -290,6 +302,14 @@ func (a *app) view(c *ui.Context) {
 	}
 	if a.splitL == 0 {
 		a.splitL, a.splitM = 220, 330
+		// 上一次运行拖过的位置优先于默认值:分栏宽度是"调过一次就不想
+		// 再调"的东西,而它原来只活在内存里。
+		if a.settings.SplitL > 0 {
+			a.splitL = a.settings.SplitL
+		}
+		if a.settings.SplitM > 0 {
+			a.splitM = a.settings.SplitM
+		}
 	}
 	// 顶部自绘标题栏:与窗口背景一体,整条可拖动;右侧留窗口按钮的位置。
 	// 窗口用 TitleBarHidden 保留按钮/阴影/圆角,系统标题栏则不再出现
@@ -470,6 +490,15 @@ func (a *app) statusBar(c *ui.Context) {
 			ui.Text(c, "还没有文件").FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Spacer(c)
+		// 联网命名可能跑上十几分钟,而这段时间窗口里没有任何出口:唯一
+		// 的办法是杀进程,那会把已经算出来的结果一起丢掉。停止放在底栏
+		// 右侧、紧挨主操作,是因为它此刻就是用户最想按的那一个。
+		if a.busyAI && a.aiCancel != nil {
+			if frameButton(c, "停止", true).Radius(6).
+				Tooltip("不再等剩下的请求。已经算出来的名字会保留，可以直接执行。").Clicked() {
+				a.stopAI()
+			}
+		}
 		// ---- 右:主操作(执行=主按钮,回滚=次要镂空) ----
 		// "撤销上次"必须说清是"哪一次、几个文件"。只写三个字,用户不
 		// 知道自己即将撤销的是刚才那批,还是上周某个目录里的一批。
@@ -708,7 +737,7 @@ func (a *app) catalogView(c *ui.Context) {
 	// 一眼看出"中间是工作区、两侧是辅助"。
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.right).Clip().
-		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
+		Shadow(0, 2, 10, 0, pt.shadow).Disabled(a.busy).DimDisabled(false).Children(func() {
 		// 栏头与中/右栏同构:一行 Row,标题靠左,不再用 Padding 去凑基线。
 		// 栏头统一 MinHeight(34) + 垂直居中:三栏的标题就落在同一条基线上。
 		// 不固定高度是因为右栏的工具栏在窄窗口下会折行,折了就该长高。
@@ -1092,7 +1121,7 @@ func (a *app) stepsView(c *ui.Context) {
 	// 压在基底之上;给它圆角 + 一层柔投影,像一张单独浮起的纸。
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.mid).Clip().
-		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
+		Shadow(0, 3, 14, 0, pt.shadow).Disabled(a.busy).DimDisabled(false).Children(func() {
 		paneHeader(c, fmt.Sprintf("任务步骤（%d）", len(a.steps)), func() {
 			// 流程入口放在栏头,和「多选」并列。以前它藏在左栏「高级」
 			// 目录的最后一条(y≈1400,要滚到底)——而它是"整套做法"的
@@ -1958,7 +1987,7 @@ func (a *app) filesView(c *ui.Context) {
 	// 右边栏:结果空间,浮在基底之上的一张浅卡片(比中栏低一阶),也是圆角。
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.right).Clip().
-		Shadow(0, 2, 10, 0, pt.shadow).Children(func() {
+		Shadow(0, 2, 10, 0, pt.shadow).Disabled(a.busy).DimDisabled(false).Children(func() {
 		// ① 工具栏(吸顶,固定在右栏顶部):这里的动作都是"对文件列表本身"的操作——
 		// 添加、导出、清空。用次要的 Tonal / 危险样式,不跟右下角的主操作抢。
 		// 外层只负责"至少 34 高、垂直居中",内层负责换行。
@@ -2062,6 +2091,8 @@ func (a *app) filesView(c *ui.Context) {
 				if a.busyAI {
 					previewLabel = "联网命名中…"
 				}
+				// 停止只在底栏放一个:预览按钮在忙时是灰的(禁用元素不弹
+				// Tooltip,也按不动),而底栏那一颗在所有情况下都看得见。
 				if primaryButton(c, previewLabel, !a.busy && len(a.files) > 0).Clicked() {
 					// 不在这里开 goroutine:previewAsync 会先把 busyAI 等状态立起来
 					// 再自己把真正耗时的部分丢到后台。否则点击返回到断言之间还
@@ -2611,6 +2642,7 @@ const (
 	rowFailed                    // 这一轮失败了,原因在 op.Err
 	rowSkipped                   // 执行过了,但这一行没动
 	rowUnchanged                 // 名字本来就没变,不需要处理
+	rowCanceled                  // 用户按了「停止」,这个名字还没算出来
 )
 
 // rowOutcome 是"这一行现在是什么状态"的唯一判定。
@@ -2621,6 +2653,10 @@ const (
 // 行里写"失败"、在状态栏被算进"成功"。顺序只能有一份。
 func (a *app) rowOutcome(op core.RenameOp) rowState {
 	switch {
+	// 用户自己按的停止不是失败。混进 rowFailed 会让整列变红、底栏写
+	// "12 个有问题",而网络一直好好的——人会被赶去查一个没坏的东西。
+	case op.Err != nil && core.IsAICanceled(op.Err):
+		return rowCanceled
 	case op.Err != nil:
 		return rowFailed
 	case op.Applied:
@@ -2669,6 +2705,8 @@ func (a *app) resultChip(op core.RenameOp) (string, ui.Color) {
 		return "跳过", t.TextMuted
 	case rowUnchanged:
 		return "不变", t.TextMuted
+	case rowCanceled:
+		return "没算", t.TextMuted
 	}
 	return "将更名", t.Accent
 }
@@ -3378,6 +3416,11 @@ func (a *app) previewAsync() {
 	a.busyStart = time.Now()
 	a.status = "正在联网命名，模型思考中…"
 	a.setAIProgress(0, 0)
+	a.aiStopped = false
+	// 取消句柄要在起后台之前就备好:用户可能在第一个请求还没发出去时
+	// 就点停止,那时候 aiCancel 必须是有效的。
+	runCtx, cancel := context.WithCancel(context.Background())
+	a.aiCancel = cancel
 	a.update()
 	// Tick the UI once a second so the wait shows live elapsed seconds instead of
 	// a frozen spinner. The user can tell it's working, not hung.
@@ -3397,12 +3440,14 @@ func (a *app) previewAsync() {
 	go func() {
 		defer func() {
 			close(stop)
+			cancel()
+			a.aiCancel = nil
 			a.busy = false
 			a.busyAI = false
 			a.setAIProgress(0, 0)
 			a.update()
 		}()
-		a.previewSync(true)
+		a.previewRun(runCtx, true)
 	}()
 }
 
@@ -3437,6 +3482,18 @@ func (a *app) aiProgress() (done, total int) {
 }
 
 func (a *app) preview() { a.previewSync(false) }
+
+// stopAI 是「停止」按钮:放开还没发出去的请求,并把底栏从"模型思考中"
+// 换成人话。已经发出去的那几个会以取消错误返回,由 previewRun 收尾。
+func (a *app) stopAI() {
+	if a.aiCancel == nil {
+		return
+	}
+	a.aiStopped = true
+	a.aiCancel()
+	a.status = "已停止联网命名"
+	a.update()
+}
 
 // stepForSpec maps a 1-based rule number from core.ParseRules back to the
 // step it came from.
@@ -3537,6 +3594,15 @@ func (a *app) specErrAt(msg string) (int, string, bool) {
 // progress into the status bar; the live (in-view-pass) preview leaves it off
 // because it never runs AI steps — addPaths skips the auto-preview for those.
 func (a *app) previewSync(withProgress bool) {
+	// 同步预览不联网(AI 步骤不走这条路),所以它永远不是"被停掉的"。
+	// 不清这个标记的话,停过一次之后每一次实时预览都会说"已停止"。
+	a.aiStopped = false
+	a.previewRun(context.Background(), withProgress)
+}
+
+// previewRun 是 previewSync 的带 context 版本:runCtx 被取消时,联网命名
+// 那一段会尽快收手,而不是把剩下的请求一个个等完。
+func (a *app) previewRun(runCtx context.Context, withProgress bool) {
 	rules, err := core.ParseRules(a.stepSpecs())
 	if err != nil {
 		// 整轮算不出来:记住原因,a.ops 置空(没有可信的新名字可用),
@@ -3564,9 +3630,22 @@ func (a *app) previewSync(withProgress bool) {
 	for i := range a.files {
 		paths[i] = a.files[i].path
 	}
-	ops, _ := core.RunPipelineProgress(rules, paths, a.aiPrefetchHook(withProgress))
+	ops, _ := core.RunPipelineProgressCtx(runCtx, rules, paths, a.aiPrefetchHook(withProgress))
 	a.ops = ops
 	a.planSpec, a.planFiles = a.specKey(), len(a.files)
+	if a.aiStopped {
+		// 停止之后那些行都带着"已取消"的错误,但它们不是失败:用户自己
+		// 按的停止。写成"12 个有问题"会把人赶去查网络,而网络一直好好的。
+		// 已经算出来的新名字仍然有效,所以说清"还能接着用"。
+		if n := countChanges(ops); n > 0 {
+			a.status = fmt.Sprintf("已停止联网命名；已算出的 %d 个仍可执行", n)
+		} else {
+			// 一个都没算出来时别写"已算出的 0 个仍可执行":那像是在
+			// 邀功,而实际情况是什么都没拿到。
+			a.status = "已停止联网命名；还没算出任何名字"
+		}
+		return
+	}
 	// 底栏那句"0 个将更名"在三种完全不同的处境里一模一样:没文件、
 	// 没步骤、有步骤但没产生变更。三者下一步该做的事完全不同,却
 	// 共用一句话,读者只能一个个去猜。分开说,每句都指向下一步。
@@ -3723,7 +3802,7 @@ func (a *app) dropConfirm() {
 // (cover.jpg next to an mp3 is not the user's problem).
 func firstErrText(ops []core.RenameOp) string {
 	for _, op := range ops {
-		if op.Err != nil && !core.IsSidecarFile(op.OldName) {
+		if op.Err != nil && !core.IsAICanceled(op.Err) && !core.IsSidecarFile(op.OldName) {
 			return op.Err.Error()
 		}
 	}
@@ -3814,7 +3893,8 @@ func countChanges(ops []core.RenameOp) (n int) {
 
 func countErrs(ops []core.RenameOp) (n int) {
 	for _, op := range ops {
-		if op.Err != nil && !core.IsSidecarFile(op.OldName) {
+		// 取消不算错:它没有坏掉,只是没算。
+		if op.Err != nil && !core.IsAICanceled(op.Err) && !core.IsSidecarFile(op.OldName) {
 			n++
 		}
 	}
@@ -3974,6 +4054,7 @@ func main() {
 			a.folded[k] = v
 		}
 	}
+	a.restoreSteps()
 	a.syncSeedUI()
 	a.ApplySettings()
 	// 第二个实例不再静默退出:用户再点一次图标、或者从"打开方式"里选了
@@ -3987,6 +4068,14 @@ func main() {
 	// 以及第二个实例带过来的文件,都从这里进来。
 	mygo.App.OnOpenFile(func(path string) {
 		a.openExternal(path)
+	})
+	// 退出前把中栏排着的步骤写回设置文件。
+	//
+	// 放在 OnBeforeQuit 而不是每帧:步骤每帧都可能被改(打字、拖参数),
+	// 逐帧写盘会把磁盘打满。这个钩子在窗口关闭之前跑,而且系统注销/关机
+	// 时也会被调用(此时必须同步完成,不能开 goroutine)。
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		a.persistSteps()
 	})
 	mygo.App.WhenReady(func() {
 		a.win = mygo.NewWindow(mygo.WindowOptions{
@@ -4138,6 +4227,9 @@ func resultMark(s rowState) (mark, label string) {
 		return "–", "跳过"
 	case rowUnchanged:
 		return "○", "不变"
+	case rowCanceled:
+		// 空方块:和"不变"的圆、失败的叉都不同,灰度下也分得开。
+		return "□", "没算"
 	}
 	return "→", "将更名"
 }

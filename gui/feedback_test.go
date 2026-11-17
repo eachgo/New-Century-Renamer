@@ -13,7 +13,7 @@ import (
 // 收掉状态词之后,结果列只剩一个标记。如果那个标记的形状不随状态变化,
 // 色觉障碍用户看到的就是五个一样的小方块,灰度截图里也一样。
 func TestResultMarkIsDistinctPerState(t *testing.T) {
-	states := []rowState{rowPending, rowApplied, rowFailed, rowSkipped, rowUnchanged}
+	states := []rowState{rowPending, rowApplied, rowFailed, rowSkipped, rowUnchanged, rowCanceled}
 	seen := map[string]rowState{}
 	for _, s := range states {
 		mark, label := resultMark(s)

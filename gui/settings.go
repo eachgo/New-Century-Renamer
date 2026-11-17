@@ -46,6 +46,19 @@ type Settings struct {
 	// 就得每天重新折一遍同样的几组。和 Pinned 一样属于"用户调过的
 	// 界面偏好",该一起记住。
 	Folded map[string]bool `json:"folded,omitempty"`
+	// SplitL/SplitM 是三栏两条分隔线的位置(左栏宽、中栏宽)。
+	//
+	// 用户把左栏拖宽是因为他要看完整的规则名,把右栏拖宽是因为文件名长——
+	// 这些都是"他调过一次就不想再调"的东西。原来只在内存里,重启回到
+	// 220/330,于是每天开机第一件事是把两根线再拖一遍。
+	SplitL float32 `json:"split_l,omitempty"`
+	SplitM float32 `json:"split_m,omitempty"`
+	// Steps 是上次退出时中栏排着的那串步骤。
+	//
+	// 步骤是用户一点点调出来的(模板、正则、编号起始值),关一次窗口就
+	// 全没了等于每次开机从头排一遍。只存"和默认值不同"的参数,格式与
+	// Flows 完全一致,所以读回来走的是同一条 rules() 还原路径。
+	Steps []flowStep `json:"steps,omitempty"`
 	// Flows 是用户自己存下来的流程(一串排好的步骤)。内置预设不进这里:
 	// 它们每次从 intents 现算,升级后跟着更新,不会在设置文件里留一份
 	// 旧快照。
@@ -104,7 +117,10 @@ func LoadSettings() Settings {
 
 func SaveSettings(s Settings) error {
 	b, _ := json.MarshalIndent(s, "", "  ")
-	return os.WriteFile(settingsPath(), append(b, '\n'), 0o644)
+	// 走 settingsFilePath 而不是 settingsPath:两者平时是同一个函数,
+	// 但测试靠替换这个变量把写盘重定向到临时目录,绕过它就等于让测试
+	// 去改真实的 ncreamer-settings.json。
+	return os.WriteFile(settingsFilePath(), append(b, '\n'), 0o644)
 }
 
 // ApplySettings pushes the settings into the core (AI override) and returns

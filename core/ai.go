@@ -115,6 +115,11 @@ func describeAIError(err error) error {
 	if err == nil {
 		return nil
 	}
+	// 取消不是错误:它是用户按了「停止」。写成"接口超时"会让人以为
+	// 网络坏了,下次反而不敢再点预览。
+	if errors.Is(err, context.Canceled) {
+		return errAICanceled
+	}
 	var nerr net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &nerr) && nerr.Timeout()) {
 		return fmt.Errorf("AI 接口超时（服务器无响应）：%w", err)
@@ -226,7 +231,28 @@ func AIConfigured() bool {
 	return ok
 }
 
+// errAICanceled 是"用户点了停止"在管道里的样子。它必须和真正的失败分开:
+// 取消是用户自己的决定,不该在结果里写成"AI 接口出错",也不该触发
+// 熔断(否则停一次之后整批都被标成服务器挂了)。
+var errAICanceled = errors.New("已取消")
+
+// IsAICanceled reports whether err means "the user pressed stop" rather than
+// "the endpoint failed". The GUI needs the difference: a stopped batch is not
+// a broken batch, and painting those rows red sends the user to check a
+// network that was fine all along.
+func IsAICanceled(err error) bool {
+	return errors.Is(err, errAICanceled) || errors.Is(err, context.Canceled)
+}
+
 func aiGenerate(path, instruction string) (string, error) {
+	return aiGenerateCtx(context.Background(), path, instruction)
+}
+
+// aiGenerateCtx 是 aiGenerate 的带 context 版本:用户点「停止」时,
+// 正在等的那几个请求要立刻放手,而不是等满 等待秒数(默认 300 秒)。
+//
+// 客户端超时仍然保留:它管的是"服务器不回",context 管的是"用户不等了"。
+func aiGenerateCtx(ctx context.Context, path, instruction string) (string, error) {
 	base, key, model, ok := aiConfig()
 	if !ok {
 		return "", fmt.Errorf("未设置 NCREAMER_AI_KEY")
@@ -243,7 +269,7 @@ func aiGenerate(path, instruction string) (string, error) {
 		},
 	})
 	url := strings.TrimRight(base, "/") + "/chat/completions"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
