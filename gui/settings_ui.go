@@ -13,10 +13,11 @@ import (
 	"ncreamer/core"
 )
 
-// openHelp 每次从顶部开始:上次读到哪是上次的事,重新打开时先看到
-// "五步就够"的标题,而不是接着上次滚到的变量表中间。
+// openHelp 每次从顶部开始,并且流程图重新收起:点 ? 的人是来对变量和快捷键
+// 的,不该因为上次展开过就被一张大图顶到下面去。
 func (a *app) openHelp() {
 	a.helpScroll.Y = 0
+	a.helpShowFlows = false
 	a.helpOpen = true
 }
 
