@@ -66,6 +66,19 @@ func TestHelpExplainsTheWholeFlow(t *testing.T) {
 	tt.Key(0, ui.KeyF1)
 	tt.Frame()
 
+	// 默认是"查对照"的视图:变量和快捷键在,流程图收起——点 ? 的人多是
+	// 来对变量名和快捷键的,不该先被一张大图挡住。
+	if !tt.HasText("<META:title>") {
+		t.Error("帮助默认视图里应当直接看得到变量表")
+	}
+	if tt.HasText("流程图：两条起手方式") {
+		t.Error("流程图默认应当收起")
+	}
+	if err := tt.Click("不会用？看使用流程示例图"); err != nil {
+		t.Fatalf("点不开流程示例图: %v", err)
+	}
+	tt.Frame()
+
 	var label string
 	for _, n := range tt.AccessAll() {
 		if strings.HasPrefix(n.Name, "流程图：两条起手方式") {

@@ -88,7 +88,7 @@ func TestLeftCatalogIsOneTabStop(t *testing.T) {
 	for i := 1; i <= 30; i++ {
 		tt.Key(0, ui.KeyTab)
 		tt.Frame()
-		if n := focusedName(tt); n == "▾ 替换" {
+		if n := focusedName(tt); n == "▾ "+stepGroups[0] {
 			at = i
 			break
 		}

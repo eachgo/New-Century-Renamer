@@ -58,11 +58,10 @@ type paneTones struct {
 }
 
 // stepGroups is the fixed group order; each gets its own hue offset.
-// stepGroups 的顺序是"用户找东西的频率",不是书写顺序。默认只展开前
+// stepGroups 的顺序是"用户找东西的顺序",不是书写顺序。默认只展开前
 // 两组(defaultOpenGroups=2),所以排在最前的那两组必须是最高频的:
-// 替换(改名是最常见诉求)与结构(加前缀/后缀/删字符)。原来是排查找频率
-// 排的(筛选/范围、转换…),默认展开的成了最冷门的两组。
-var stepGroups = []string{"替换", "结构", "编号", "扩展名", "元数据", "大小写", "筛选/范围", "转换", "日期", "智能", "高级"}
+// 筛选/范围(文件一多先得把范围缩小)与替换(改名是最常见诉求)。
+var stepGroups = []string{"筛选/范围", "替换", "结构", "编号", "扩展名", "元数据", "大小写", "转换", "日期", "智能", "高级"}
 
 var (
 	themeMu    sync.Mutex

@@ -13,6 +13,9 @@ func helpApp(t *testing.T) *app {
 	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
 	a.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
 	a.openHelp()
+	// 流程图在帮助页里默认收起(点 ? 多半是查变量/快捷键),这里要量图,
+	// 所以直接把它展开,免得每个用例各点一次按钮。
+	a.helpShowFlows = true
 	return a
 }
 

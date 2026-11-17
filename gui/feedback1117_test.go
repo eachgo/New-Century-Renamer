@@ -171,7 +171,7 @@ func TestDefaultOpenGroupsAreMostUsed(t *testing.T) {
 		}
 	}
 	// 前两组至少要是"替换""结构"这一类改名高频组,而不是历史书写顺序的头部。
-	if len(want) < 2 || want[0] != "替换" || want[1] != "结构" {
+	if len(want) < 2 || want[0] != "筛选/范围" || want[1] != "替换" {
 		t.Fatalf("默认展开组不对: %v", want)
 	}
 }

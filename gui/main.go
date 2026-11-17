@@ -71,6 +71,7 @@ type app struct {
 	settings      Settings
 	settingsOpen  bool
 	helpOpen      bool
+	helpShowFlows bool // 帮助页里流程图默认收起,点按钮才展开
 	helpScroll    ui.ScrollState
 	setScroll     ui.ScrollState      // 设置对话框表单的滚动位置
 	setBody       ui.Handle           // 设置表单滚动区,用来判断要不要淡出底边
@@ -1809,7 +1810,10 @@ func (a *app) filesView(c *ui.Context) {
 					previewLabel = "联网命名中…"
 				}
 				if primaryButton(c, previewLabel, !a.busy && len(a.files) > 0).Clicked() {
-					go a.previewAsync()
+					// 不在这里开 goroutine:previewAsync 会先把 busyAI 等状态立起来
+					// 再自己把真正耗时的部分丢到后台。否则点击返回到断言之间还
+					// 没进 busy 态,mac 上调度偏慢时测试就会偶发看到"点完还是空闲"。
+					a.previewAsync()
 				}
 			})
 		}
@@ -3002,6 +3006,8 @@ func (a *app) stepSpecs() []string {
 // this synchronously in the click handler froze the window with no feedback;
 // now the UI shows a spinner while we wait. apply/undo follow the same shape.
 func (a *app) previewAsync() {
+	// 状态先在 UI 线程上立起来,再开后台。点击一返回就是忙碌态,不会出现
+	// "刚点完还显示空闲"的窗口(测试与真实用户都看得见这个窗口)。
 	a.busy = true
 	a.busyAI = true
 	a.busyStart = time.Now()
@@ -3023,14 +3029,16 @@ func (a *app) previewAsync() {
 			}
 		}
 	}()
-	defer func() {
-		close(stop)
-		a.busy = false
-		a.busyAI = false
-		a.setAIProgress(0, 0)
-		a.update()
+	go func() {
+		defer func() {
+			close(stop)
+			a.busy = false
+			a.busyAI = false
+			a.setAIProgress(0, 0)
+			a.update()
+		}()
+		a.previewSync(true)
 	}()
-	a.previewSync(true)
 }
 
 // aiPrefetchHook turns the prefetch progress into status-bar updates. The

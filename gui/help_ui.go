@@ -34,44 +34,56 @@ func (a *app) helpDialog(c *ui.Context) {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "它是这么一条线").Bold().FontSize(18)
 				ui.Spacer(c)
+				// 点 ? 多半是进来查对照(变量、快捷键),不是来学怎么用,
+				// 所以流程图默认收起,由这颗按钮按需展开。
+				flowLabel := "不会用？看使用流程示例图"
+				if a.helpShowFlows {
+					flowLabel = "收起流程示例图"
+				}
+				if ui.Button(c, flowLabel).Radius(6).Clicked() {
+					a.helpShowFlows = !a.helpShowFlows
+				}
 				if ui.Button(c, "知道了").Radius(6).Clicked() {
 					a.helpOpen = false
 				}
 			})
 			ui.Scroll(c).Grow(1).TrackScroll(&a.helpScroll).Children(func() {
 				ui.Column(c).FillWidth().Gap(10).Children(func() {
-					// 两条完整的路,都从起手走到"撤回"再回到"调整步骤"。
-					// 只画到"执行更名"就停,等于把最需要被知道的那一步
-					// (改坏了能退回来)留在了图外面。
-					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
-						Background(t.Accent.Alpha(0.08)).Children(func() {
-						ui.Text(c, "两条起手，最后是同一条路").FontSize(12).Bold().TextColor(t.Accent)
-						flowDiagram(c, [][]string{
-							{"增加文件", "调整步骤", "预览", "执行更名", "撤回", "调整步骤"},
-							{"预设/添加步骤", "调整步骤", "增加文件", "预览", "执行更名", "撤回", "调整步骤"},
-						}, "流程图：两条起手方式。第一条先增加文件再调整步骤；"+
-							"第二条先点预设或从空白添加步骤，再增加文件。"+
-							"两条都在预览处看到结果，点执行更名才真的改，改完可以撤回，然后接着调整步骤再来一轮。")
-						ui.Text(c, "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。"+
-							"改完不满意，底栏“回滚上次”整批退回去，回来接着调。").
-							FontSize(12).TextColor(t.TextMuted)
-					})
+					if a.helpShowFlows {
+						// 两条完整的路,都从起手走到"撤回"再回到"调整步骤"。
+						// 只画到"执行更名"就停,等于把最需要被知道的那一步
+						// (改坏了能退回来)留在了图外面。
+						ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
+							Background(t.Accent.Alpha(0.08)).Children(func() {
+							ui.Text(c, "两条起手，最后是同一条路").FontSize(12).Bold().TextColor(t.Accent)
+							flowDiagram(c, [][]string{
+								{"增加文件", "调整步骤", "预览", "执行更名", "撤回", "调整步骤"},
+								{"预设/添加步骤", "调整步骤", "增加文件", "预览", "执行更名", "撤回", "调整步骤"},
+							}, "流程图：两条起手方式。第一条先增加文件再调整步骤；"+
+								"第二条先点预设或从空白添加步骤，再增加文件。"+
+								"两条都在预览处看到结果，点执行更名才真的改，改完可以撤回，然后接着调整步骤再来一轮。")
+							ui.Text(c, "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。"+
+								"改完不满意，底栏“回滚上次”整批退回去，回来接着调。").
+								FontSize(12).TextColor(t.TextMuted)
+						})
 
-					// 导出清单是另一件事,不该混进主流程:它不产生新名字,只
-					// 让你把"这一批文件是哪几个"带出程序去编辑。用户不知道
-					// CSV 里存了什么,所以图要和那句 sha256 一起讲。
-					ui.Text(c, "导出成一张表，改完名也找得回来").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
-					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
-						Background(cardBg).Children(func() {
-						flowDiagram(c, [][]string{
-							{"导出清单", "在表格里改新名", "导入清单"},
-						}, "流程图：导出清单。右栏「导出清单…」把这一批文件存成一张表，"+
-							"在表格里改新名字那一列，再「导入清单…」读回来。")
-						ui.Text(c, "每行四列：文件指纹（sha256）、所在文件夹、现在的名字、想改成的新名字。"+
-							"导入时按指纹找文件——文件就算已经被别的工具改过名，也能对回自己那一行；"+
-							"内容被改过，那一行会标成「有问题」，不会硬改。").
-							FontSize(12).TextColor(t.TextMuted)
-					})
+						// 导出清单是另一件事,不该混进主流程:它不产生新名字,只
+						// 让你把"这一批文件是哪几个"带出程序去编辑。用户不知道
+						// CSV 里存了什么,所以图要和那句 sha256 一起讲。
+						ui.Text(c, "导出成一张表，改完名也找得回来").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
+						ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
+							Background(cardBg).Children(func() {
+							flowDiagram(c, [][]string{
+								{"导出清单", "在表格里改新名", "导入清单"},
+							}, "流程图：导出清单。右栏「导出清单…」把这一批文件存成一张表，"+
+								"在表格里改新名字那一列，再「导入清单…」读回来。")
+							ui.Text(c, "每行四列：文件指纹（sha256）、所在文件夹、现在的名字、想改成的新名字。"+
+								"导入时按指纹找文件——文件就算已经被别的工具改过名，也能对回自己那一行；"+
+								"内容被改过，那一行会标成「有问题」，不会硬改。").
+								FontSize(12).TextColor(t.TextMuted)
+						})
+
+					}
 
 					ui.Text(c, "模板里能用的变量").FontSize(12).Bold().TextColor(t.TextMuted).Padding(4, 2)
 					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
