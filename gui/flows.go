@@ -307,8 +307,7 @@ func (a *app) flowDialog(c *ui.Context) {
 					a.flowOpen = false
 				}
 			})
-			ui.Text(c, "一串排好的步骤。套上去之后每一步都还能改——它是起点，不是模式。").
-				FontSize(12).TextColor(t.TextMuted)
+			prose(c, "一串排好的步骤。套上去之后每一步都还能改——它是起点，不是模式。")
 			// 二次确认:套用会替换现有步骤时,先在这里把后果说清楚。
 			if a.confirmFlow {
 				if a.confirmStale() {
@@ -318,8 +317,7 @@ func (a *app) flowDialog(c *ui.Context) {
 						Background(t.Danger.Alpha(0.10)).Border(1, t.Danger.Alpha(0.45)).Children(func() {
 						ui.Text(c, fmt.Sprintf("将用「%s」替换现有的 %d 步", a.pendingFlow.Name, len(a.steps))).
 							FontSize(12).Bold().TextColor(t.Danger).SingleLine().Ellipsis("…")
-						ui.Text(c, "被替换的步骤会留一条撤回入口，几秒内可以整批放回来。").
-							FontSize(12).TextColor(t.TextMuted)
+						prose(c, "被替换的步骤会留一条撤回入口，几秒内可以整批放回来。")
 						ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 							ok := ui.ButtonBase(c).Radius(6).Padding(8, 12).
 								Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
@@ -360,8 +358,7 @@ func (a *app) flowDialog(c *ui.Context) {
 					}
 					rows := a.allFlows()
 					if len(rows) == 0 {
-						ui.Text(c, "还没有流程。排好步骤之后，上面那个框可以把它存下来。").
-							FontSize(12).TextColor(t.TextMuted)
+						prose(c, "还没有流程。排好步骤之后，上面那个框可以把它存下来。")
 						return
 					}
 					for _, f := range rows {
@@ -406,8 +403,7 @@ func (a *app) flowDialog(c *ui.Context) {
 					}
 				})
 			})
-			ui.Text(c, "点一条就套用，会替换当前步骤；想保留现在这版，先存成流程。").
-				FontSize(12).TextColor(t.TextMuted)
+			prose(c, "点一条就套用，会替换当前步骤；想保留现在这版，先存成流程。")
 		})
 	})
 }

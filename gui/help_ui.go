@@ -62,9 +62,8 @@ func (a *app) helpDialog(c *ui.Context) {
 							}, "流程图：两条起手方式。第一条先增加文件再调整步骤；"+
 								"第二条先点预设或从空白添加步骤，再增加文件。"+
 								"两条都在预览处看到结果，点执行更名才真的改，改完可以撤回，然后接着调整步骤再来一轮。")
-							ui.Text(c, "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。"+
-								"改完不满意，底栏“撤销上次”整批退回去，回来接着调。").
-								FontSize(12).TextColor(t.TextMuted)
+							prose(c, "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。"+
+								"改完不满意，底栏“撤销上次”整批退回去，回来接着调。")
 						})
 
 						// 导出清单是另一件事,不该混进主流程:它不产生新名字,只
@@ -77,10 +76,9 @@ func (a *app) helpDialog(c *ui.Context) {
 								{"导出清单", "在表格里改新名", "导入清单"},
 							}, "流程图：导出清单。右栏「导出清单…」把这一批文件存成一张表，"+
 								"在表格里改新名字那一列，再「导入清单…」读回来。")
-							ui.Text(c, "每行四列：文件指纹（sha256）、所在文件夹、现在的名字、想改成的新名字。"+
+							prose(c, "每行四列：文件指纹（sha256）、所在文件夹、现在的名字、想改成的新名字。"+
 								"导入时按指纹找文件——文件就算已经被别的工具改过名，也能对回自己那一行；"+
-								"内容被改过，那一行会标成「有问题」，不会硬改。").
-								FontSize(12).TextColor(t.TextMuted)
+								"内容被改过，那一行会标成「有问题」，不会硬改。")
 						})
 
 					}
@@ -121,17 +119,13 @@ func (a *app) helpDialog(c *ui.Context) {
 					// 组合键一律走 shortcutTip:这里以前把 "Ctrl+O" 写死,
 					// 而 macOS 上真正的修饰键是 ⌘——同一份说明在苹果机器上
 					// 教的是一个按不出来的键。
-					ui.Text(c, fmt.Sprintf("快捷键：%s 添加 · %s 执行 · %s 撤销 · %s 设置 · %s 帮助",
+					prose(c, fmt.Sprintf("快捷键：%s 添加 · %s 执行 · %s 撤销 · %s 设置 · %s 帮助",
 						shortcutTip("Ctrl+O"), shortcutTip("Ctrl+Enter"), shortcutTip("Ctrl+Z"),
-						shortcutTip("Ctrl+,"), "F1")).
-						FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "Tab / Shift+Tab 换区域，方向键在区域内移动（左栏目录是一整块，进去后用上下键挑条目）").
-						FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "Delete 删除：焦点在文件列表时删文件，在步骤列表时删步骤（删步骤可以撤回）").
-						FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, fmt.Sprintf("%s 复制步骤 · %s 把步骤上移/下移（改的是执行顺序，底栏会说移到第几位）",
-						shortcutTip("Ctrl+D"), shortcutTip("Alt+↑↓"))).
-						FontSize(12).TextColor(t.TextMuted)
+						shortcutTip("Ctrl+,"), "F1"))
+					prose(c, "Tab / Shift+Tab 换区域，方向键在区域内移动（左栏目录是一整块，进去后用上下键挑条目）")
+					prose(c, "Delete 删除：焦点在文件列表时删文件，在步骤列表时删步骤（删步骤可以撤回）")
+					prose(c, fmt.Sprintf("%s 复制步骤 · %s 把步骤上移/下移（改的是执行顺序，底栏会说移到第几位）",
+						shortcutTip("Ctrl+D"), shortcutTip("Alt+↑↓")))
 				})
 			})
 		})

@@ -21,3 +21,24 @@ func dialogPanel(c *ui.Context, dw, dh float32) ui.Element {
 		Background(t.Surface).
 		Shadow(0, 12, 32, 0, ui.RGBA(0x10, 0x30, 0x1F, 0.10))
 }
+
+// proseLineHeight 是成段说明文字的行高倍数。
+//
+// 12px 的默认行高来自字体自身的度量(实测三行 48px,合每行 16px = 1.33 倍),
+// 那是"单行标签"的排法:连续几行中文贴得太紧,读起来像一块色块。1.5 倍
+// (每行 18px)是中文正文的常见起点,行与行之间看得出呼吸。
+const proseLineHeight float32 = 1.5
+
+// prose 是一段给人读的说明文字:12px、次要色、行高 1.5。
+//
+// 帮助页、设置面板里的解释都是一段段中文,原来和单行标签共用默认行高。
+// 收成一个入口,是为了让"成段正文"这件事有唯一的写法——否则下一个人加
+// 一段说明时,还是会顺手写 ui.Text,行高又回到 1.33。
+func prose(c *ui.Context, s string) ui.Element {
+	return proseIn(c, s, c.Theme().TextMuted)
+}
+
+// proseIn 是 prose 的换色版本(警示、强调)。行高仍由这里统一。
+func proseIn(c *ui.Context, s string, col ui.Color) ui.Element {
+	return ui.Text(c, s).FontSize(12).TextColor(col).LineHeight(proseLineHeight)
+}

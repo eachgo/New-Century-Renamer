@@ -158,8 +158,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 										ui.Column(c).Gap(4).Fill().Children(func() {
 											ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
 												Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
-											ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
-												FontSize(12).TextColor(t.TextMuted)
+											prose(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。")
 										})
 									})
 								})
@@ -221,7 +220,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									})
 								})
 								card("设置文件", func() {
-									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+									prose(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。")
 									ui.Row(c).Gap(8).Children(func() {
 										if frameButton(c, "导出设置…", true).Radius(6).Clicked() {
 											go a.exportSettings()
@@ -275,8 +274,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 								ui.Column(c).Gap(4).Fill().Children(func() {
 									ui.TextArea(c, &a.aiPromptText).Lines(2, 4).Fill().
 										Placeholder("留空用内置默认：根据文件内容起一个简短的名字")
-									ui.Text(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。").
-										FontSize(12).TextColor(t.TextMuted)
+									prose(c, "新建「AI 按内容命名」步骤时用它；只写要求，不必重复\"只输出文件名\"这类约束（程序会自动带上）。")
 								})
 							})
 						})
@@ -336,7 +334,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 							})
 						})
 						card("设置文件", func() {
-							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
+							prose(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。")
 							ui.Row(c).Gap(8).Children(func() {
 								if frameButton(c, "导出设置…", true).Radius(6).Clicked() {
 									go a.exportSettings()
@@ -560,20 +558,17 @@ func (a *app) importDialog(c *ui.Context) {
 		diffs := settingsDiff(a.settings, *a.importPending)
 		dialogPanel(c, dw, dh).Children(func() {
 			ui.Text(c, "导入设置？").Bold().FontSize(18)
-			ui.Text(c, "将用 "+filepath.Base(a.importPath)+" 整份替换当前设置。").
-				FontSize(12).TextColor(t.TextMuted)
+			prose(c, "将用 "+filepath.Base(a.importPath)+" 整份替换当前设置。")
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Gap(6).Children(func() {
 					if len(diffs) == 0 {
-						ui.Text(c, "这份文件和当前设置完全一样，导入不会有任何变化。").
-							FontSize(12).TextColor(t.TextMuted)
+						prose(c, "这份文件和当前设置完全一样，导入不会有任何变化。")
 						return
 					}
 					for _, d := range diffs {
 						ui.Text(c, "· "+d).FontSize(12).TextColor(t.Text)
 					}
-					ui.Text(c, "原设置会先备份成 "+filepath.Base(settingsPath())+".bak，可以随时换回来。").
-						FontSize(12).TextColor(t.TextMuted)
+					prose(c, "原设置会先备份成 "+filepath.Base(settingsPath())+".bak，可以随时换回来。")
 				})
 			})
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
