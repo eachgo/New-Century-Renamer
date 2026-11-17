@@ -32,6 +32,17 @@ func SetAIConfig(base, key, model string) {
 	aiOverrideBase, aiOverrideKey, aiOverrideModel = base, key, model
 }
 
+// DefaultAIBase / DefaultAIModel 是"哪儿都没配"时真正会连的地方。
+//
+// 导出是因为设置面板要把它们写进输入框的提示里。以前面板的占位符写着
+// DeepSeek 的地址和模型名,程序兜底却是 OpenAI 与 gpt-4o-mini——用户照
+// 提示理解"留空就是用 DeepSeek",点下去连的是另一家。提示必须和实际
+// 行为同源,就像 DefaultAITimeoutSeconds 那样。
+const (
+	DefaultAIBase  = "https://api.openai.com/v1"
+	DefaultAIModel = "gpt-4o-mini"
+)
+
 func aiConfig() (base, key, model string, ok bool) {
 	base, key, model = aiOverrideBase, aiOverrideKey, aiOverrideModel
 	if base == "" {
@@ -44,10 +55,10 @@ func aiConfig() (base, key, model string, ok bool) {
 		model = os.Getenv("NCREAMER_AI_MODEL")
 	}
 	if base == "" {
-		base = "https://api.openai.com/v1"
+		base = DefaultAIBase
 	}
 	if model == "" {
-		model = "gpt-4o-mini"
+		model = DefaultAIModel
 	}
 	return base, key, model, key != ""
 }

@@ -67,6 +67,17 @@ type app struct {
 	// 值得动的动效。
 	flashUntil time.Time
 	lastSpec   string
+	// planSpec 是"算出现在这份 a.ops 时,步骤长什么样"。
+	//
+	// 含 <AI:> 的步骤不能实时重算(会联网),所以改了模板之后 a.ops 会停在
+	// 旧计划上;而"执行更名"只看 a.ops 有没有变更,于是它照样能点——按下
+	// 去执行的是改之前的计划。把 spec 记下来,和当前 spec 一比就知道这份
+	// 计划是不是已经过期;过期时主按钮置灰并说清"先点预览"。
+	planSpec string
+	// planFiles 是算计划时的文件数。计划是按"这些文件"算出来的:含 AI 时
+	// 加入新文件不会自动重算,计划就只覆盖老的那几个,而列表里已经多了
+	// 一行没有新名字的文件。空串/零值表示"还没有计划",不算过期。
+	planFiles int
 
 	settings      Settings
 	settingsOpen  bool
@@ -256,7 +267,7 @@ func (a *app) view(c *ui.Context) {
 		a.preview()
 	}
 	// live preview on any change (AI steps need the explicit button)
-	if spec := strings.Join(a.stepSpecs(), "\x00"); spec != a.lastSpec {
+	if spec := a.specKey(); spec != a.lastSpec {
 		if !strings.Contains(spec, "<AI:") {
 			a.preview()
 		}
@@ -473,7 +484,10 @@ func (a *app) statusBar(c *ui.Context) {
 				a.armConfirm("undo")
 			}
 		}
-		applyEnabled := !a.busy && a.hasChanges()
+		// 计划过期时"执行更名"必须点不了:含 AI 的步骤改动不触发实时预览,
+		// a.ops 还停在改之前那份计划上,能点就等于按旧计划改磁盘。
+		stale := a.planStale()
+		applyEnabled := !a.busy && !stale && a.hasChanges()
 		// 执行前把 AI 请求量说出来。一次 300 个文件的批量,配上 4 路并发
 		// 和慢模型,是十几分钟的事;等到点下去才发现,用户能做的只有
 		// 干等或者中断。这条数字在点之前就有,所以放在按钮左边。
@@ -487,10 +501,20 @@ func (a *app) statusBar(c *ui.Context) {
 					Tooltip(fmt.Sprintf("这次执行会向 AI 接口发 %d 次请求（%d 路并发）。\n本地模型可能要等一会儿，云端按次计费。", n, core.AIConcurrency()))
 			}
 		}
+		// 过期时把"下一步该做什么"写在按钮左边。按钮自己是灰的,而灰按钮
+		// 上的 Tooltip 在 mygo 里不弹(禁用元素不收悬停),所以提示不能只挂
+		// 在按钮上,必须有一句摆在外面。
+		if why := a.planStaleWhy(); why != "" && !a.busy {
+			ui.Text(c, why).FontSize(12).TextColor(t.TextMuted).SingleLine().
+				Tooltip("含 AI 步骤时不自动重算（会联网，一改就发请求）。点右边「预览」按当前步骤重新算一遍，再执行。")
+		}
 		// 执行更名:动磁盘的一次操作,和"清空列表""回滚上次"同一套语言——
 		// 第一下只挂确认态,第二下才真改。确认态用实心主色而不是红:它
 		// 不是危险动作,只是不可逆;红色留给"会删东西"的。
-		if a.confirmApply && a.confirmStale() {
+		//
+		// 确认态挂着的时候步骤被改了,也要收回:否则第二下点下去,确认的
+		// 是"刚才那份计划",执行的却是别的。
+		if a.confirmApply && (a.confirmStale() || stale) {
 			a.dropConfirm()
 		}
 		if a.confirmApply {
@@ -1191,8 +1215,9 @@ func (a *app) stepsView(c *ui.Context) {
 										// "AI 按内容命名"挤成"AI…"——名字比参数重要。
 										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && showSummary {
-											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).MaxLines(2).Ellipsis("…").
+											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行。
+											// Shrink(1):行宽不够时让胶囊让步,而不是把操作名挤没。
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Shrink(1).Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text).Tooltip(v)
 										}
 									})
@@ -1200,7 +1225,8 @@ func (a *app) stepsView(c *ui.Context) {
 									ui.Row(c).Fill().Gap(6).Children(func() {
 										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && v != s.opLabel && showSummary {
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).MaxLines(2).Ellipsis("…").
+											// 同上:一行 + 可省略,长参数不撑高这一行。
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Shrink(1).Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text).Tooltip(v)
 										}
 									})
@@ -2561,27 +2587,36 @@ func (a *app) addPaths(paths []string) {
 	// dropped file is a group of its own (empty → no header).
 	type entry struct{ path, group string }
 	var expanded []entry
+	// 跳过的东西要数出来。以前子文件夹、读不到的目录、stat 失败的路径
+	// 都是 continue 掉,状态行只说"已添加，共 N 个文件"——拖进去一个装
+	// 着 300 个文件的文件夹,只加进来 2 个,界面却像什么都没发生。
+	subDirs, unreadable := 0, 0
 	for _, p := range paths {
 		p = filepath.Clean(p)
 		if st, err := os.Stat(p); err == nil && st.IsDir() {
 			// a dropped folder adds the files directly inside it (one level)
 			ents, err := os.ReadDir(p)
 			if err != nil {
+				unreadable++
 				continue
 			}
 			group := filepath.Base(p)
 			for _, e := range ents {
 				if !e.IsDir() {
 					expanded = append(expanded, entry{filepath.Join(p, e.Name()), group})
+				} else {
+					subDirs++
 				}
 			}
 			continue
 		}
 		expanded = append(expanded, entry{p, ""})
 	}
+	missing := 0
 	for _, en := range expanded {
 		p := en.path
 		if st, err := os.Stat(p); err != nil || st.IsDir() {
+			missing++
 			continue
 		}
 		if !seen[p] {
@@ -2594,7 +2629,7 @@ func (a *app) addPaths(paths []string) {
 		}
 	}
 	a.assignExtColors(a.currentTheme())
-	a.status = fmt.Sprintf("已添加，共 %d 个文件", len(a.files))
+	note := addPathsNote(subDirs, unreadable, missing)
 	a.confirmClear = false
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	// AI 步骤不能在这里自动预览:preview() 是同步的,一旦含 <AI:…> 就会在
@@ -2604,7 +2639,33 @@ func (a *app) addPaths(paths []string) {
 	if !a.hasAIStep() {
 		a.preview()
 	}
+	// 提示必须写在 preview() 之后:preview() 会重设 a.status(「N 个将更名」
+	// 或「还没有步骤」),先写就被它整句覆盖——用户拖进一个带子文件夹的
+	// 目录,看到的仍是那句常规状态,永远不知道少加了几个。
+	a.status = fmt.Sprintf("已添加，共 %d 个文件", len(a.files)) + note
 	a.update() // addPaths runs off the view pass (dialogs, drops)
+}
+
+// addPathsNote 把"没加进来的那些"补在状态行后面。
+//
+// 单独一个函数是为了能测:状态行是拼出来的字符串,而"哪些该说、哪些
+// 不值得占地方"是这里的判断。子文件夹是设计选择(只加一层),必须说,
+// 否则用户会以为坏了;读不到的目录和找不到的路径是真问题,更要报。
+func addPathsNote(subDirs, unreadable, missing int) string {
+	var parts []string
+	if subDirs > 0 {
+		parts = append(parts, fmt.Sprintf("跳过 %d 个子文件夹（只加文件夹里的文件）", subDirs))
+	}
+	if unreadable > 0 {
+		parts = append(parts, fmt.Sprintf("%d 个文件夹读不到", unreadable))
+	}
+	if missing > 0 {
+		parts = append(parts, fmt.Sprintf("%d 个路径不存在", missing))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "；" + strings.Join(parts, "，")
 }
 
 // dialogs are injectable so tests drive the whole flow without a window:
@@ -2735,6 +2796,11 @@ func (a *app) importFrom(path string) (plan []core.RenameOp, errs []error) {
 		fi.order = a.nextOrder
 		a.files = append(a.files, fi)
 	}
+	// 导入的计划不是按步骤算出来的,而是表格里写好的:它就是当前计划,
+	// 不该被判成"过期"——否则含 AI 步骤时导入完就点不了执行。
+	// 必须写在重建 a.files 之后:planFiles 记的是"这份计划覆盖几个文件",
+	// 拿导入前的数量记,一进来就被判成过期。
+	a.planSpec, a.planFiles = a.specKey(), len(a.files)
 	a.applied, a.appliedAt, a.appliedCount = false, time.Time{}, 0
 	a.status = fmt.Sprintf("已导入 %d 行，%d 个将更名", len(plan), countChanges(plan))
 	if len(errs) > 0 {
@@ -3014,6 +3080,49 @@ func (a *app) stepSpecs() []string {
 	return out
 }
 
+// specKey 是"当前这套步骤"的指纹,用来判断计划是否过期。
+//
+// 用 \x00 拼接而不是直接连:两步各自写成 "A|B" 与 "A" + "|B" 时,连起来
+// 是同一个字符串,而它们是两条不同的管道。NUL 不会出现在规则文本里。
+func (a *app) specKey() string { return strings.Join(a.stepSpecs(), "\x00") }
+
+// planStale 报"现在这份 a.ops 是不是按过期的步骤/文件清单算出来的"。
+//
+// 只在有 AI 步骤时可能为真:没有 AI 的改动会立刻触发 preview(),a.ops 与
+// spec 天然同步;含 <AI:> 的那一路为了不联网被跳过,计划就停在旧 spec 上。
+// 此时"执行更名"必须置灰——否则按下去执行的是改之前的计划,行里显示的
+// 新名字也不是当前步骤的结果。
+//
+// 文件数也要比:含 AI 时往清单里加文件同样不重算(addPaths 只在没有 AI 步骤
+// 时才 preview),计划就只覆盖老的那几个,而列表已经多出一行没有新名字的
+// 文件。只比 spec 的话,这种情况会被当成"计划没问题"。
+func (a *app) planStale() bool {
+	return a.planStaleWhy() != ""
+}
+
+// planStaleWhy 说清"计划为什么过期",空串表示没过期。
+//
+// 分开报是为了底栏那句话能对着真正变了的东西说:改了模板却说"加了文件",
+// 用户会去翻文件清单,而那里什么都没变。
+func (a *app) planStaleWhy() string {
+	if !a.hasAIStep() {
+		return ""
+	}
+	// planSpec 为空 = 还没按任何步骤算过(刚加进 AI 步骤、还没点过预览)。
+	// 那不是"计划过期",是"还没有计划":底栏已经写着"含 AI 步骤,点预览"。
+	// 把它算成过期的话,刚排好步骤就冒出一句"计划还是旧的",而根本没有旧计划。
+	if a.planSpec == "" {
+		return ""
+	}
+	if a.planSpec != a.specKey() {
+		return "步骤改了，计划还是旧的"
+	}
+	if a.planFiles != len(a.files) {
+		return "文件变了，计划还是旧的"
+	}
+	return ""
+}
+
 // previewAsync runs the pipeline off the UI thread, because AI steps block on
 // the network for as long as the model takes (often tens of seconds). Doing
 // this synchronously in the click handler froze the window with no feedback;
@@ -3176,6 +3285,9 @@ func (a *app) previewSync(withProgress bool) {
 		a.ops = nil
 		a.previewErr = msg
 		a.status = msg
+		// 算不出来也算"按当前步骤算过一遍":planSpec 跟上,免得界面同时
+		// 喊"算不出来"和"计划已过期"两句话。
+		a.planSpec, a.planFiles = a.specKey(), len(a.files)
 		return
 	}
 	a.previewErr = ""
@@ -3185,6 +3297,7 @@ func (a *app) previewSync(withProgress bool) {
 	}
 	ops, _ := core.RunPipelineProgress(rules, paths, a.aiPrefetchHook(withProgress))
 	a.ops = ops
+	a.planSpec, a.planFiles = a.specKey(), len(a.files)
 	// 底栏那句"0 个将更名"在三种完全不同的处境里一模一样:没文件、
 	// 没步骤、有步骤但没产生变更。三者下一步该做的事完全不同,却
 	// 共用一句话,读者只能一个个去猜。分开说,每句都指向下一步。
@@ -3241,7 +3354,7 @@ func (a *app) handleShortcuts(c *ui.Context) {
 	if c.Shortcut(ui.Cmd, ui.KeyComma) {
 		a.openSettings()
 	}
-	if c.Shortcut(ui.Cmd, ui.KeyEnter) && !a.busy && a.hasChanges() {
+	if c.Shortcut(ui.Cmd, ui.KeyEnter) && !a.busy && !a.planStale() && a.hasChanges() {
 		// 与点按钮同一套语言:第一次按只挂确认态,再按一次才执行。
 		if a.confirmApply && !a.confirmStale() {
 			a.dropConfirm()
@@ -3467,6 +3580,11 @@ func (a *app) apply() {
 			if failed == 0 {
 				a.status = "没有文件需要更名"
 			}
+		} else if failed == 0 {
+			// 一次干净的成功不该带"失败 0"这条尾巴:它读起来像"出了 0 个
+			// 错",而用户扫底栏时只认"失败"两个字——见到就要去找是哪几个
+			// 文件出了问题。没有失败就一个字都不提。
+			a.status = fmt.Sprintf("成功 %d；可用“回滚上次”撤销", ok)
 		} else {
 			a.status = fmt.Sprintf("成功 %d，失败 %d；可用“回滚上次”撤销", ok, failed)
 		}

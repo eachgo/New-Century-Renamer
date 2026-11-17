@@ -82,7 +82,13 @@ func defaultJournalPath() string {
 
 func defaultSettings() Settings {
 	s := Settings{Journal: defaultJournalPath()}
-	s.AI.Base = "https://api.openai.com/v1"
+	// 接口地址/模型默认留空,而不是写死 https://api.openai.com/v1。
+	//
+	// SetAIConfig 的 override 优先于 NCREAMER_AI_BASE/MODEL,所以默认值
+	// 一写死,GUI 里这两个环境变量就彻底失效了——用户按 README 设好
+	// Ollama 的地址启动 GUI,连的还是 OpenAI,而且设置面板里看不出是
+	// 谁覆盖了谁。留空 = "没意见",由 core 按 环境变量 → 内置默认 的
+	// 顺序决定;面板上的占位符说明内置默认是什么。
 	s.Theme.Mode = "跟随系统"
 	return s
 }

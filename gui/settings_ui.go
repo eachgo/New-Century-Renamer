@@ -119,10 +119,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 							ui.Column(c).Grow(1).FillHeight().Gap(12).Children(func() {
 								card("AI 接口（OpenAI 兼容）", func() {
 									row("接口地址", func() {
-										ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
+										ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder(core.DefaultAIBase + "（留空用这个）").Fill()
 									})
 									row("模型", func() {
-										ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
+										ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder(core.DefaultAIModel + "（留空用这个）").Fill()
 									})
 									row("API Key", func() {
 										ui.Row(c).Gap(8).Children(func() {
@@ -236,10 +236,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 					} else {
 						card("AI 接口（OpenAI 兼容）", func() {
 							row("接口地址", func() {
-								ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder("https://api.deepseek.com/v1").Fill()
+								ui.TextInput(c, &a.settingsDraft.AI.Base).Placeholder(core.DefaultAIBase + "（留空用这个）").Fill()
 							})
 							row("模型", func() {
-								ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder("deepseek-chat").Fill()
+								ui.TextInput(c, &a.settingsDraft.AI.Model).Placeholder(core.DefaultAIModel + "（留空用这个）").Fill()
 							})
 							row("API Key", func() {
 								ui.Row(c).Gap(8).Children(func() {
