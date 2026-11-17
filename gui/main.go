@@ -1275,6 +1275,16 @@ func (a *app) stepsView(c *ui.Context) {
 								x := r.X + r.W - 4 - float32(k)*6
 								p.Fill(ui.Rect{X: x, Y: r.Y, W: 4, H: r.H}, col, 0)
 							}
+							// 选中行左缘一条主色竖条。
+							//
+							// 行底色已经会变,但底色是"这一行被点亮"的整体感,
+							// 在 38px 高的窄行里它和相邻行的差别很淡;而下面那张
+							// 详情卡说的是"我正在改第几步",两者需要一个显式的
+							// 连线。左缘竖条就是那条线:它指向的那一行,正是
+							// 卡片里编辑的那一步。
+							if i == a.stepSel {
+								p.Fill(ui.Rect{X: r.X, Y: r.Y + 4, W: 3, H: r.H - 8}, t.Accent, 0)
+							}
 						})
 						row.Children(func() {
 							// 高亮行:mygo 会把选中行的文字染成强调色(浅),显式
@@ -1379,7 +1389,17 @@ func (a *app) stepsView(c *ui.Context) {
 				ui.Column(c).FillWidth().Gap(6).Padding(8, 10).Radius(10).
 					MaxHeight(paneH * 0.45).
 					Background(dt.panes(a.isDark()).card).Children(func() {
-					ui.Text(c, r.opLabel).Bold()
+					// 首行先报位置:「第 3 步 / 共 7 步」。
+					//
+					// 卡片浮在列表下方,它编辑的永远是"当前选中的那一步",
+					// 但卡片自己不说这件事——列表滚到中段时,读者得回头
+					// 数一遍才能确认自己改的是第几步。参数改错一项的代价
+					// 是整批文件名,这一步不该靠数。
+					ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, fmt.Sprintf("第 %d 步 / 共 %d 步", a.stepSel+1, len(a.steps))).
+							FontSize(12).TextColor(t.TextMuted).SingleLine().Shrink(0)
+						ui.Text(c, r.opLabel).Bold().SingleLine().Shrink(1).Ellipsis("…")
+					})
 					if r.opDesc != "" {
 						ui.Text(c, r.opDesc).FontSize(12).TextColor(t.TextMuted)
 					}
