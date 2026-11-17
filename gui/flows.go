@@ -290,8 +290,6 @@ func (a *app) flowReplaceExpired() bool {
 // 起点),但"想换个做法"这件事不再依赖"列表恰好是空的"这个前提。
 func (a *app) flowDialog(c *ui.Context) {
 	t := c.Theme()
-	dt := a.currentTheme()
-	cardBg := dt.cardBgFor(a.isDark())
 
 	ui.Modal(c, &a.flowOpen, func() {
 		w, h := c.Size()
@@ -305,7 +303,7 @@ func (a *app) flowDialog(c *ui.Context) {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "流程").Bold().FontSize(18)
 				ui.Spacer(c)
-				if ui.Button(c, "关闭").Radius(6).Clicked() {
+				if frameButton(c, "关闭", true).Radius(6).Clicked() {
 					a.flowOpen = false
 				}
 			})
@@ -331,7 +329,7 @@ func (a *app) flowDialog(c *ui.Context) {
 								a.dropConfirm()
 								a.applyFlow(f, true)
 							}
-							if ui.Button(c, "取消").Radius(6).Clicked() {
+							if frameButton(c, "取消", true).Radius(6).Clicked() {
 								a.dropConfirm()
 							}
 						})
@@ -348,11 +346,7 @@ func (a *app) flowDialog(c *ui.Context) {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 								ui.TextInput(c, &a.flowName).Placeholder("给这条流程起个名字").
 									Grow(1).Radius(6)
-								save := ui.Button(c, "保存").Radius(6)
-								if strings.TrimSpace(a.flowName) == "" {
-									save = save.Disabled(true)
-								}
-								if save.Clicked() {
+								if frameButton(c, "保存", strings.TrimSpace(a.flowName) != "").Clicked() {
 									a.saveFlow(a.flowName)
 									a.flowName = ""
 									if err := SaveSettings(a.settings); err != nil {
@@ -371,10 +365,15 @@ func (a *app) flowDialog(c *ui.Context) {
 						return
 					}
 					for _, f := range rows {
+						// 和空态那四张预设卡同一个处方:抬高一层的底、不带
+						// 按钮式描边,读成"一块瓦片"而不是"一颗大按钮"。
+						// 弹窗里的底就是 Surface,所以这里比底再亮一档
+						// (cardBgFor)——卡片不能和它坐的底同色。
+						ground := a.currentTheme().cardBgFor(a.isDark())
 						row := ui.Column(c).FillWidth().Gap(4).Padding(8, 12).Radius(10).
-							Background(cardBg).Border(1, t.Border)
+							Background(ground).Border(1, cardBorder(t))
 						if row.Hovered() {
-							row = row.Background(t.SurfaceHover).Border(1, t.Accent)
+							row = row.Border(1, cardBorderHover(t))
 						}
 						// 删除按钮必须留在行内右侧,不能挂到行外:挂在行外会
 						// 变成一整条独立横幅,读起来像"这张卡片下面还有一张
@@ -386,7 +385,7 @@ func (a *app) flowDialog(c *ui.Context) {
 									SingleLine().Ellipsis("…")
 								if f.Builtin {
 									ui.Text(c, "预设").FontSize(12).TextColor(t.TextMuted).Shrink(0)
-								} else if ui.Button(c, "删除").Radius(6).Shrink(0).Clicked() {
+								} else if frameButton(c, "删除", true).Radius(6).Shrink(0).Clicked() {
 									// 内置的删了下次还会回来,所以它们没有这个按钮。
 									del = true
 								}

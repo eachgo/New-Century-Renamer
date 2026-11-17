@@ -40,10 +40,10 @@ func (a *app) helpDialog(c *ui.Context) {
 				if a.helpShowFlows {
 					flowLabel = "收起流程示例图"
 				}
-				if ui.Button(c, flowLabel).Radius(6).Clicked() {
+				if frameButton(c, flowLabel, true).Radius(6).Clicked() {
 					a.helpShowFlows = !a.helpShowFlows
 				}
-				if ui.Button(c, "知道了").Radius(6).Clicked() {
+				if frameButton(c, "知道了", true).Radius(6).Clicked() {
 					a.helpOpen = false
 				}
 			})

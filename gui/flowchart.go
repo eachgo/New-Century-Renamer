@@ -130,7 +130,8 @@ func drawLanes(p *ui.Painter, r ui.Rect, t *ui.Theme, lanes [][]string) {
 	// 随便一格。终点"执行更名"用实心主色——那是唯一真的动磁盘的一步。
 	startFill := t.Accent.Alpha(0.12)
 	boxFill := t.Surface
-	boxStroke := t.Border
+	// 流程图方框是图示,不是控件:中性描边,免得看着像能点。
+	boxStroke := neutralStroke(t)
 	arrowCol := t.TextMuted
 
 	box := func(x, y, w float32, label string, fill, stroke, fg ui.Color) {

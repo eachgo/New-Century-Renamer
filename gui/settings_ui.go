@@ -137,7 +137,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 											if a.keyShown {
 												label = "隐藏"
 											}
-											if ui.Button(c, label).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
+											if frameButton(c, label, true).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
 												a.keyShown = !a.keyShown
 											}
 										})
@@ -185,21 +185,20 @@ func (a *app) settingsDialog(c *ui.Context) {
 										// 展开的色彩面板会把整个对话框挤满)
 										ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 											sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
-											sw.Border(1, t.Border)
+											sw.Border(1, neutralStroke(t))
 											ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
 											label := "更改…"
 											if a.pickOpen {
 												label = "收起"
 											}
-											if ui.Button(c, label).Radius(6).Disabled(a.seedFollow).Clicked() {
+											if frameButton(c, label, !a.seedFollow).Clicked() {
 												a.pickOpen = !a.pickOpen
 											}
 										})
 									})
 									if a.pickOpen && !a.seedFollow {
 										ui.Row(c).Children(func() {
-											p := ui.ColorPicker(c, &a.seedPick)
-											p.Disabled(a.seedFollow)
+											ui.ColorPicker(c, &a.seedPick)
 										})
 									}
 									row("配色预览", func() {
@@ -209,7 +208,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 										swatch := func(name string, col ui.Color) {
 											ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 												b := ui.Box(c).Size(16, 16).Radius(6).Background(col)
-												b.Border(1, t.Border)
+												b.Border(1, neutralStroke(t))
 												ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
 											})
 										}
@@ -224,10 +223,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 								card("设置文件", func() {
 									ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
 									ui.Row(c).Gap(8).Children(func() {
-										if ui.Button(c, "导出设置…").Radius(6).Clicked() {
+										if frameButton(c, "导出设置…", true).Radius(6).Clicked() {
 											go a.exportSettings()
 										}
-										if ui.Button(c, "导入设置…").Radius(6).Clicked() {
+										if frameButton(c, "导入设置…", true).Radius(6).Clicked() {
 											go a.importSettings()
 										}
 									})
@@ -255,7 +254,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									if a.keyShown {
 										label = "隐藏"
 									}
-									if ui.Button(c, label).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
+									if frameButton(c, label, true).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
 										a.keyShown = !a.keyShown
 									}
 								})
@@ -301,21 +300,20 @@ func (a *app) settingsDialog(c *ui.Context) {
 								// 展开的色彩面板会把整个对话框挤满)
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									sw := ui.Box(c).Size(22, 22).Radius(6).Background(a.seedPick)
-									sw.Border(1, t.Border)
+									sw.Border(1, neutralStroke(t))
 									ui.Text(c, colorHex(a.seedPick)).FontSize(12).TextColor(t.TextMuted)
 									label := "更改…"
 									if a.pickOpen {
 										label = "收起"
 									}
-									if ui.Button(c, label).Radius(6).Disabled(a.seedFollow).Clicked() {
+									if frameButton(c, label, !a.seedFollow).Clicked() {
 										a.pickOpen = !a.pickOpen
 									}
 								})
 							})
 							if a.pickOpen && !a.seedFollow {
 								ui.Row(c).Children(func() {
-									p := ui.ColorPicker(c, &a.seedPick)
-									p.Disabled(a.seedFollow)
+									ui.ColorPicker(c, &a.seedPick)
 								})
 							}
 							row("配色预览", func() {
@@ -325,7 +323,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 								swatch := func(name string, col ui.Color) {
 									ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 										b := ui.Box(c).Size(16, 16).Radius(6).Background(col)
-										b.Border(1, t.Border)
+										b.Border(1, neutralStroke(t))
 										ui.Text(c, name).FontSize(12).TextColor(t.TextMuted)
 									})
 								}
@@ -340,10 +338,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 						card("设置文件", func() {
 							ui.Text(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。").FontSize(12).TextColor(t.TextMuted)
 							ui.Row(c).Gap(8).Children(func() {
-								if ui.Button(c, "导出设置…").Radius(6).Clicked() {
+								if frameButton(c, "导出设置…", true).Radius(6).Clicked() {
 									go a.exportSettings()
 								}
-								if ui.Button(c, "导入设置…").Radius(6).Clicked() {
+								if frameButton(c, "导入设置…", true).Radius(6).Clicked() {
 									go a.importSettings()
 								}
 							})
@@ -367,7 +365,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Spacer(c)
-				if ui.Button(c, "取消").Radius(6).Clicked() {
+				if frameButton(c, "取消", true).Radius(6).Clicked() {
 					a.closeSettings(false)
 				}
 				if ui.PrimaryButton(c, "保存").Radius(6).Clicked() {
@@ -579,7 +577,7 @@ func (a *app) importDialog(c *ui.Context) {
 				})
 			})
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, "取消").Radius(6).Clicked() {
+				if frameButton(c, "取消", true).Radius(6).Clicked() {
 					a.importPending, a.importPath = nil, ""
 					a.importOpen = false
 					a.status = "已取消导入，设置没有变化"

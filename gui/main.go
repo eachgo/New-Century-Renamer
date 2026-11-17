@@ -312,8 +312,10 @@ func (a *app) view(c *ui.Context) {
 			// 设置是应用级入口,不该藏在"往管道里加东西"的目录末尾——
 			// 那里它排在 y≈1385,任何窗口高度都要先滚到底才能看见。
 			// 桌面应用的约定是设置不进内容列表,所以放标题栏右侧。
+			// 齿轮只有图标,没有文字:不显式给 Label 的话它的可读名是空串
+			// (实测 Name="" Desc="Ctrl+,"),读屏念到它只会念出快捷键。
 			gear := ui.ButtonBase(c).Size(26, 26).Radius(26 / 2).Padding(0).
-				Tooltip(shortcutTip("Ctrl+,"))
+				Label("设置").Tooltip(shortcutTip("Ctrl+,"))
 			if gear.Hovered() {
 				gear = gear.Background(t.SurfaceHover)
 			}
@@ -418,7 +420,7 @@ func (a *app) statusBar(c *ui.Context) {
 			// 而 500 个文件能跑十几秒。
 			if a.busyTotal > 0 {
 				frac := float32(a.busyDone) / float32(a.busyTotal)
-				ui.Box(c).Width(120).Height(4).Radius(4 / 2).Background(t.Border).Children(func() {
+				ui.Box(c).Width(120).Height(4).Radius(4 / 2).Background(neutralStroke(t)).Children(func() {
 					ui.Box(c).FillWidth().Height(4).Radius(4 / 2).Background(t.Accent).Width(120 * frac)
 				})
 				ui.Text(c, fmt.Sprintf("%d/%d", a.busyDone, a.busyTotal)).FontSize(12).TextColor(t.TextMuted)
@@ -427,7 +429,7 @@ func (a *app) statusBar(c *ui.Context) {
 				// 进度,用户分不清"本地模型慢"和"网关已经死了"——而 3/40
 				// 正是"再等等"与"直接关掉"之间的区别。
 				frac := float32(done) / float32(total)
-				ui.Box(c).Width(120).Height(4).Radius(4 / 2).Background(t.Border).Children(func() {
+				ui.Box(c).Width(120).Height(4).Radius(4 / 2).Background(neutralStroke(t)).Children(func() {
 					ui.Box(c).FillWidth().Height(4).Radius(4 / 2).Background(t.Accent).Width(120 * frac)
 				})
 				ui.Text(c, fmt.Sprintf("%d/%d", done, total)).FontSize(12).TextColor(t.TextMuted)
@@ -521,7 +523,6 @@ func (a *app) statusBar(c *ui.Context) {
 // starting point and not a mode: there is no "wizard" to escape from.
 func (a *app) intentCards(c *ui.Context) {
 	t := c.Theme()
-	pt := a.currentTheme().panes(a.isDark())
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).FillWidth().Gap(8).Padding(2, 2).Children(func() {
 			// 一句话说清这一屏的两个入口:左边的「功能」目录(answer "哪个规则")与
@@ -538,10 +539,17 @@ func (a *app) intentCards(c *ui.Context) {
 				// 用 Column 它们不进 Tab 序列(实测 0 站)、Enter 也按不动,
 				// 键盘用户被挡在中栏外面。换成 ButtonBase 后能聚焦、能回车,
 				// 鼠标路径的观感不变(内层 Column 照旧竖排两行)。
+				// 底用带主题色的半透明叠层,不用 Border:描边是按钮的语言
+				// (见 control_look.go),四张卡描上边就成了四颗大按钮。
+				// 悬停把同一层加深,而不是换一条主色描边。
+				// 底是"抬高一层的那个中性色",不掺主题色——掺了就会读成
+				// 一颗淡底按钮(详见 control_look.go 的说明)。"能点"由
+				// 悬停时亮起的主题色描边承担。
+				ground := a.currentTheme().panes(a.isDark()).card
 				card := ui.ButtonBase(c).FillWidth().Radius(10).Padding(8, 10).
-					Background(pt.card).Border(1, t.Border)
+					Background(ground).Border(1, cardBorder(t))
 				if card.Hovered() {
-					card = card.Background(t.SurfaceHover).Border(1, t.Accent)
+					card = card.Border(1, cardBorderHover(t))
 				}
 				card.Label(in.label + "：" + in.desc)
 				card.Children(func() {
@@ -652,7 +660,7 @@ func (a *app) catalogView(c *ui.Context) {
 		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").Grow(1)
 			if strings.TrimSpace(a.palQuery) != "" {
-				if ui.Button(c, "×").Radius(6).Tooltip("清空搜索").Clicked() {
+				if frameButton(c, "×", true).Radius(6).Tooltip("清空搜索").Clicked() {
 					a.palQuery = ""
 					a.folded = nil
 				}
@@ -674,7 +682,7 @@ func (a *app) catalogView(c *ui.Context) {
 				ui.Column(c).FillWidth().Gap(6).Padding(8, 10).Children(func() {
 					ui.Text(c, "没有匹配「"+strings.TrimSpace(a.palQuery)+"」的功能").FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, "试试更短的关键词，或换个说法（如「改名」「后缀」）。").FontSize(12).TextColor(t.TextMuted)
-					if ui.Button(c, "清空搜索").Radius(6).Clicked() {
+					if frameButton(c, "清空搜索", true).Radius(6).Clicked() {
 						a.palQuery = ""
 						a.folded = nil
 					}
@@ -957,6 +965,12 @@ func (a *app) stepsView(c *ui.Context) {
 	// stepsView 的 ui.Scroll 里,Grow(1) 的列表自认为全部可见),所以
 	// ListState.ScrollIntoView 不起作用——得让那一行的元素自己向所有
 	// 外层滚动容器申请露出来。
+	// 多选开着、步骤却被删光了(或整批清掉):开关该自己退回关。
+	// 否则栏头仍写着「完成」,批量条也还挂着,而一条可选的行都没有。
+	if a.pickMode && len(a.steps) == 0 {
+		a.pickMode = false
+		a.chosen.Clear()
+	}
 	revealRow := -1
 	if a.stepScrollTo >= 0 && a.revealLeft > 0 {
 		revealRow = a.stepScrollTo
@@ -979,7 +993,7 @@ func (a *app) stepsView(c *ui.Context) {
 			if narrowFlow {
 				flowLabel = "▤"
 			}
-			fb := ui.Button(c, flowLabel).Radius(6)
+			fb := frameButton(c, flowLabel, true).Radius(6)
 			if narrowFlow {
 				fb = fb.Tooltip("流程：套用预设，或把当前步骤存成自己的流程")
 			}
@@ -995,7 +1009,9 @@ func (a *app) stepsView(c *ui.Context) {
 			if narrowHead {
 				label = "⋯"
 			}
-			btn := ui.Button(c, label).Radius(6)
+			// 0 步时没有东西可勾,这颗按钮和「上移」一样按不动。开着多选
+			// 再删光步骤的路径由 stepsView 开头的守卫生效。
+			btn := frameButton(c, label, len(a.steps) > 0)
 			if narrowHead {
 				btn = btn.Tooltip("多选：点开后在每步前面显示勾选框")
 			}
@@ -1061,7 +1077,7 @@ func (a *app) stepsView(c *ui.Context) {
 					Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, fmt.Sprintf("已删除「%s」", a.deletedStep.opLabel)).
 						FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
-					if ui.Button(c, "撤回").Radius(6).Clicked() {
+					if frameButton(c, "撤回", true).Radius(6).Clicked() {
 						a.undoDelete()
 					}
 				})
@@ -1081,7 +1097,7 @@ func (a *app) stepsView(c *ui.Context) {
 						Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, fmt.Sprintf("已替换原来的 %d 步", len(a.recoveredSteps))).
 							FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
-						if ui.Button(c, "撤回").Radius(6).Clicked() {
+						if frameButton(c, "撤回", true).Radius(6).Clicked() {
 							a.undoFlowReplace()
 						}
 					})
@@ -1141,7 +1157,9 @@ func (a *app) stepsView(c *ui.Context) {
 								// 16 DIP,读流程时最刺眼的正是这种跳动。
 								picked := a.chosen.Has(s.opUID)
 								if a.pickMode {
-									dotColor := t.Border
+									// 勾选框是控件:没勾时也走"能点"的主题色描边,
+									// 不是中性灰(灰 = 按不动,见 control_look.go)。
+									dotColor := liveBorder(t)
 									if picked {
 										dotColor = t.Accent
 									}
@@ -1243,7 +1261,7 @@ func (a *app) stepsView(c *ui.Context) {
 							Background(t.Danger.Alpha(0.10)).AlignItems(ui.Center).Children(func() {
 							ui.Text(c, "这一步要调用 AI 接口，但还没填 API Key。").
 								FontSize(12).TextColor(t.Danger).Grow(1).SingleLine().Ellipsis("…")
-							if ui.Button(c, "去配置").Radius(6).Clicked() {
+							if frameButton(c, "去配置", true).Radius(6).Clicked() {
 								a.openSettings()
 							}
 						})
@@ -1272,7 +1290,7 @@ func (a *app) stepsView(c *ui.Context) {
 						if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
 							a.deleteStep(a.stepSel)
 						}
-						if ui.Button(c, "复制").Tooltip(shortcutTip("Ctrl+D")).Clicked() {
+						if frameButton(c, "复制", true).Tooltip(shortcutTip("Ctrl+D")).Clicked() {
 							a.duplicateStep(a.stepSel)
 						}
 					})
@@ -2152,7 +2170,7 @@ func (a *app) filesView(c *ui.Context) {
 										Background(echo).Shrink(0).Tooltip(res)
 								} else if a.previewErr != "" {
 									ui.Box(c).Size(6, 6).Radius(6 / 2).
-										Background(t.Border).Shrink(0).
+										Background(neutralStroke(t)).Shrink(0).
 										Tooltip("预览算不出来：" + a.previewErr)
 								}
 							}
@@ -2251,7 +2269,7 @@ func (a *app) filesView(c *ui.Context) {
 					if i >= len(a.ops) && a.previewErr != "" {
 						ui.Row(c).Width(resultW).Shrink(0).Gap(4).AlignItems(ui.Center).Children(func() {
 							ui.Spacer(c)
-							dot := ui.Box(c).Size(7, 7).Radius(7 / 2).Background(t.Border)
+							dot := ui.Box(c).Size(7, 7).Radius(7 / 2).Background(neutralStroke(t))
 							dot.Tooltip("预览算不出来：" + a.previewErr)
 							if showResultText {
 								ui.Text(c, "算不出").FontSize(12).TextColor(t.TextMuted).SingleLine().
@@ -2417,12 +2435,19 @@ func accentInk(t *ui.Theme) ui.Color {
 // 操作(添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
 func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
+	if !enabled {
+		// 淡底按钮的禁用态:和描边按钮共用同一个"按不动"的样子。
+		//
+		// 三种按钮(实心/淡底/描边)在启用时靠填充区分主次;一旦按不动,
+		// 那个区分就没有意义了——没有主次可言,只有"这里暂时不行"。所以
+		// 禁用态统一成一副面孔,由 frameButton 提供,免得三处各调一遍颜色
+		// 又慢慢分叉。
+		return frameButton(c, label, false)
+	}
 	ink := accentInk(t)
 	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).TextColor(ink).
 		Background(t.Accent.Alpha(0.12))
-	if !enabled {
-		b = b.TextColor(t.TextMuted).Background(t.SurfaceHover)
-	} else if b.Hovered() {
+	if b.Hovered() {
 		b = b.Background(t.Accent.Alpha(0.20))
 	}
 	b.Children(func() { ui.Text(c, label).SingleLine() })
@@ -2444,7 +2469,7 @@ func primaryButton(c *ui.Context, label string, enabled bool) ui.Element {
 	}
 	fg, bg := disabledPrimaryColors(t)
 	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
-		TextColor(fg).Background(bg).Border(1, t.Border).
+		TextColor(fg).Background(bg).Border(1, inertBorder(t)).
 		DimDisabled(false).Disabled(true)
 	b.Children(func() { ui.Text(c, label).SingleLine() })
 	return b
@@ -2458,40 +2483,28 @@ func disabledPrimaryColors(t *ui.Theme) (fg, bg ui.Color) {
 	return disabledColors(t)
 }
 
-// plainButton 是"最普通"的按钮,禁用时换成读得清的一对颜色。
+// plainButton 是"最普通"的按钮:有框、次要。
 //
-// 直接写 ui.Button(c, label).Disabled(true) 的话,mygo 把整块连文字一起
-// 乘 0.5:实测亮色 3.49:1、暗色 2.38:1,低于正文 4.5:1——用户读不清
-// 那颗灰按钮上写的是什么,也就不知道"为什么点不了"。这里禁用时换成
-// TextMuted 配 Surface 并关掉自动调暗(6.5–7.2:1),灰感由底色与边框
-// 提供,不靠把字调到看不见。
+// 它和 outlinedButton 现在是同一颗——都交给 frameButton。留两个名字是因为
+// 调用点写的是"这件事有多重",不是"画成什么样":哪天要给"最普通"再降一档,
+// 改这里就够了。
+//
+// 禁用时不能直接写 .Disabled(true) 了事:mygo 会把整块连文字一起乘 0.5,
+// 实测亮色 3.49:1、暗色 2.38:1,低于正文 4.5:1——用户读不清那颗灰按钮上
+// 写的是什么,也就不知道"为什么点不了"。frameButton 的禁用分支换成
+// TextMuted 配透明底并关掉自动调暗,灰感由底色与边框提供,不靠把字调到
+// 看不见。
 func plainButton(c *ui.Context, label string, enabled bool) ui.Element {
-	if enabled {
-		return ui.Button(c, label)
-	}
-	t := c.Theme()
-	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
-		TextColor(t.TextMuted).Background(t.Surface).Border(1, t.Border).
-		DimDisabled(false).Disabled(true)
-	b.Children(func() { ui.Text(c, label).SingleLine() })
-	return b
+	return frameButton(c, label, enabled)
 }
 
 // outlinedButton 是"中性次要动作"的镂空按钮:只描边、不填底,永远不抢眼。
 // 用于回滚这类"撤销",它不是主路径,但又要能看见。
+//
+// 它整颗就是 frameButton,别再自己调一遍颜色——两处各写一遍,过一阵就会
+// 有一处忘了改,而"框带主题色 = 能点"这条规则只认一个出处。
 func outlinedButton(c *ui.Context, label string, enabled bool) ui.Element {
-	t := c.Theme()
-	fg := t.Text
-	bg := ui.Color{}
-	if !enabled {
-		fg = t.TextMuted
-	}
-	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).TextColor(fg).Background(bg).Border(1, t.Border)
-	if enabled && b.Hovered() {
-		b = b.Background(t.SurfaceHover)
-	}
-	b.Children(func() { ui.Text(c, label).SingleLine() })
-	return b
+	return frameButton(c, label, enabled)
 }
 
 // dangerButton 是 outlinedButton 的悬停变体,不是第四种按钮样式。

@@ -113,12 +113,13 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	// 等于"没有边界"——用户看不出哪里可以点。0.72 抬到 2.0–2.4,
 	// 仍然很轻,但轮廓立得住;装饰用的分隔线另走 paneTones.outline。
 	//
-	// 0.60 是"对五种底都 ≥3:1"的上界(实测算出来的:base/left/mid/right/
-	// card/chip 里最难的是 card,0.605 才刚过线,取 0.60 留一点余量)。
-	// 这是 WCAG 1.4.11 对"非文本界面元素"的要求——输入框、下拉、按钮的
-	// 轮廓属于"理解内容所必需的图形部分",淡到 2.0 就等于让人靠猜。
+	// 现在明度交给 accentBorder 算(它同时决定彩度),因为"框带主题色 =
+	// 能点、框是灰的 = 按不动"是整份界面共用的规则(见 control_look.go)。
+	// 原来这里写 tone(0.555, 0.16),彩度只有 0.004——对底 3.07:1 够亮,
+	// 却和"按不动"的灰框分不开,那才是用户抱怨"点了没反应"的根源。
+	// accentBorder 仍守住 WCAG 1.4.11 的 3:1(实测对六种底最低 3.43)。
 	// 分隔线是装饰,不受这条约束,所以它走 outline 而不是这里。
-	lt.Border = tone(0.555, 0.16)
+	lt.Border = accentBorder(cc, H, false)
 	lt.Text = tone(0.24, 0.30)
 	// 次要文字承载路径、日期、大小、分组计数——是信息不是装饰,必须读得出来。
 	// L 0.62 时在左栏底色上只有 2.94:1(远低于 WCAG 4.5);0.50 让四种底色
@@ -152,8 +153,9 @@ func buildTheme(seed ui.Color) *derivedTheme {
 	dt.SurfacePressed = dt.Text.Alpha(0.17)
 	// 0.325 时控件边界只有 1.46:1,等于没有边界。暗色下"更显眼"是往上抬
 	// 而不是往下压——底是 L 0.20–0.30,边框越亮对比越高。实测要 0.625 才能
-	// 让最难的 card(L 0.300)过 3:1;0.56 在卡片上只有 2.91。
-	dt.Border = tone(0.665, 0.22)
+	// 让最难的 card(L 0.300)过 3:1;0.56 在卡片上只有 2.91。明度现在由
+	// accentBorder 按暗色一档算(0.660),彩度随种子走。
+	dt.Border = accentBorder(cc, H, true)
 	dt.Text = tone(0.945, 0.10)
 	dt.TextMuted = tone(0.700, 0.12)
 	accAt(dt, clamp(L, 0.72, 0.82), cc, H)
