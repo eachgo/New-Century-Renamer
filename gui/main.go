@@ -673,6 +673,36 @@ func (a *app) catalogSel() string {
 	return a.steps[a.stepSel].opID
 }
 
+// groupHead 是左栏组标题的文本:箭头 + 组名 + 条数。
+//
+// 11 组折起来时一屏只看得到十一个词:「编号」「日期」「高级」——用户没法
+// 判断哪一组里有他要的东西,只能挨个展开。带上条数之后,「元数据(3)」和
+// 「日期(1)」的重量一眼分得出来,想找"那条只有一个的"也有据可依。
+//
+// 箭头与组名之间用空格、组名与括号之间不留空格:中文括号紧跟名词是惯例,
+// 而「▾ 替换(3)」比「▾ 替换 (3)」少一处要扫的空隙。
+func groupHead(arrow, group string, n int) string {
+	return fmt.Sprintf("%s %s(%d)", arrow, group, n)
+}
+
+// groupCount 数某个组在当前(可能被搜索过滤过的)结果里有几条。
+//
+// 数的是 shown 而不是 catalog:搜索时括号里的数字要跟着结果变,否则
+// 「元数据(3)」在搜「标题」时仍然写 3,而下面只挂着一条——那比不带条数
+// 更让人困惑。钉选组数的是钉了几个,不是 catalog 里有几条。
+func (a *app) groupCount(shown []opDef, group string) int {
+	if group == pinGroup {
+		return len(a.pinnedEntries())
+	}
+	n := 0
+	for _, d := range shown {
+		if d.group == group {
+			n++
+		}
+	}
+	return n
+}
+
 func (a *app) catalogView(c *ui.Context) {
 	t := c.Theme()
 	// 过滤:34 项 11 组正落在"需要搜索"的量级(Colborne 第 5 章专讲
@@ -801,12 +831,13 @@ func (a *app) catalogView(c *ui.Context) {
 						head.Background(t.SurfaceHover)
 					}
 				}
+				label := groupHead(arrow, g, a.groupCount(shown, g))
 				head.Children(func() {
 					// FillWidth + Start:ButtonBase 默认把内容居中,而下面的条目
 					// 全是左对齐。组标题居中、条目左对齐,两者左缘差了 50 多 DIP
 					// (实测组标题文本 x=84.85,条目 x=32.00),扫下来像两组不相干
 					// 的列表。组标题是条目的上级,它该和条目共用同一条左轴。
-					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).
+					ui.Text(c, label).FontSize(12).TextColor(t.TextMuted).
 						FillWidth().TextAlign(ui.Start).SingleLine()
 				})
 				if !filtering && head.Clicked() {

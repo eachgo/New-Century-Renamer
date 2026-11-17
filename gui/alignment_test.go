@@ -88,16 +88,18 @@ func TestCatalogGroupHeaderAlignsWithItems(t *testing.T) {
 	tt.Frame()
 	tt.Frame()
 
-	head, ok := tt.Find("▾ 替换")
+	// 组标题带条数（「▾ 替换(6)」），条数会随目录变化，不能写死。
+	headLabel := groupLabel(tt, "▾", "替换")
+	head, ok := tt.Find(headLabel)
 	if !ok {
-		t.Fatal("找不到组标题「▾ 筛选/范围」")
+		t.Fatalf("找不到组标题 %q", headLabel)
 	}
 	// 组标题的 ▾ 与条目的图标占同一个槽位,所以比的是"文本节点的左缘":
 	// 组标题已 FillWidth 撑满,靠 TextAlign(Start) 贴左;条目文字前面
 	// 有 14 宽的图标。两者都从按钮左缘起算,差的是图标宽度。
 	var btnX float32
 	for _, x := range tt.AccessAll() {
-		if x.Role == 4 && x.Name == "▾ 替换" {
+		if x.Role == 4 && x.Name == headLabel {
 			btnX = x.Bounds.X
 			break
 		}
