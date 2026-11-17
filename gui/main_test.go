@@ -72,10 +72,11 @@ func TestLivePreviewStructuredSteps(t *testing.T) {
 func TestCatalogAddsStep(t *testing.T) {
 	a := &app{stepSel: -1}
 	tt := ui.NewTester(a.view, 1280, 720)
-	if err := tt.Click("文件名转拼音"); err != nil {
+	// 「替换」组默认展开且排在最前(见 stepGroups),点它里面的第一条。
+	if err := tt.Click("查找替换"); err != nil {
 		t.Fatal(err)
 	}
-	if len(a.steps) != 1 || a.steps[0].opID != "pinyin" {
+	if len(a.steps) != 1 || a.steps[0].opID != "replace" {
 		t.Fatalf("sidebar click did not add step: %+v", a.steps)
 	}
 }
@@ -718,17 +719,17 @@ func TestCatalogDescriptionsAreTooltips(t *testing.T) {
 			t.Errorf("功能 %q 没有说明", d.label)
 		}
 	}
-	// 悬停「筛选文件」之后,它的说明要真的出现在屏幕上。
-	rect, ok := tt.Find("筛选文件")
+	// 悬停「查找替换」之后,它的说明要真的出现在屏幕上。
+	rect, ok := tt.Find("查找替换")
 	if !ok {
-		t.Fatal("找不到「筛选文件」")
+		t.Fatal("找不到「查找替换」")
 	}
 	tt.Move(rect.X+rect.W/2, rect.Y+rect.H/2)
 	tt.Advance(700 * time.Millisecond)
 	tt.Frame()
 	var want string
 	for _, d := range catalog {
-		if d.id == "filter" {
+		if d.id == "replace" {
 			want = d.desc
 		}
 	}

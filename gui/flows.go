@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -224,19 +225,63 @@ func (a *app) applyFlow(f flow, replace bool) {
 	if len(steps) == 0 {
 		return
 	}
+	// 替换会一次性扔掉用户排好的每一步。这是全应用唯一"一次点击毁掉
+	// 已完成工作"的入口,而它原来没有任何确认、也没有恢复通道。
+	// 两步:第一次点击只把流程挂起、弹确认;确认之后才真替换,并把
+	// 旧步骤存进 recoveredSteps 供撤回。
+	if replace && len(a.steps) > 0 && !a.confirmFlow {
+		a.pendingFlow = f
+		a.confirmFlow = true
+		a.confirmAt = time.Now()
+		go func(at time.Time) {
+			time.Sleep(3*time.Second + 100*time.Millisecond)
+			if a.confirmAt.Equal(at) {
+				a.update()
+			}
+		}(a.confirmAt)
+		a.update()
+		return
+	}
+	a.confirmFlow = false
 	for i := range steps {
 		a.stepUID++
 		steps[i].opUID = a.stepUID
 	}
 	if replace {
+		if len(a.steps) > 0 {
+			a.recoveredSteps = append([]guiRule(nil), a.steps...)
+			a.recoveredAt = time.Now()
+			a.status = fmt.Sprintf("已替换原来的 %d 步，可以撤回", len(a.recoveredSteps))
+		}
 		a.steps = steps
 		a.stepSel = 0
 	} else {
 		a.stepSel = len(a.steps)
 		a.steps = append(a.steps, steps...)
 	}
+	a.stepScrollTo = a.stepSel
+	a.revealLeft = 8
 	a.flowOpen = false
 	a.update()
+}
+
+// undoFlowReplace 把被流程套用替换掉的旧步骤整批放回来。
+func (a *app) undoFlowReplace() {
+	if len(a.recoveredSteps) == 0 {
+		return
+	}
+	a.steps = append([]guiRule(nil), a.recoveredSteps...)
+	a.stepSel = 0
+	a.stepScrollTo = 0
+	a.status = fmt.Sprintf("已放回原来的 %d 步", len(a.recoveredSteps))
+	a.recoveredSteps = nil
+	a.recoveredAt = time.Time{}
+	a.update()
+}
+
+// flowReplaceExpired 表示"已替换"那条撤回条该收起了(和删单步同一个时限)。
+func (a *app) flowReplaceExpired() bool {
+	return !a.recoveredAt.IsZero() && time.Since(a.recoveredAt) > undoDeleteWindow
 }
 
 // flowDialog 是流程入口:随时能打开,列出用户存的与内置的预设。
@@ -266,6 +311,33 @@ func (a *app) flowDialog(c *ui.Context) {
 			})
 			ui.Text(c, "一串排好的步骤。套上去之后每一步都还能改——它是起点，不是模式。").
 				FontSize(12).TextColor(t.TextMuted)
+			// 二次确认:套用会替换现有步骤时,先在这里把后果说清楚。
+			if a.confirmFlow {
+				if a.confirmStale() {
+					a.dropConfirm()
+				} else {
+					ui.Column(c).FillWidth().Gap(6).Padding(10, 12).Radius(10).
+						Background(t.Danger.Alpha(0.10)).Border(1, t.Danger.Alpha(0.45)).Children(func() {
+						ui.Text(c, fmt.Sprintf("将用「%s」替换现有的 %d 步", a.pendingFlow.Name, len(a.steps))).
+							FontSize(12).Bold().TextColor(t.Danger).SingleLine().Ellipsis("…")
+						ui.Text(c, "被替换的步骤会留一条撤回入口，几秒内可以整批放回来。").
+							FontSize(12).TextColor(t.TextMuted)
+						ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+							ok := ui.ButtonBase(c).Radius(6).Padding(8, 12).
+								Background(t.Danger).TextColor(ui.RGB(255, 255, 255))
+							ok.Children(func() { ui.Text(c, "替换").SingleLine() })
+							if ok.Clicked() {
+								f := a.pendingFlow
+								a.dropConfirm()
+								a.applyFlow(f, true)
+							}
+							if ui.Button(c, "取消").Radius(6).Clicked() {
+								a.dropConfirm()
+							}
+						})
+					})
+				}
+			}
 			ui.Scroll(c).Grow(1).TrackScroll(&a.flowScroll).Children(func() {
 				ui.Column(c).FillWidth().Gap(8).Children(func() {
 					// 当前步骤能存成流程:这才是"用户可保存"的部分。

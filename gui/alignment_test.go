@@ -88,7 +88,7 @@ func TestCatalogGroupHeaderAlignsWithItems(t *testing.T) {
 	tt.Frame()
 	tt.Frame()
 
-	head, ok := tt.Find("▾ 筛选/范围")
+	head, ok := tt.Find("▾ 替换")
 	if !ok {
 		t.Fatal("找不到组标题「▾ 筛选/范围」")
 	}
@@ -97,7 +97,7 @@ func TestCatalogGroupHeaderAlignsWithItems(t *testing.T) {
 	// 有 14 宽的图标。两者都从按钮左缘起算,差的是图标宽度。
 	var btnX float32
 	for _, x := range tt.AccessAll() {
-		if x.Role == 4 && x.Name == "▾ 筛选/范围" {
+		if x.Role == 4 && x.Name == "▾ 替换" {
 			btnX = x.Bounds.X
 			break
 		}
@@ -109,9 +109,9 @@ func TestCatalogGroupHeaderAlignsWithItems(t *testing.T) {
 		t.Errorf("组标题文本 x=%.2f,按钮 x=%.2f,差 %.2f DIP——它又被居中了吧", head.X, btnX, d)
 	}
 	// 条目文字比按钮多一个图标宽度(14),这是设计上的缩进层级。
-	item, ok := tt.Find("筛选文件")
+	item, ok := tt.Find("查找替换")
 	if !ok {
-		t.Fatal("找不到条目「筛选文件」")
+		t.Fatal("找不到条目「查找替换」")
 	}
 	if d := item.X - btnX; d < 10 || d > 18 {
 		t.Errorf("条目文字 x=%.2f 相对按钮 x=%.2f 偏了 %.2f DIP(应约一个图标宽 14)", item.X, btnX, d)

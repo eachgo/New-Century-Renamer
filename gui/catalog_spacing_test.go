@@ -14,8 +14,8 @@ func TestCatalogItemsHaveGaps(t *testing.T) {
 	tt.Frame()
 	tt.Frame()
 
-	a1, ok1 := tt.Find("筛选文件")
-	a2, ok2 := tt.Find("排除文件")
+	a1, ok1 := tt.Find("查找替换")
+	a2, ok2 := tt.Find("正则替换")
 	if !ok1 || !ok2 {
 		t.Fatal("找不到相邻的两条目录条目")
 	}

@@ -47,7 +47,7 @@ func TestCatalogFilterMatchesGroupAndExplainsEmpty(t *testing.T) {
 
 	a.palQuery = "zzz-没有这个"
 	tt.Frame()
-	if !tt.HasText("没有匹配的功能") {
+	if !tt.HasText("没有匹配") {
 		t.Fatal("筛不到时应当说一句,而不是给一片空白")
 	}
 	if tt.HasText("筛选文件") {

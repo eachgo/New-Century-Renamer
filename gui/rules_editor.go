@@ -67,6 +67,14 @@ type opDef struct {
 	// 还得在那边挑,挑完才决定加什么。目录里放一个选择器不算混入动作。
 	opens string
 	flow  bool // 流程控制(筛选/范围): not a direct rename
+	// palLabel 只在左栏目录里显示,用来区分"往任务里插一步"和"清空搜索框"
+	// 这类同名不同义的动作(如「插入清除筛选步骤」)。步骤行里仍用 label,
+	// 免得每一步的编号后面拖一长串。
+	palLabel string
+	// alias 是别称:用户搜「改名」「更名」「重命名」「后缀」这类日常说法时,
+	// 条目名里一个都对不上,于是"产品自己叫 Renamer,却搜不到改名"。
+	// 别名只参与搜索匹配,不显示、不影响分组。
+	alias []string
 }
 
 var ruleKinds = []struct{ key, label string }{
@@ -107,6 +115,31 @@ func baseRule(kind string) guiRule {
 		insMode: "pos", scopeSel: "整体", ccSel: "简体→繁体"}
 }
 
+// catalogMatch 是目录搜索的匹配条件:名字、说明、组名,以及别名。
+// 别名是给人用的日常说法("改名""后缀""括号"),名字里不一定出现。
+// palName 是目录里显示/搜索用的名字:有 palLabel 用它,否则用 label。
+func (d opDef) palName() string {
+	if d.palLabel != "" {
+		return d.palLabel
+	}
+	return d.label
+}
+
+func catalogMatch(d opDef, q string) bool {
+	if strings.Contains(strings.ToLower(d.palName()), q) ||
+		strings.Contains(strings.ToLower(d.label), q) ||
+		strings.Contains(strings.ToLower(d.desc), q) ||
+		strings.Contains(strings.ToLower(d.group), q) {
+		return true
+	}
+	for _, a := range d.alias {
+		if strings.Contains(strings.ToLower(a), q) {
+			return true
+		}
+	}
+	return false
+}
+
 // catalog is the grouped palette of the left pane. Each entry is a full,
 // named operation ("大小转换 · 全部小写"), not a type plus sub-dropdowns.
 var catalog = []opDef{
@@ -118,7 +151,7 @@ var catalog = []opDef{
 		r.invert = true
 		return r
 	}},
-	{id: "unfilter", icon: "unfilter", group: "筛选/范围", flow: true, label: "清除筛选", desc: "取消筛选，恢复全部文件参与后续步骤", make: func() guiRule {
+	{id: "unfilter", icon: "unfilter", group: "筛选/范围", flow: true, label: "清除筛选", palLabel: "插入「清除筛选」步骤", desc: "取消筛选，恢复全部文件参与后续步骤", make: func() guiRule {
 		return baseRule("unfilter")
 	}},
 	{id: "scope.name", icon: "scope.name", group: "筛选/范围", flow: true, label: "选取文件名", desc: "之后步骤只改文件名主体，不动扩展名", make: func() guiRule {
@@ -170,15 +203,15 @@ var catalog = []opDef{
 		r.caseMode = "标题"
 		return r
 	}},
-	{id: "replace", icon: "replace", group: "替换", label: "查找替换", desc: "把查找的文字替换为指定内容", make: func() guiRule {
+	{id: "replace", icon: "replace", group: "替换", label: "查找替换", alias: []string{"改名", "更名", "重命名", "替换文字", "改文字"}, desc: "把查找的文字替换为指定内容", make: func() guiRule {
 		return baseRule("replace")
 	}},
-	{id: "replace.re", icon: "replace.re", group: "替换", label: "正则替换", desc: "用正则表达式查找并替换", make: func() guiRule {
+	{id: "replace.re", icon: "replace.re", group: "替换", label: "正则替换", alias: []string{"正则", "改名", "重命名", "括号", "方括号"}, desc: "用正则表达式查找并替换", make: func() guiRule {
 		r := baseRule("replace")
 		r.regex = true
 		return r
 	}},
-	{id: "del.re", icon: "del.re", group: "替换", label: "正则删除", desc: "删除正则表达式匹配到的部分", make: func() guiRule {
+	{id: "del.re", icon: "del.re", group: "替换", label: "正则删除", alias: []string{"删除括号", "去掉括号", "括号", "删除多余"}, desc: "删除正则表达式匹配到的部分", make: func() guiRule {
 		r := baseRule("replace")
 		r.regex = true
 		return r
@@ -202,7 +235,7 @@ var catalog = []opDef{
 	{id: "truncate", icon: "truncate", group: "结构", label: "截断长度", desc: "文件名主体最多保留 N 个字符", make: func() guiRule {
 		return baseRule("truncate")
 	}},
-	{id: "ext", icon: "ext", group: "扩展名", label: "修改扩展名", desc: "替换扩展名；填空则删除扩展名", make: func() guiRule {
+	{id: "ext", icon: "ext", group: "扩展名", label: "修改扩展名", alias: []string{"后缀", "改后缀", "扩展名"}, desc: "替换扩展名；填空则删除扩展名", make: func() guiRule {
 		return baseRule("ext")
 	}},
 	{id: "ext.del", icon: "ext.del", group: "扩展名", label: "删除扩展名", desc: "去掉文件的扩展名", make: func() guiRule {
@@ -210,10 +243,10 @@ var catalog = []opDef{
 		r.newExt = ""
 		return r
 	}},
-	{id: "seq", icon: "seq", group: "编号", label: "追加序号", desc: "文件名末尾追加编号；可分组重新计数、补零、用字母", make: func() guiRule {
+	{id: "seq", icon: "seq", group: "编号", label: "追加序号", alias: []string{"编号", "序号", "加序号", "自动编号"}, desc: "文件名末尾追加编号；可分组重新计数、补零、用字母", make: func() guiRule {
 		return baseRule("seq")
 	}},
-	{id: "seq.prefix", icon: "seq.prefix", group: "编号", label: "序号前缀", desc: "编号放文件名前面，如 01-原名", make: func() guiRule {
+	{id: "seq.prefix", icon: "seq.prefix", group: "编号", label: "序号前缀", alias: []string{"前缀", "编号", "序号"}, desc: "编号放文件名前面，如 01-原名", make: func() guiRule {
 		r := baseRule("seq")
 		r.numTpl = "<N>-<NAME><.EXT>"
 		return r
@@ -244,7 +277,7 @@ var catalog = []opDef{
 		r.tpl = "<AI:" + core.DefaultAIPrompt() + "><.EXT>"
 		return r
 	}},
-	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", desc: "用变量模板重建文件名，可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
+	{id: "tpl", icon: "tpl", group: "高级", label: "自定义模板", alias: []string{"改名", "更名", "重命名", "命名", "按规则改名"}, desc: "用变量模板重建文件名，可用 <NAME> <DATE> <META:…> 等", make: func() guiRule {
 		return baseRule("template")
 	}},
 	// 自定义流程:排到一半想换做法时的入口。它不直接加步骤,而是把

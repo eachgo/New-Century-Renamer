@@ -50,14 +50,14 @@ func TestThreePanesShareOneContainerSyntax(t *testing.T) {
 
 	// 左栏内部只该有两条竖线:栏标题/分组标题/提示 18,条目文字 32。
 	// 以前是五条(12/19/22/26/42),每条都要眼睛解析一次。
-	for _, s := range []string{"▾ 筛选/范围", "筛选文件"} {
+	for _, s := range []string{"▾ 替换", "查找替换"} {
 		if _, ok := tt.Find(s); !ok {
 			t.Fatalf("找不到左栏条目 %q", s)
 		}
 	}
 	title, _ := tt.Find("功能 · 点击加入步骤")
-	group, _ := tt.Find("▾ 筛选/范围")
-	item, _ := tt.Find("筛选文件")
+	group, _ := tt.Find("▾ 替换")
+	item, _ := tt.Find("查找替换")
 	// 分组标题居中(它是"这一类",不是"这一条"),所以不与栏标题共线;
 	// 但要落在左栏视口的中线上,否则就是随手偏了一点。
 	if a.catRect.W > 0 {

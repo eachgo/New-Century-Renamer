@@ -147,9 +147,20 @@ func TestApplyFlowReplacesOrAppends(t *testing.T) {
 	a := flowApp(t)
 	f := flowFromRules("两步", stepsFromIDs("case.lower", "truncate"))
 
+	// 替换会扔掉现有 3 步:第一次调用只挂确认态、不动步骤,第二次才真替换。
+	a.applyFlow(f, true)
+	if !a.confirmFlow {
+		t.Fatal("替换现有步骤前应先挂二次确认")
+	}
+	if len(a.steps) != 3 {
+		t.Errorf("确认前不该动步骤,却变成 %d 步", len(a.steps))
+	}
 	a.applyFlow(f, true)
 	if len(a.steps) != 2 {
 		t.Errorf("替换后有 %d 步,期望 2", len(a.steps))
+	}
+	if len(a.recoveredSteps) != 3 {
+		t.Errorf("被替换的 3 步应存进撤回通道,实际 %d", len(a.recoveredSteps))
 	}
 
 	a.applyFlow(f, false)

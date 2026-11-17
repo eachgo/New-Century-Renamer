@@ -83,16 +83,18 @@ func TestLeftCatalogIsOneTabStop(t *testing.T) {
 	}
 	// 走到左栏第一个条目
 	at := -1
-	for i := 1; i <= 12; i++ {
+	// 栏头现在有「流程」「多选」两个按钮,意图卡也可聚焦,前序停留点变多,
+	// 放宽到 30 次仍要求能进左栏目录。
+	for i := 1; i <= 30; i++ {
 		tt.Key(0, ui.KeyTab)
 		tt.Frame()
-		if n := focusedName(tt); n == "▾ 筛选/范围" {
+		if n := focusedName(tt); n == "▾ 替换" {
 			at = i
 			break
 		}
 	}
 	if at < 0 {
-		t.Fatalf("Tab 12 次都没进入左栏目录")
+		t.Fatalf("Tab 30 次都没进入左栏目录")
 	}
 	// 组内方向键应能往下走,而且不该把焦点甩出左栏
 	first := focusedName(tt)

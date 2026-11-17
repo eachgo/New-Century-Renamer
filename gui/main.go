@@ -89,27 +89,42 @@ type app struct {
 	// "看到红按钮就点第二下"——防错反而失效。所以低危的这个改成可撤销:
 	// 删完在步骤区顶部留一条「已删除「X」 撤回」,几秒后自己消失。
 	// 高危的两个(回滚、清空列表)仍然保留二次确认。
-	deletedStep       guiRule
-	deletedAt         time.Time
-	deletedIdx        int
-	confirmChosen     bool   // 删除所选 needs a second click
-	confirmUndo       bool   // 回滚上次 needs a second click
+	deletedStep   guiRule
+	deletedAt     time.Time
+	deletedIdx    int
+	confirmChosen bool // 删除所选 needs a second click
+	confirmUndo   bool // 回滚上次 needs a second click
+	// confirmApply 是"执行更名"的二次确认。它是全产品唯一不可逆的
+	// 写盘动作,却原来反而是唯一没有确认的——清空列表和回滚都要点两下。
+	// 守卫装错了地方:越是改磁盘的越该拦。
+	confirmApply      bool
 	saveErr           string // settings dialog save error, shown in-dialog
 	aiTimeoutText     string // 设置里"等待秒数"输入框的文本缓冲
 	aiConcurrencyText string // 设置里"并发路数"输入框的文本缓冲
 	aiPromptText      string // 设置里"默认提示词"多行输入框的缓冲
 	keyShown          bool   // 设置里 API Key 是否明文显示(默认掩码)
 
-	steps    []guiRule // ordered task steps
-	stepSel  int       // selected step, -1 = none
-	stepList ui.ListState
-	palSel   string            // last catalog op added, highlighted in the list
-	stepUID  int               // 自增步骤身份
-	chosen   ui.Selection[int] // multi-selected step uids
-	pickMode bool              // 显示行内多选圆点(触摸入口)
-	pickOpen bool              // 设置里的主色选择器是否展开
-	dialogs  dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
-	palQuery string            // 目录过滤框的内容;空=不过滤
+	steps   []guiRule // ordered task steps
+	stepSel int       // selected step, -1 = none
+	// stepScrollTo 是"下一帧要把这一行滚进视野",-1 = 不用滚。
+	//
+	// 加一步之后总要能看见它:21 步时再加第 22 步,stepSel 指到 21,
+	// 但列表已经滚不动了的话那一行就落在视口外(实测 bounds 高度 0)。
+	// ScrollIntoView 只能在 view 里调(它在布局完成后才生效),所以把
+	// 目标行排到下一帧的 stepsView 里执行。
+	stepScrollTo int
+	// revealLeft 让"把这一行滚进视野"多求几帧。ScrollIntoView 用的是
+	// 上一帧的布局,只求一次常常只露出一半(实测第一次后行仍被 Clip
+	// 在下边缘,h=0)。连续求几帧直到布局跟上。
+	revealLeft int
+	stepList   ui.ListState
+	palSel     string            // last catalog op added, highlighted in the list
+	stepUID    int               // 自增步骤身份
+	chosen     ui.Selection[int] // multi-selected step uids
+	pickMode   bool              // 显示行内多选圆点(触摸入口)
+	pickOpen   bool              // 设置里的主色选择器是否展开
+	dialogs    dialogHooks       // 可注入的对话框(测试用; nil=真实对话框)
+	palQuery   string            // 目录过滤框的内容;空=不过滤
 	// 目录里被折起来的分组。只记"用户手动改过的那几组";没记过的按
 	// defaultOpenGroups 算,这样默认状态和用户改过的状态互不覆盖。
 	folded map[string]bool
@@ -174,6 +189,14 @@ type app struct {
 	flowOpen   bool
 	flowName   string
 	flowScroll ui.ScrollState
+	// confirmFlow / pendingFlow 是"套用会替换现有步骤"的二次确认。
+	pendingFlow flow
+	confirmFlow bool
+	// recoveredSteps 是刚被流程套用替换掉的旧步骤,供「撤回」整批放回。
+	// 与 deletedStep(单步可撤回)同一条思路:删一步能撤回,换掉一整条
+	// 流水线凭什么不能。
+	recoveredSteps []guiRule
+	recoveredAt    time.Time
 }
 
 // dragOverProbe 让测试造出"文件正被拖在窗口上方"这一帧。Tester 没有只发
@@ -205,6 +228,11 @@ func (a *app) view(c *ui.Context) {
 		a.helpOpen = false
 	} else if a.settingsOpen && c.Shortcut(0, ui.KeyEscape) {
 		a.closeSettings(false)
+	} else if strings.TrimSpace(a.palQuery) != "" && c.Shortcut(0, ui.KeyEscape) {
+		// 搜索框的 Esc:清空并复位折叠状态。放在整条逃生链最后——有弹窗
+		// 开着时,Esc 先关那个弹窗,不该顺手把搜索也清了。
+		a.palQuery = ""
+		a.folded = nil
 	}
 	a.handleShortcuts(c)
 	// 上一帧排下的移除,等这一帧开头再动 a.files
@@ -456,9 +484,29 @@ func (a *app) statusBar(c *ui.Context) {
 					Tooltip(fmt.Sprintf("这次执行会向 AI 接口发 %d 次请求（%d 路并发）。\n本地模型可能要等一会儿，云端按次计费。", n, core.AIConcurrency()))
 			}
 		}
-		applyBtn := primaryButton(c, "执行更名", applyEnabled).Tooltip(shortcutTip("Ctrl+Enter"))
-		if applyEnabled && applyBtn.Clicked() {
-			go a.apply()
+		// 执行更名:动磁盘的一次操作,和"清空列表""回滚上次"同一套语言——
+		// 第一下只挂确认态,第二下才真改。确认态用实心主色而不是红:它
+		// 不是危险动作,只是不可逆;红色留给"会删东西"的。
+		if a.confirmApply && a.confirmStale() {
+			a.dropConfirm()
+		}
+		if a.confirmApply {
+			confirm := ui.ButtonBase(c).Radius(6).Padding(8, 12).
+				Background(t.Accent).TextColor(t.AccentText)
+			if confirm.Hovered() {
+				confirm = confirm.Background(t.AccentHover)
+			}
+			confirm.Label("确认执行")
+			confirm.Children(func() { ui.Text(c, "确认执行?").SingleLine() })
+			if confirm.Clicked() {
+				a.dropConfirm()
+				go a.apply()
+			}
+		} else {
+			applyBtn := primaryButton(c, "执行更名", applyEnabled).Tooltip(shortcutTip("Ctrl+Enter"))
+			if applyEnabled && applyBtn.Clicked() {
+				a.armConfirm("apply")
+			}
 		}
 	})
 }
@@ -484,14 +532,22 @@ func (a *app) intentCards(c *ui.Context) {
 				// 卡片底与中栏底只差 0.005 的明度(0.995 vs 0.990),
 				// 不加描边就看不出这里有几张卡——实测截图里它们像四行
 				// 普通文字,点了才知道是按钮。
-				card := ui.Column(c).FillWidth().Gap(4).Padding(8, 10).Radius(10).
+				//
+				// ButtonBase 而不是 Column:空态里这四张卡是唯一的入口,
+				// 用 Column 它们不进 Tab 序列(实测 0 站)、Enter 也按不动,
+				// 键盘用户被挡在中栏外面。换成 ButtonBase 后能聚焦、能回车,
+				// 鼠标路径的观感不变(内层 Column 照旧竖排两行)。
+				card := ui.ButtonBase(c).FillWidth().Radius(10).Padding(8, 10).
 					Background(pt.card).Border(1, t.Border)
 				if card.Hovered() {
 					card = card.Background(t.SurfaceHover).Border(1, t.Accent)
 				}
+				card.Label(in.label + "：" + in.desc)
 				card.Children(func() {
-					ui.Text(c, in.label).FontSize(14).TextColor(t.Text).SingleLine()
-					ui.Text(c, in.desc).FontSize(12).TextColor(t.TextMuted).SingleLine().Ellipsis("…")
+					ui.Column(c).FillWidth().Gap(4).Children(func() {
+						ui.Text(c, in.label).FontSize(14).TextColor(t.Text).SingleLine()
+						ui.Text(c, in.desc).FontSize(12).TextColor(t.TextMuted).SingleLine().Ellipsis("…")
+					})
 				})
 				if card.Clicked() {
 					a.addIntent(in)
@@ -515,6 +571,8 @@ func (a *app) addIntent(in intent) {
 	}
 	a.steps = append(a.steps, steps...)
 	a.stepSel = len(a.steps) - len(steps)
+	a.stepScrollTo = a.stepSel
+	a.revealLeft = 8
 	a.update()
 }
 
@@ -531,16 +589,28 @@ func (a *app) catalogView(c *ui.Context) {
 	t := c.Theme()
 	// 过滤:34 项 11 组正落在"需要搜索"的量级(Colborne 第 5 章专讲
 	// 搜索)。输入框收 label / desc / 组名三处,任一命中即留下。
-	shown := catalog
+	shown := append([]opDef(nil), catalog...)
 	if q := strings.ToLower(strings.TrimSpace(a.palQuery)); q != "" {
 		shown = nil
 		for _, d := range catalog {
-			if strings.Contains(strings.ToLower(d.label), q) ||
-				strings.Contains(strings.ToLower(d.desc), q) ||
-				strings.Contains(strings.ToLower(d.group), q) {
+			if catalogMatch(d, q) {
 				shown = append(shown, d)
 			}
 		}
+	} else {
+		// 不搜索时按 stepGroups 的顺序排(用户找东西的频率),而不是
+		// catalog 那个历史书写顺序——默认展开的正好是前两组,那两组
+		// 必须是最高频的。
+		rank := make(map[string]int, len(stepGroups))
+		for i, g := range stepGroups {
+			rank[g] = i
+		}
+		sort.SliceStable(shown, func(i, j int) bool {
+			if ri, rj := rank[shown[i].group], rank[shown[j].group]; ri != rj {
+				return ri < rj
+			}
+			return false
+		})
 	}
 	var groups []string
 	for _, d := range shown {
@@ -576,7 +646,18 @@ func (a *app) catalogView(c *ui.Context) {
 		// 栏头统一 MinHeight(34) + 垂直居中:三栏的标题就落在同一条基线上。
 		// 不固定高度是因为右栏的工具栏在窄窗口下会折行,折了就该长高。
 		paneHeader(c, "功能 · 点击加入步骤", nil)
-		ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").FillWidth()
+		// 搜索框包一层 Row:有内容时右侧挂一颗 ×,点一下清空。Esc 也清,
+		// 但鼠标用户得有个看得见的出口——"0 命中"是个死路,没有出口就
+		// 只剩"猜是哪个字错了"。
+		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").Grow(1)
+			if strings.TrimSpace(a.palQuery) != "" {
+				if ui.Button(c, "×").Radius(6).Tooltip("清空搜索").Clicked() {
+					a.palQuery = ""
+					a.folded = nil
+				}
+			}
+		})
 		// TrackScroll 记住滚动位置:底缘渐隐只在真还有内容时出现,
 		// 而这个判断要读它,不能靠猜。
 		a.catRect = a.catScroll.Bounds(c)
@@ -590,7 +671,14 @@ func (a *app) catalogView(c *ui.Context) {
 		// 数字不写死:catalog 条目数会变,写死的数字过一阵就又对不上了。
 		ui.Scroll(c).Fill().TrackScroll(&a.palScroll).Bind(&a.catScroll).FocusGroup(ui.Vertical).Children(func() {
 			if len(shown) == 0 {
-				ui.Text(c, "没有匹配的功能").FontSize(12).TextColor(t.TextMuted).Padding(8, 10)
+				ui.Column(c).FillWidth().Gap(6).Padding(8, 10).Children(func() {
+					ui.Text(c, "没有匹配「"+strings.TrimSpace(a.palQuery)+"」的功能").FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, "试试更短的关键词，或换个说法（如「改名」「后缀」）。").FontSize(12).TextColor(t.TextMuted)
+					if ui.Button(c, "清空搜索").Radius(6).Clicked() {
+						a.palQuery = ""
+						a.folded = nil
+					}
+				})
 			}
 			for _, g := range groups {
 				// 组标题本身就是折叠开关:11 组收起后一屏放得下,而且
@@ -600,9 +688,22 @@ func (a *app) catalogView(c *ui.Context) {
 				if !open {
 					arrow = "▸"
 				}
-				head := ui.ButtonBase(c).Fill().Radius(6).Padding(8, 0)
-				if head.Hovered() {
-					head.Background(t.SurfaceHover)
+				// 搜索期分组不可折叠:groupOpen 在搜索时一律返回 true(结果
+				// 本来就少),但组标题仍是个可点按钮,点下去会往 a.folded 写
+				// 一个"折叠"标记——界面因为 groupOpen 恒真毫无反应,状态却被
+				// 写坏了。实测点「▾ 编号」后 folded=map[编号:true] 而界面不变。
+				// 搜索期把它降成静态行,箭头也换成点,不再假装能点。
+				if filtering {
+					arrow = "·"
+				}
+				var head ui.Element
+				if filtering {
+					head = ui.Row(c).Fill().Padding(8, 0)
+				} else {
+					head = ui.ButtonBase(c).Fill().Radius(6).Padding(8, 0)
+					if head.Hovered() {
+						head.Background(t.SurfaceHover)
+					}
 				}
 				head.Children(func() {
 					// FillWidth + Start:ButtonBase 默认把内容居中,而下面的条目
@@ -612,11 +713,12 @@ func (a *app) catalogView(c *ui.Context) {
 					ui.Text(c, arrow+" "+g).FontSize(12).TextColor(t.TextMuted).
 						FillWidth().TextAlign(ui.Start).SingleLine()
 				})
-				if head.Clicked() {
+				if !filtering && head.Clicked() {
 					if a.folded == nil {
 						a.folded = map[string]bool{}
 					}
 					a.folded[g] = open
+					a.persistFolded()
 				}
 				if !open {
 					continue
@@ -633,7 +735,11 @@ func (a *app) catalogView(c *ui.Context) {
 					// 上下各 2 的留白:条目之间要有缝,否则 32 条挤成一片,
 					// 眼睛没法判断一行到哪结束。悬停底色跟着长高,这也是
 					// "可点区域比文字大"的一层。
-					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0)
+					// Tooltip 挂在外层按钮上,不是里面那行文字。挂子元素时
+					// 气泡只跟着鼠标走,键盘 Tab 到这一条、焦点环亮了,说明
+					// 却永远不出现——33 条说明对键盘和读屏用户等于不存在
+					// (实测条目 Description 为空)。
+					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0).Tooltip(d.desc)
 					switch {
 					case a.palSel == d.id:
 						item.Background(selBg)
@@ -661,7 +767,7 @@ func (a *app) catalogView(c *ui.Context) {
 						}
 						// 说明走 Tooltip:目录要在一屏里放下 32 条,每条占两行
 						// 就只剩一半可见;悬停即得,和系统里其它按钮一致。
-						txt := ui.Text(c, d.label).SingleLine().FillWidth().TextAlign(align).Tooltip(d.desc)
+						txt := ui.Text(c, d.palName()).SingleLine().FillWidth().TextAlign(align)
 						if labelCol.A != 0 {
 							txt.TextColor(labelCol)
 						}
@@ -695,6 +801,8 @@ func (a *app) catalogView(c *ui.Context) {
 						r.opUID = a.stepUID
 						a.steps = append(a.steps, r)
 						a.stepSel = len(a.steps) - 1
+						a.stepScrollTo = a.stepSel
+						a.revealLeft = 8
 						a.palSel = d.id
 					}
 				}
@@ -723,6 +831,16 @@ func (a *app) pinnedEntries() []opDef {
 // pinEntry 把一条目录条目钉到「常用」组末尾,已钉过就取消。
 // 返回新的钉选列表,调用方负责存盘——设置写盘只在对话框与这里发生,
 // 两处都要留痕。
+// persistFolded 把当前的折叠状态写回设置文件。用户手一松就落盘,
+// 与钉选一致——这一天里再打开软件,折起来的那几组还折着。
+func (a *app) persistFolded() {
+	a.settings.Folded = make(map[string]bool, len(a.folded))
+	for k, v := range a.folded {
+		a.settings.Folded[k] = v
+	}
+	_ = SaveSettings(a.settings)
+}
+
 func (a *app) togglePin(id string) {
 	for i, v := range a.pinned {
 		if v == id {
@@ -835,12 +953,39 @@ func (a *app) stepsView(c *ui.Context) {
 	if a.stepSel >= len(a.steps) {
 		a.stepSel = len(a.steps) - 1
 	}
+	// 加到第 22 步时要把这一行滚进视野。列表本身不是滚动容器(它嵌在
+	// stepsView 的 ui.Scroll 里,Grow(1) 的列表自认为全部可见),所以
+	// ListState.ScrollIntoView 不起作用——得让那一行的元素自己向所有
+	// 外层滚动容器申请露出来。
+	revealRow := -1
+	if a.stepScrollTo >= 0 && a.revealLeft > 0 {
+		revealRow = a.stepScrollTo
+		a.revealLeft--
+		if a.revealLeft == 0 {
+			a.stepScrollTo = -1
+		}
+	}
 	// 中间栏:核心工作区,浮得最高的一张白色圆角卡片(暗色下也比两侧亮一阶),
 	// 压在基底之上;给它圆角 + 一层柔投影,像一张单独浮起的纸。
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Column(c).Fill().Gap(8).Padding(10).Radius(14).Background(pt.mid).Clip().
 		Shadow(0, 3, 14, 0, pt.shadow).Children(func() {
 		paneHeader(c, fmt.Sprintf("任务步骤（%d）", len(a.steps)), func() {
+			// 流程入口放在栏头,和「多选」并列。以前它藏在左栏「高级」
+			// 目录的最后一条(y≈1400,要滚到底)——而它是"整套做法"的
+			// 入口,比"往管道里加一条规则"高一档,不该排在规则目录末尾。
+			flowLabel := "流程"
+			narrowFlow := a.splitM < 260
+			if narrowFlow {
+				flowLabel = "▤"
+			}
+			fb := ui.Button(c, flowLabel).Radius(6)
+			if narrowFlow {
+				fb = fb.Tooltip("流程：套用预设，或把当前步骤存成自己的流程")
+			}
+			if fb.Clicked() {
+				a.openFlows()
+			}
 			// 触摸入口:点开后才显示行内勾选框(Ctrl+点击亦可)
 			label := "多选"
 			if a.pickMode {
@@ -925,6 +1070,23 @@ func (a *app) stepsView(c *ui.Context) {
 				// 占着"有东西可撤回"这个状态。
 				a.clearDeleted()
 			}
+			// 流程套用替换掉整条流水线时的撤回条。与删单步同一个位置、
+			// 同一个时限:被换掉的是一整批,更该给一条明确的退路。
+			if len(a.recoveredSteps) > 0 {
+				if a.flowReplaceExpired() {
+					a.recoveredSteps = nil
+					a.recoveredAt = time.Time{}
+				} else {
+					ui.Row(c).FillWidth().Gap(8).Padding(8, 10).Radius(6).
+						Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, fmt.Sprintf("已替换原来的 %d 步", len(a.recoveredSteps))).
+							FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
+						if ui.Button(c, "撤回").Radius(6).Clicked() {
+							a.undoFlowReplace()
+						}
+					})
+				}
+			}
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
 					// 图例:色条只在真有范围时出现,所以图例也只列此刻生效的那几种。
@@ -946,6 +1108,9 @@ func (a *app) stepsView(c *ui.Context) {
 						row := ui.Column(c).Fill().Padding(8, 10).MinHeight(38).Radius(6)
 						if hot {
 							row.Background(t.Selection)
+						}
+						if i == revealRow {
+							row.ScrollIntoView()
 						}
 						// 范围色条自绘:两槽固定——右槽=选取范围,左槽=筛选范围;
 						// 未激活透明占位,槽位永不移动
@@ -1317,6 +1482,8 @@ func (a *app) duplicateStep(i int) {
 	cp.opUID = a.stepUID
 	a.steps = append(a.steps, cp)
 	a.stepSel = len(a.steps) - 1
+	a.stepScrollTo = a.stepSel
+	a.revealLeft = 8
 }
 
 // removeFile 把第 i 个文件从清单里拿掉。这是"清空列表"的单文件版本:
@@ -1555,7 +1722,10 @@ func (a *app) filesView(c *ui.Context) {
 		// 两个都挂在同一个 Row 上是不行的:Wrap 一旦生效,MinHeight 就不再
 		// 撑高度(实测右栏标题 y=63.00,另两栏 63.67),三栏标题就差半像素
 		// 落不到同一条基线上。
-		ui.Row(c).MinHeight(34).AlignItems(ui.Start).Children(func() {
+		// Gap(8):标题的 Row 是 Shrink(0) 的,工具栏紧跟着它,不写 Gap
+		// 就是零间距——实测「文件」右缘 686.0 与排序按钮左缘 686.0 正好
+		// 贴上(报告量到的 686 vs 685.9 就是这个,不是重叠,是贴死)。
+		ui.Row(c).Gap(8).MinHeight(34).AlignItems(ui.Start).Children(func() {
 			paneTitle(c, "文件")
 			ui.Row(c).Gap(8).Wrap().AlignItems(ui.Center).Children(func() {
 				// 排序菜单紧挨着"文件":它改的是这一整列的次序,和"添加/导出"
@@ -2990,7 +3160,22 @@ func (a *app) previewSync(withProgress bool) {
 	}
 	ops, _ := core.RunPipelineProgress(rules, paths, a.aiPrefetchHook(withProgress))
 	a.ops = ops
-	a.status = fmt.Sprintf("%d 个将更名", countChanges(ops))
+	// 底栏那句"0 个将更名"在三种完全不同的处境里一模一样:没文件、
+	// 没步骤、有步骤但没产生变更。三者下一步该做的事完全不同,却
+	// 共用一句话,读者只能一个个去猜。分开说,每句都指向下一步。
+	nChanges := countChanges(ops)
+	switch {
+	case len(a.files) == 0 && len(a.steps) == 0:
+		a.status = "还没有文件和步骤"
+	case len(a.files) == 0:
+		a.status = fmt.Sprintf("%d 步已排好，还没有文件", len(a.steps))
+	case len(a.steps) == 0:
+		a.status = fmt.Sprintf("%d 个文件已就绪，还没有步骤", len(a.files))
+	case nChanges == 0:
+		a.status = fmt.Sprintf("0 个将更名：当前 %d 步没有产生变更", len(a.steps))
+	default:
+		a.status = fmt.Sprintf("%d 个将更名", nChanges)
+	}
 	if n := countErrs(ops); n > 0 {
 		a.status += fmt.Sprintf("，%d 个有问题", n)
 		// 把第一个原因也说出来。只说"有问题"时用户要自己一行行找红字,
@@ -3032,7 +3217,13 @@ func (a *app) handleShortcuts(c *ui.Context) {
 		a.openSettings()
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyEnter) && !a.busy && a.hasChanges() {
-		go a.apply()
+		// 与点按钮同一套语言:第一次按只挂确认态,再按一次才执行。
+		if a.confirmApply && !a.confirmStale() {
+			a.dropConfirm()
+			go a.apply()
+		} else {
+			a.armConfirm("apply")
+		}
 	}
 	if c.Shortcut(ui.Cmd, ui.KeyZ) && !a.busy && a.journalExists() {
 		// 与点按钮同一套语言:先挂确认态,再按一次才真回滚
@@ -3099,6 +3290,7 @@ func (a *app) armConfirm(which string) {
 	a.confirmClear = which == "clear"
 	a.confirmChosen = which == "chosen"
 	a.confirmUndo = which == "undo"
+	a.confirmApply = which == "apply"
 	a.confirmAt = time.Now()
 	// 界面只在有事件时重画。用户点完第一下就撒手,没有事件,
 	// confirmStale 永远没机会跑,确认态就一直挂着。所以自己排一次重画。
@@ -3115,6 +3307,8 @@ func (a *app) dropConfirm() {
 	a.confirmClear = false
 	a.confirmChosen = false
 	a.confirmUndo = false
+	a.confirmApply = false
+	a.confirmFlow = false
 	a.confirmAt = time.Time{}
 }
 
@@ -3357,10 +3551,17 @@ func main() {
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
-	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings()}
+	a := &app{stepSel: -1, fileSel: -1, settings: LoadSettings(), stepScrollTo: -1}
 	// 钉选从设置读进内存一份:目录每帧重建,逐帧读 settings 会在
 	// 设置对话框改动后出现一帧延迟(拖动时看得见条目跳一下)。
 	a.pinned = append([]string(nil), a.settings.Pinned...)
+	// 折叠状态同样从设置带回来,并留一份在内存里(目录每帧重建)。
+	if len(a.settings.Folded) > 0 {
+		a.folded = make(map[string]bool, len(a.settings.Folded))
+		for k, v := range a.settings.Folded {
+			a.folded[k] = v
+		}
+	}
 	a.syncSeedUI()
 	a.ApplySettings()
 	// 第二个实例不再静默退出:用户再点一次图标、或者从"打开方式"里选了

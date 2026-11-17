@@ -31,7 +31,7 @@ func TestCatalogGroupsStartPartiallyOpen(t *testing.T) {
 		t.Fatalf("其余 %d 组应当折起,实际 %d 组", len(stepGroups)-defaultOpenGroups, shut)
 	}
 	// 展开的那两组里的条目要真的在
-	if !tt.HasText("筛选文件") || !tt.HasText("文件名转拼音") {
+	if !tt.HasText("查找替换") || !tt.HasText("文件名前添加") {
 		t.Fatal("展开的组里应当看得见条目")
 	}
 	// 折起的组里条目不该占位

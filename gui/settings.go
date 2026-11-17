@@ -41,6 +41,11 @@ type Settings struct {
 	// 个"常用"组放在最上面:用户自己决定哪几条进去,顺序就是他钉的
 	// 顺序。
 	Pinned []string `json:"pinned,omitempty"`
+	// Folded 记住用户手动折叠了哪些目录分组。true = 折叠。
+	// 以前折叠状态只在内存里,重启就全展开——用户每天重开一次软件,
+	// 就得每天重新折一遍同样的几组。和 Pinned 一样属于"用户调过的
+	// 界面偏好",该一起记住。
+	Folded map[string]bool `json:"folded,omitempty"`
 	// Flows 是用户自己存下来的流程(一串排好的步骤)。内置预设不进这里:
 	// 它们每次从 intents 现算,升级后跟着更新,不会在设置文件里留一份
 	// 旧快照。
