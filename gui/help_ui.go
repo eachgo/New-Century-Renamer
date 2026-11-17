@@ -32,7 +32,7 @@ func (a *app) helpDialog(c *ui.Context) {
 
 		dialogPanel(c, dw, dh).Children(func() {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "它是这么一条线").Bold().FontSize(18)
+				ui.Text(c, "帮助").Bold().FontSize(18)
 				ui.Spacer(c)
 				// 点 ? 多半是进来查对照(变量、快捷键),不是来学怎么用,
 				// 所以流程图默认收起,由这颗按钮按需展开。
