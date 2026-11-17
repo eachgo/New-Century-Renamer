@@ -523,10 +523,10 @@ func (a *app) intentCards(c *ui.Context) {
 	pt := a.currentTheme().panes(a.isDark())
 	ui.Scroll(c).Grow(1).Children(func() {
 		ui.Column(c).FillWidth().Gap(8).Padding(2, 2).Children(func() {
-			ui.Text(c, "想改成什么样？点一张，我把步骤配好").FontSize(12).TextColor(t.TextMuted).Padding(0, 2)
-			// 明说两条路都行:中栏摆着"先配步骤",右栏摆着"先放文件",
-			// 两边都不说对方,用户就只能猜哪个才是"正确顺序"。
-			ui.Text(c, "还没放文件也可以先排——文件加进来时，这些步骤会立刻套上去。").
+			// 一句话说清这一屏的两个入口:左边的「功能」目录(answer "哪个规则")与
+			// 下面的四张卡(answer "我想干什么")。以前这里分两句,一句在右栏又说
+			// 一遍"先放文件还是先排步骤",同一件事说两遍反而像在教用户怎么做。
+			ui.Text(c, "从左边挑选功能，或从下面的卡片选择预设好的").
 				FontSize(12).TextColor(t.TextMuted).Padding(0, 2)
 			for _, in := range intents {
 				// 卡片底与中栏底只差 0.005 的明度(0.995 vs 0.990),
@@ -553,7 +553,6 @@ func (a *app) intentCards(c *ui.Context) {
 					a.addIntent(in)
 				}
 			}
-			ui.Text(c, "或者从左栏“功能”里自己挑").FontSize(12).TextColor(t.TextMuted).Padding(4, 2)
 		})
 	})
 }
@@ -1647,10 +1646,9 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 		}
 		ui.Text(c, title).FontSize(18).Bold().TextColor(t.Text).SingleLine()
 		if !narrow {
-			// 一句话说清两条路都行:这个软件既能先放文件也能先排步骤,把其中
-			// 一条说成"正确顺序"只会让人以为另一条走不通。
-			ui.Text(c, "也可以点下面的按钮挑。先放文件或先排步骤都行，两边会自动接上。").
-				FontSize(12).TextColor(t.TextMuted)
+			// 标题和两个按钮之间只留一个"或":按钮本身已经写清是什么,
+			// 再补一句"也可以点下面的按钮挑"等于替用户读按钮。
+			ui.Text(c, "或").FontSize(12).TextColor(t.TextMuted)
 		}
 		ui.Row(c).Gap(8).Wrap().Justify(ui.Center).Padding(4, 0).Children(func() {
 			// 大号:空态里这是唯一的主动作,不该和工具栏里那些次要按钮同尺寸。
@@ -1677,7 +1675,7 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 			}
 		})
 		if !narrow {
-			ui.Text(c, "拖文件夹会按文件夹分组，一个文件夹一组").
+			ui.Text(c, "以文件夹拖入的会自动分为一组").
 				FontSize(12).TextColor(t.TextMuted)
 		}
 	})
