@@ -63,11 +63,19 @@ func (a *app) closeSettings(commit bool) {
 // one axis (对齐/重复), one primary action right-aligned (对比). Rows are
 // compact so the dialog rarely needs to scroll; it still fits the window
 // and scrolls what overflows.
+// settingsLabelW 是设置面板里标签列的宽度。
+//
+// 最长的标签「默认提示词」在 12px 下只有 60 DIP,留 16 DIP 给行内边距就是
+// 76;取 84 是给将来更长的标签留一点余地。原来是 120——比最长标签还宽一倍,
+// 那 36 DIP 是从控件身上白拿走的,而这个面板里控件越宽越好用(接口地址、
+// 日志路径都很长,窄一格就只剩开头几个字符)。
+const settingsLabelW = float32(84)
+
 func (a *app) settingsDialog(c *ui.Context) {
 	t := c.Theme()
 	dt := a.currentTheme()
 	cardBg := dt.cardBgFor(a.isDark())
-	labelW := float32(120)
+	labelW := settingsLabelW
 
 	ui.Modal(c, &a.settingsOpen, func() {
 		w, h := c.Size()
