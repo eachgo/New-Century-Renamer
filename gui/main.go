@@ -4236,9 +4236,14 @@ func (a *app) syncWindowBorder(dt *derivedTheme, dark bool) {
 	setWindowBorder(hwnd, want)
 }
 
-// borderColorFor 是窗口边框该被画成的颜色:顶栏/底栏/四周留白用的那个
-// 基底色。抽成函数是为了让测试能直接断言"边框色跟着明暗变",而不必去
-// 碰系统调用。
+// borderColorFor 是窗口边框该被画成的颜色。
+//
+// 取基底色(base):左、右两边贴着的是三栏之外那圈留白,正好是 base;
+// 底边贴着底栏,底栏用的是 left,与 base 只差一档(实测亮色
+// (226,234,229) 对 (232,239,234),对比度 1.03)——DWM 一圈只有一个颜色,
+// 三边不可能各自对齐,取 base 是两条边完全吻合、第三条边看不出来的解。
+//
+// 抽成函数是为了让测试能直接断言"边框色跟着明暗变",而不必去碰系统调用。
 func borderColorFor(dt *derivedTheme, dark bool) ui.Color { return dt.panes(dark).base }
 
 // drainPendingDrop 把排队的外部路径(拖放、外部入口、第二个实例)加进列表。
