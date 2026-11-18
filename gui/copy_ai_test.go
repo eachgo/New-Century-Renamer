@@ -216,10 +216,16 @@ func TestAIFieldPlaceholdersMatchCoreDefaults(t *testing.T) {
 func TestParamChipStaysOnOneLine(t *testing.T) {
 	src := mustRead(t, "main.go")
 	// 两处(流程行与普通行)都必须是 MaxWidth + SingleLine + Shrink 三件套。
-	if n := strings.Count(src, ".MaxWidth(150).SingleLine().Shrink(1).Ellipsis"); n < 2 {
+	// 上限是动态的 chipMax(按行宽推算),不再是写死的 150——写死 150 会让
+	// README 截图里那个模板参数在行还有空位时就被截成 `<META:aut…`。
+	if n := strings.Count(src, ".MaxWidth(chipMax).SingleLine().Shrink(1).Ellipsis"); n < 2 {
 		t.Fatalf("参数胶囊应当是单行可省略,实测只有 %d 处三件套", n)
 	}
-	if strings.Contains(src, ".MaxWidth(150).MaxLines(2)") {
+	if strings.Contains(src, "MaxWidth(chipMax).MaxLines(2)") {
 		t.Error("参数胶囊还在用 MaxLines(2),长参数会折成两行")
+	}
+	// chipMax 必须真按行宽算,不能又退回常量。
+	if !strings.Contains(src, "chipMax := rowW") {
+		t.Error("chipMax 应当由行宽推算,现在看不到 rowW 的参与")
 	}
 }

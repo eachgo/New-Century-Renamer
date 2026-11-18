@@ -1310,6 +1310,21 @@ func (a *app) stepsView(c *ui.Context) {
 			// 仍由行首色条表达)、参数胶囊、再是编号。
 			rowW := a.splitM - 20
 			showGroupChip, showSummary := rowW >= 300, rowW >= 210
+			// 参数胶囊能占多宽:按行宽推算,而不是写死 150。
+			// 行里还有编号(22)+间隔+操作名(最宽约 96)+类别胶囊(84)+
+			// 色条与多选圆点,留给参数的大约是这些扣掉之后的余量。写死
+			// 150 的后果是 README 截图里那个模板参数被截成
+			// `<META:aut…`——行明明还有空位,胶囊却自己先认输了。
+			chipMax := rowW - 22 - 6 - 100 - 12
+			if showGroupChip {
+				chipMax -= 90
+			}
+			if chipMax < 120 {
+				chipMax = 120
+			}
+			if chipMax > 320 {
+				chipMax = 320
+			}
 			ui.Scroll(c).Grow(1).Children(func() {
 				ui.Column(c).FillWidth().Children(func() {
 					// 图例:色条只在真有范围时出现,所以图例也只列此刻生效的那几种。
@@ -1410,7 +1425,7 @@ func (a *app) stepsView(c *ui.Context) {
 										if v := s.summary(); v != "" && showSummary {
 											// SingleLine 才能让 Ellipsis 生效,否则长参数会折成两行撑高行。
 											// Shrink(1):行宽不够时让胶囊让步,而不是把操作名挤没。
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Shrink(1).Ellipsis("…").
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(chipMax).SingleLine().Shrink(1).Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text).Tooltip(v)
 										}
 									})
@@ -1419,7 +1434,7 @@ func (a *app) stepsView(c *ui.Context) {
 										ui.Text(c, s.opLabel).FontSize(12).Bold().TextColor(labCol).SingleLine().Shrink(0)
 										if v := s.summary(); v != "" && v != s.opLabel && showSummary {
 											// 同上:一行 + 可省略,长参数不撑高这一行。
-											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(150).SingleLine().Shrink(1).Ellipsis("…").
+											ui.Text(c, v).FontSize(12).Padding(2, 8).Radius(6).MaxWidth(chipMax).SingleLine().Shrink(1).Ellipsis("…").
 												Background(cat.Alpha(0.16)).TextColor(t.Text).Tooltip(v)
 										}
 									})
