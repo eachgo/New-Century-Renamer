@@ -145,3 +145,84 @@ func chainBase(e ast.Expr) *ast.CallExpr {
 		e = sel.X
 	}
 }
+
+// 一段说明文字不许随弹窗变宽而无限拉长:一行七八十个字,眼睛换行时会跳行。
+//
+// 弹窗宽度是写死的(520/560/620),所以今天看不出问题;这条约束守的是
+// "以后把弹窗加宽到 880"那一刻——那时正文会跟着变宽,而这里会红。
+func TestProseWidthStaysInTheComfortableRange(t *testing.T) {
+	long := "每行四列：文件指纹（sha256）、所在文件夹、现在的名字、想改成的新名字。" +
+		"导入时按指纹找文件——文件就算已经被别的工具改过名，也能对回自己那一行；" +
+		"内容被改过，那一行会标成「有问题」，不会硬改。"
+
+	// 12px 中文的舒适区大约 30–40 字一行,换算成宽度是 360–480 DIP。
+	if proseMaxWidth < 320 || proseMaxWidth > 520 {
+		t.Fatalf("proseMaxWidth=%g 不在 320–520 之间:太窄会折成碎句,太宽会跳行", proseMaxWidth)
+	}
+
+	for _, w := range []float32{560, 880, 1200} {
+		tt := ui.NewTester(func(c *ui.Context) {
+			ui.Column(c).Width(w).Children(func() { prose(c, long) })
+		}, int(w)+40, 600)
+		tt.Frame()
+		r, ok := tt.Find(long)
+		if !ok {
+			t.Fatalf("w=%g 找不到那段文字", w)
+		}
+		if r.W > proseMaxWidth+0.5 {
+			t.Fatalf("w=%g:正文宽 %g 超过了上限 %g——弹窗一变宽,正文就跟着变宽", w, r.W, proseMaxWidth)
+		}
+		lines := float64(r.H) / 18
+		if perLine := float64(len([]rune(long))) / lines; perLine > 45 {
+			t.Fatalf("w=%g:一行 %.0f 个字,超出舒适区(≤45)", w, perLine)
+		}
+	}
+}
+
+// 弹窗里的说明文字必须只有一档字号:正文都是 12px,行高 18。
+//
+// 曾经是这样,但没有东西守着——下一个人给某段说明加个 FontSize(14)
+// 强调一下,整页的节奏就乱了,而且没人会发现(看起来"只是那一段大一点")。
+func TestDialogProseHasOneTypography(t *testing.T) {
+	const lineH = 18.0 // 12px × 1.5
+
+	check := func(tag string, a *app, w, h int) {
+		tt := ui.NewTester(a.view, w, h)
+		tt.Frame()
+		tt.Frame()
+		for _, ai := range tt.AccessAll() {
+			// 只看真正的文字节点:流程图是带 Label 的 Box(无障碍里是
+			// RoleGroup),它的高度是画布高度,不是行高。
+			if ai.Role != ui.RoleText {
+				continue
+			}
+			if ai.Bounds.H < lineH*2-0.5 {
+				continue // 单行标签不在"成段正文"之列
+			}
+			if len([]rune(ai.Name)) < 20 {
+				continue // 按钮/标题/短标签
+			}
+			lines := float64(ai.Bounds.H) / lineH
+			if lines-float64(int(lines)) > 0.02 {
+				t.Errorf("%s: %q 的行高不是 18 的整数倍(高 %.1f)——弹窗正文只许有一档字号",
+					tag, ai.Name, ai.Bounds.H)
+			}
+		}
+	}
+
+	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	a.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	a.openHelp()
+	a.helpShowFlows = true
+	check("帮助", a, 1280, 900)
+
+	b := &app{stepSel: -1, settings: defaultSettings()}
+	b.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	b.openSettings()
+	check("设置", b, 1280, 900)
+
+	c := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+	c.settings.Journal = filepath.Join(t.TempDir(), "journal.json")
+	c.openFlows()
+	check("流程", c, 1280, 900)
+}

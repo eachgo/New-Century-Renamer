@@ -29,6 +29,15 @@ func dialogPanel(c *ui.Context, dw, dh float32) ui.Element {
 // (每行 18px)是中文正文的常见起点,行与行之间看得出呼吸。
 const proseLineHeight float32 = 1.5
 
+// proseMaxWidth 是一段说明文字最宽能到多少 DIP。
+//
+// 一行太长,眼睛换行时会跳行:中文正文的舒适区大约 30–40 个字,12px 下
+// 就是 360–480 DIP。弹窗自己是有宽度的,所以今天实测最宽的一段是 496
+// DIP(帮助页,弹窗 520 减内边距)——刚好在边上。这条约束写下来的意义
+// 不是改今天的观感,而是让"以后把弹窗加宽到 880"不会顺手把正文拉成
+// 一行 70 个字。
+const proseMaxWidth float32 = 480
+
 // prose 是一段给人读的说明文字:12px、次要色、行高 1.5。
 //
 // 帮助页、设置面板里的解释都是一段段中文,原来和单行标签共用默认行高。
@@ -38,7 +47,8 @@ func prose(c *ui.Context, s string) ui.Element {
 	return proseIn(c, s, c.Theme().TextMuted)
 }
 
-// proseIn 是 prose 的换色版本(警示、强调)。行高仍由这里统一。
+// proseIn 是 prose 的换色版本(警示、强调)。行高与最大宽度仍由这里统一。
 func proseIn(c *ui.Context, s string, col ui.Color) ui.Element {
-	return ui.Text(c, s).FontSize(12).TextColor(col).LineHeight(proseLineHeight)
+	return ui.Text(c, s).FontSize(12).TextColor(col).
+		LineHeight(proseLineHeight).MaxWidth(proseMaxWidth)
 }
