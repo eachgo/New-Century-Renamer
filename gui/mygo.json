@@ -2,7 +2,7 @@
   "name": "ncreamer-gui",
   "slug": "ncreamer-gui",
   "identifier": "io.github.eachgo.ncreamer",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "copyright": "MIT",
   "license": "MIT",
   "out": "dist",

@@ -2,7 +2,7 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/);里程碑对应 git 标签。
 
-## [Unreleased]
+## [0.1.11] - 2026-11-18
 
 ### 修复 · 窗口四周那圈不是我们画的白线
 
