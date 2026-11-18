@@ -867,7 +867,15 @@ func (a *app) catalogView(c *ui.Context) {
 					// 气泡只跟着鼠标走,键盘 Tab 到这一条、焦点环亮了,说明
 					// 却永远不出现——整份目录的说明对键盘和读屏用户等于不存在
 					// (实测条目 Description 为空)。
-					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0).Tooltip(d.desc)
+					// PaddingEnd 是给滚动条让位:目录一屏放不下,右端会浮一条竖滚动条,
+					// 而滚动条压在所有内容之上——星标画到 x=206 就正好落在它的轨道里,
+					// 点下去命中的是滚动条,星标根本按不动(实测 tt.Click 报
+					// "covered by a scroll bar")。留出 10 让星标整颗都在轨道左边。
+					// 这里不要加 .Label():条目的可访问名已经从里面的文字自动
+					// 取到了,再挂一个同名 Label 会多出一个覆盖整行的标签节点,
+					// tt.Find 就匹配到那一层(x 等于按钮左缘),而条目里的文字
+					// 本来才是它的位置。
+					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0).PaddingEnd(10).Tooltip(d.desc)
 					pinned := a.isPinned(d.id)
 					switch {
 					case sel == d.id:
@@ -995,12 +1003,17 @@ func (a *app) togglePin(id string) {
 // 顺手把这条规则加进步骤(实测 outer=0 inner=1)。
 func (a *app) pinStar(c *ui.Context, t *ui.Theme, id string, selected bool, selFg ui.Color) {
 	glyph := "☆"
+	label := "钉住"
 	tip := "钉到「常用」组，以后不用每次翻目录"
 	if a.isPinned(id) {
 		glyph = "★"
+		label = "取消钉住"
 		tip = "已钉在「常用」组，点一下取消"
 	}
-	st := ui.ButtonBase(c).Shrink(0).Radius(6).Padding(0, 2).Tooltip(tip)
+	// Label 是给读屏的:星标画的是一个字形,没有名字时读屏只会念出 "☆"。
+	// 它会被拼进外层条目的可访问名(读出来是"筛选文件 钉住"),所以这里
+	// 只写动作,不再重复条目名。
+	st := ui.ButtonBase(c).Shrink(0).Radius(6).Padding(0, 2).Label(label).Tooltip(tip)
 	col := t.TextMuted
 	if selected {
 		col = selFg

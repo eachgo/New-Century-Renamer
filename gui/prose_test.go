@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -13,39 +14,55 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// prose 的行高必须真的比默认大:12px 的默认行高来自字体自身度量,
+// prose 的行距必须真的松一些:12px 的默认行高来自字体自身度量,
 // 连续几行中文贴得太紧。
+//
+// 判据不能写成"prose 比裸 Text 高":Linux 上 12px 的默认行高本来就是
+// 1.5 倍,两者一样高,那条断言在 CI 上恒红。这里改成两条与平台无关的:
+// 一是 prose 的单行高度至少是字号的 1.45 倍(行距够松),二是一个字都不许
+// 比裸 Text 更紧(换了字体也不该倒退)。
 func TestProseUsesRoomierLineHeight(t *testing.T) {
+	const short = "预览不动磁盘"
 	const para = "预览不动磁盘：右栏“原名 → 新名”随时重算，只有“执行更名”会真的改。" +
 		"改完不满意，底栏“撤销上次”整批退回去，回来接着调。"
 
-	height := func(useProse bool) float32 {
+	height := func(s string, useProse bool, w float32) float32 {
 		tt := ui.NewTester(func(c *ui.Context) {
-			ui.Column(c).Width(320).Children(func() {
+			ui.Column(c).Width(w).Children(func() {
 				if useProse {
-					prose(c, para)
+					prose(c, s)
 					return
 				}
-				ui.Text(c, para).FontSize(12).TextColor(c.Theme().TextMuted)
+				ui.Text(c, s).FontSize(12).TextColor(c.Theme().TextMuted)
 			})
 		}, 400, 400)
 		tt.Frame()
-		r, ok := tt.Find(para)
+		r, ok := tt.Find(s)
 		if !ok {
 			t.Fatalf("找不到那段文字(useProse=%v)", useProse)
 		}
 		return r.H
 	}
 
-	plain := height(false)
-	p := height(true)
-	if p <= plain {
-		t.Fatalf("prose 的行高应当更高:默认 %g,prose %g", plain, p)
+	plainLine := height(short, false, 320)
+	proseLine := height(short, true, 320)
+	if proseLine < plainLine {
+		t.Fatalf("prose 的行高不该比默认更紧:默认 %g,prose %g", plainLine, proseLine)
 	}
-	// 这段在 320 宽下折成三行:默认 16px 一行(48),1.5 倍是 18px 一行(54)。
-	// 比的是每行高度,不写死行数——换了字体或文案,断言不该跟着崩。
-	if got, want := p/plain, proseLineHeight/1.3333; got < want*0.95 {
-		t.Fatalf("行高倍数没生效: prose/默认 = %.3f,期望约 %.3f", got, want)
+	if proseLine < 12*1.45 {
+		t.Fatalf("prose 的行距只有字号的 %.2f 倍(单行高 %g),读起来还是挤",
+			proseLine/12, proseLine)
+	}
+
+	// 折行之后的高度必须是单行高度的整数倍:行距真的作用在每一行上,
+	// 而不是只把最后一行推开。比的是同一平台量出来的单行高,不写死行数。
+	paraH := height(para, true, 320)
+	lines := float64(paraH) / float64(proseLine)
+	if math.Abs(lines-math.Round(lines)) > 0.02 {
+		t.Fatalf("折行后高 %g 不是单行高 %g 的整数倍(%.3f 行)", paraH, proseLine, lines)
+	}
+	if lines < 2 {
+		t.Fatalf("这段在 320 宽下应当折成多行,实际只有 %.2f 行", lines)
 	}
 }
 

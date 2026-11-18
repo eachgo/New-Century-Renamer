@@ -2,6 +2,7 @@ package main
 
 import (
 	"image"
+	"math"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -53,11 +54,11 @@ func TestSettingsNarrowFallsBackAndFades(t *testing.T) {
 	if _, ok := tt.Find("AI 接口（OpenAI 兼容）"); !ok {
 		t.Fatal("窄窗口下第一张卡应当可见")
 	}
-	// 滚到底之后四张卡都要能到。
-	for i := 0; i < 12; i++ {
-		tt.Scroll(450, 250, 0, 120)
-		tt.Frame()
-	}
+	// 滚到底之后四张卡都要能到。直接滚到末端,不数次数:次数是拿本机
+	// 字体高度量的,Linux 上单栏更高,固定次数滚不到底。
+	a.setScroll.Y = math.MaxFloat32
+	tt.Frame()
+	tt.Frame()
 	for _, name := range []string{"主题", "设置文件"} {
 		r, ok := tt.Find(name)
 		if !ok || r.H <= 0 {

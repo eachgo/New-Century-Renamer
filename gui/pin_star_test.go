@@ -50,11 +50,16 @@ func TestPinStarAppearsOnHover(t *testing.T) {
 	}
 	// 星标要落在条目右端,不能压在规则名上。
 	if star.X < r.X+r.W*0.7 {
-		t.Errorf("星标 x=%.1f 落在规则名中间(条目文字右缘 %.1f),它该在最右侧", star.X, r.X+r.W)
+		t.Errorf("星标 x=%.1f 落在规则名中间(条目文字右缘 %.1f),它该在最右侧",
+			star.X, r.X+r.W)
 	}
 
 	// 点星标只钉住,不能顺手把这条规则加进步骤——它是条目里的另一个按钮。
-	tt.ClickAt(star.X+star.W/2, star.Y+star.H/2)
+	//
+	// 先把指针移到星标上再点:用户就是这么点的,而且"移上去"这一步让星标
+	// 从"因为整行悬停才画出来"变成"自己悬停着",跨平台的字宽差异不会再
+	// 决定点击落在星标上还是落在行上。
+	clickStar(tt, star)
 	tt.Frame()
 	tt.Frame()
 
@@ -89,7 +94,7 @@ func TestPinStarTogglesOff(t *testing.T) {
 	if !ok {
 		t.Fatal("已经钉住的条目,实星应当一直可见(不需要悬停)")
 	}
-	tt.ClickAt(star.X+star.W/2, star.Y+star.H/2)
+	clickStar(tt, star)
 	tt.Frame()
 	tt.Frame()
 
@@ -111,7 +116,7 @@ func TestPinStarSavesToSettings(t *testing.T) {
 	if !ok {
 		t.Fatal("找不到星标")
 	}
-	tt.ClickAt(star.X+star.W/2, star.Y+star.H/2)
+	clickStar(tt, star)
 	tt.Frame()
 
 	got := LoadSettings()
@@ -129,4 +134,17 @@ func groupTitles(tt *ui.Tester) []string {
 		}
 	}
 	return out
+}
+
+// clickStar 把指针移到星标上再点它。
+//
+// 先移再点不只是"更像用户":目录右端浮着一条竖滚动条,而滚动条压在所有
+// 内容之上。星标贴着右边缘时,它的中心正好落在滚动条轨道里,点下去命中的
+// 是滚动条,钉不住也取消不了(实测 tt.Click 报 "covered by a scroll bar")。
+// 这条路径同时守着"星标没有被滚动条盖住"。
+func clickStar(tt *ui.Tester, star ui.Rect) {
+	cx, cy := star.X+star.W/2, star.Y+star.H/2
+	tt.Move(cx, cy)
+	tt.Frame()
+	tt.ClickAt(cx, cy)
 }

@@ -31,8 +31,15 @@ func TestSettingsLabelColumnFitsTheLongestLabel(t *testing.T) {
 			widest = r.W
 		}
 	}
-	// 允许 24 DIP 余量(给将来更长一点的标签),再多就是从控件身上白拿的。
-	if settingsLabelW > widest+24 {
+	// 余量取"24 DIP 与 1.5 倍"里宽松的那个:字宽是平台相关的,同一串中文在
+	// macOS 上量出来 59.59、在 Windows 上 60,写死一个绝对余量就会在某个平台
+	// 上差 0.4 DIP 判失败(CI 上真发生过)。用比例兜住这点抖动,同时仍然能
+	// 抓住"标签列比标签宽一倍"那种回归。
+	limit := widest + 24
+	if r := widest * 1.5; r > limit {
+		limit = r
+	}
+	if settingsLabelW > limit {
 		t.Fatalf("标签列 %g 比最长标签(%g)宽出太多,控件白丢 %g DIP",
 			settingsLabelW, widest, settingsLabelW-widest-8)
 	}

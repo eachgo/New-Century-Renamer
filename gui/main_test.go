@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1056,12 +1057,13 @@ func TestSettingsCardsReachableAtAnyHeight(t *testing.T) {
 			r, ok := tt.Find(want)
 			return ok && r.H > 0 && r.Y >= 0 && r.Y <= float32(h)
 		}
+		// 滚到底:直接让它滚到末端,不数"滚多少次"。
+		// 原来固定滚 24 次 × 120 DIP = 2880,在 Windows 上够,Linux 的字体
+		// 更高、单栏总高更长,就不够了——次数是拿本机量出来的,换平台必崩。
 		scrollToBottom := func() {
-			for k := 0; k < 24; k++ {
-				tt.Move(640, float32(h)/2)
-				tt.Scroll(640, float32(h)/2, 0, 120)
-				tt.Frame()
-			}
+			a.setScroll.Y = math.MaxFloat32
+			tt.Frame()
+			tt.Frame()
 		}
 		for _, want := range []string{"AI 接口（OpenAI 兼容）", "文件"} {
 			if !visible(want) {

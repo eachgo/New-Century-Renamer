@@ -153,13 +153,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 									row("等待秒数", func() {
 										ui.Row(c).Gap(10).Children(func() {
 											intField(c, "等待秒数", &a.aiTimeoutText, 10, 3600, core.DefaultAITimeoutSeconds, 150)
-											ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+											proseIn(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds), t.TextMuted).Grow(1)
 										})
 									})
 									row("并发路数", func() {
 										ui.Row(c).Gap(10).Children(func() {
 											intField(c, "并发路数", &a.aiConcurrencyText, 1, 32, core.DefaultAIConcurrency, 150)
-											ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+											proseIn(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency), t.TextMuted).Grow(1)
 										})
 									})
 									row("默认提示词", func() {
@@ -269,13 +269,13 @@ func (a *app) settingsDialog(c *ui.Context) {
 							row("等待秒数", func() {
 								ui.Row(c).Gap(10).Children(func() {
 									intField(c, "等待秒数", &a.aiTimeoutText, 10, 3600, core.DefaultAITimeoutSeconds, 150)
-									ui.Text(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+									proseIn(c, fmt.Sprintf("秒，留空用默认 %d", core.DefaultAITimeoutSeconds), t.TextMuted).Grow(1)
 								})
 							})
 							row("并发路数", func() {
 								ui.Row(c).Gap(10).Children(func() {
 									intField(c, "并发路数", &a.aiConcurrencyText, 1, 32, core.DefaultAIConcurrency, 150)
-									ui.Text(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+									proseIn(c, fmt.Sprintf("路，留空用默认 %d；云端 API 常限流，填 1 稳妥", core.DefaultAIConcurrency), t.TextMuted).Grow(1)
 								})
 							})
 							row("默认提示词", func() {
