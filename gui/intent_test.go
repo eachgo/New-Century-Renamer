@@ -29,13 +29,14 @@ func TestEmptyStepsShowIntentCards(t *testing.T) {
 // spec 却解析不了,是最糟的情况。
 //
 // 用真素材跑:meta.title / meta.author 这两张卡片的意义就是"读文件
-// 自带的元数据",拿一个空文件去测等于什么都没测。素材不在就跳过
-// (CI 上没有 testfile/),与 E2E 的取舍一致。
+// 自带的元数据",拿一个空文件去测等于什么都没测。
+//
+// 原来这里要 testfile/(被 .gitignore 排除),CI 上没有就 t.Skip——于是
+// 四张卡片的"点下去真能跑"在 CI 里一天都没验过。现在用 makeTestfile
+// 当场造夹具:那套夹具里有带 ID3 的 mp3、带 Vorbis comment 的 flac、
+// 带 OPF 的 epub、带 Info 字典的 pdf,足够这四张卡片各读各的。
 func TestIntentBuildsRunnablePipeline(t *testing.T) {
-	dir, ok := findTestfile()
-	if !ok {
-		t.Skip("no testfile dir")
-	}
+	dir := makeTestfile(t)
 	for _, in := range intents {
 		// 每张卡片用适合它的输入:括号那张需要一个真带括号的名字,
 		// 否则"没变化"是正确行为,测不出东西。拷到临时目录,避免

@@ -47,6 +47,23 @@ L 0.12，实测对六种底 1.15–1.55:1），彩度只剩能点那颗的三成
 是块瓦片、字读得清、和能点那颗分得开"。`TestHoverIsWhatSaysClickable` 守
 动态那一半：能点的移上去要变色，按不动的移上去一动不动。
 
+### 修复 · 四条"用真素材才跑"的测试在 CI 上一直空转
+
+`testfile/` 被 `.gitignore` 排除，所以依赖它的四条测试在 CI 上全部 `t.Skip`：
+MKV 元数据（要 `NCREAMER_MKV_SAMPLE`）、PDF 文字层、EPUB 正文、意图卡片
+「点下去真能跑」。测试是绿的，但它们守的东西一天都没被守过。
+
+- PDF / EPUB 两条改成当场造夹具：一个带 `BT … Tj ET` 内容流的最小 PDF、一个
+  带 `chapter1.xhtml` 的最小 EPUB。解析器要认的就是这两样，不需要文件"像真的"。
+- MKV 那条退到仓库自带的 `core/testdata/sample.mkv`（757 字节，ffmpeg 生成，
+  带 Title 与 MuxingApp），环境变量仍可覆盖。
+- 意图卡片改用 `makeTestfile`——E2E 已经在用的那套 ID3/flac/epub/pdf/png 夹具。
+- 顺手删掉 `TestPrimaryButtonUsesCustomDisabledColors` 里的 `t.Skip`：原来量
+  按钮中心，撞到字形就跳过，而"跳过"本身就是静默降级。改成量左侧内边距，并
+  断言它正好是那块灰瓦片。
+
+四条都做了反向验证（把解析器改坏，确认测试真的红）。
+
 ### 修复 · 暗色主题下窗口右/下/左三边的一道亮线
 
 系统主题是亮色、软件手动选了暗色时，窗口右、下、左三边会出现一道很细的

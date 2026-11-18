@@ -94,11 +94,14 @@ func TestMKVMetaNotMatroska(t *testing.T) {
 
 // TestMKVMetaRealFile exercises the parser end-to-end on a file ffmpeg
 // produced, so we're not only testing against our own synthetic encoding.
-// Skipped when ffmpeg isn't present (CI has no ffmpeg).
+//
+// 原来它只读 NCREAMER_MKV_SAMPLE 环境变量,CI 上没设就永远 t.Skip——"用真
+// 文件验过"这句话从来没在 CI 上成立过。现在 testdata/sample.mkv(757 字节,
+// ffmpeg 生成)随仓库走,环境变量仍然可以覆盖成别的样本。
 func TestMKVMetaRealFile(t *testing.T) {
 	p := os.Getenv("NCREAMER_MKV_SAMPLE")
 	if p == "" {
-		t.Skip("set NCREAMER_MKV_SAMPLE to a .mkv path to run this")
+		p = filepath.Join("testdata", "sample.mkv")
 	}
 	m := ExtractMeta(p)
 	if m == nil || m["title"] == "" {

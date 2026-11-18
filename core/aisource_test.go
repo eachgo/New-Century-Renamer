@@ -2,6 +2,7 @@ package core
 
 import (
 	"archive/zip"
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,37 +10,76 @@ import (
 )
 
 // 这些测试只验证"能不能从文件里真的抠出内容"——不联网、不调模型。
+//
+// 原来这两条读 ../testfile/ 里的真实 PDF 与 EPUB，而那个目录被 .gitignore
+// 排除：CI 上不存在，于是两条测试永远 t.Skip，从来没守过任何东西。改成
+// 当场造夹具——PDF 只要一个带 Tj 的内容流，EPUB 只要一个 .xhtml 正文，
+// 解析器要认的就是这两样，不需要文件"像真的"。
+
+// pdfTextFixture 造一个带文字层的最小 PDF：一个内容流，里面一条 Tj。
+func pdfTextFixture(text string) []byte {
+	body := "BT /F1 12 Tf 72 712 Td (" + text + ") Tj ET"
+	return []byte("%PDF-1.7\n" +
+		"1 0 obj\n<< /Length " + itoa(len(body)) + " >>\nstream\n" + body + "\nendstream\nendobj\n" +
+		"trailer\n<< /Root 1 0 R >>\n%%EOF\n")
+}
+
+// epubTextFixture 造一个带正文的最小 EPUB。epubText 只收 .xhtml/.html，
+// 并且跳过名字里带 nav/toc/cover 的条目，所以正文文件叫 chapter1.xhtml。
+func epubTextFixture(title, body string) []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	add := func(name, content string) {
+		w, err := zw.Create(name)
+		if err != nil {
+			return
+		}
+		w.Write([]byte(content))
+	}
+	add("mimetype", "application/epub+zip")
+	add("META-INF/container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`)
+	add("content.opf", `<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>`+title+`</dc:title>
+  </metadata>
+</package>`)
+	add("chapter1.xhtml", `<html><body><h1>`+title+`</h1><p>`+body+`</p></body></html>`)
+	zw.Close()
+	return buf.Bytes()
+}
 
 func TestSnippetPDFTextLayer(t *testing.T) {
-	p := "../testfile/1528NP(I5-10210U)-12 V1.0y规格书.pdf"
-	if _, err := os.Stat(p); err != nil {
-		t.Skip("no testfile")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "spec.pdf")
+	if err := os.WriteFile(p, pdfTextFixture("Technical Specification rev 1.0"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	got := contentSnippet(p)
 	if got == "" || strings.Contains(got, "无可用文本") {
 		t.Fatalf("PDF 没抠出文字: %q", truncate(got, 200))
 	}
-	// 规格书里总该出现点像人话的东西
-	t.Logf("PDF 片段(%d 字符): %.300s", len(got), got)
+	if !strings.Contains(got, "Technical Specification") {
+		t.Fatalf("PDF 抠出的不是内容流里的文字: %q", truncate(got, 200))
+	}
 }
 
 func TestSnippetEPUBText(t *testing.T) {
-	var p string
-	ents, _ := os.ReadDir("../testfile")
-	for _, e := range ents {
-		if strings.HasSuffix(strings.ToLower(e.Name()), ".epub") {
-			p = filepath.Join("../testfile", e.Name())
-			break
-		}
-	}
-	if p == "" {
-		t.Skip("no epub")
+	dir := t.TempDir()
+	p := filepath.Join(dir, "book.epub")
+	if err := os.WriteFile(p, epubTextFixture("読書ノート", "第一章 京都の春"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	got := contentSnippet(p)
 	if got == "" || strings.Contains(got, "无可用文本") {
 		t.Fatalf("EPUB 没抠出文字: %q", truncate(got, 200))
 	}
-	t.Logf("EPUB 片段(%d 字符): %.300s", len(got), got)
+	if !strings.Contains(got, "京都の春") {
+		t.Fatalf("EPUB 抠出的不是正文: %q", truncate(got, 200))
+	}
 }
 
 func TestSnippetZipListing(t *testing.T) {

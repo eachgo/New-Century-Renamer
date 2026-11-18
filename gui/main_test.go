@@ -478,16 +478,21 @@ func TestPrimaryButtonUsesCustomDisabledColors(t *testing.T) {
 	if a.isDark() {
 		th = dt.dark
 	}
-	panes := dt.panes(a.isDark())
-	// 采样按钮中心:禁用态应当是 Surface 底,不是主色。
-	px, py := int(btn.X+btn.W/2), int(btn.Y+btn.H/2)
-	got := tt.Image().RGBAAt(px, py)
-	want := panes.card // 底栏底色
-	if sameRGB(got, ui.Color{R: uint8(want.R), G: uint8(want.G), B: uint8(want.B)}) {
-		t.Skip("按钮中心落在文字上,跳过像素比对")
+	// 采按钮左侧的内边距,不采中心——中心可能正好落在字形的笔画上,
+	// 那样量到的是字色不是底色(旧版本遇到这种情况直接 t.Skip,于是
+	// "跳过"本身成了静默降级:一条测试在 CI 上什么都没验)。
+	img := tt.Image()
+	cy := int(btn.Y + btn.H/2)
+	got := pix(img, int(btn.X)-7, cy)
+	if got.A == 0 {
+		t.Fatalf("按钮左侧采样点越界(x=%.1f)", btn.X-7)
 	}
-	// 只要不是主色就算过:配色由 disabledPrimaryColors 统一决定,
-	// 这里守的是"没有退回裸 Disabled"。
+	// 禁用主按钮必须正好是那块灰瓦片:既不能还是主色实心(看着能按),
+	// 也不能退回裸 Disabled(mygo 会把整块连文字乘 0.5,只有 1.37:1)。
+	want := inertFill(th)
+	if got.R != want.R || got.G != want.G || got.B != want.B {
+		t.Errorf("禁用的执行更名不是那块灰瓦片: 实测 %v, 期望 %v", got, want)
+	}
 	accent := th.Accent
 	if got.R == accent.R && got.G == accent.G && got.B == accent.B {
 		t.Error("禁用的执行更名按钮仍是主色实心块,应当换成中性底")
