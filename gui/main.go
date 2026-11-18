@@ -868,6 +868,7 @@ func (a *app) catalogView(c *ui.Context) {
 					// 却永远不出现——整份目录的说明对键盘和读屏用户等于不存在
 					// (实测条目 Description 为空)。
 					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0).Tooltip(d.desc)
+					pinned := a.isPinned(d.id)
 					switch {
 					case sel == d.id:
 						item.Background(selBg)
@@ -899,10 +900,16 @@ func (a *app) catalogView(c *ui.Context) {
 						if labelCol.A != 0 {
 							txt.TextColor(labelCol)
 						}
+						// 钉住的星标:平时不占地方,悬停这一行或已经钉住时才出现。
+						// 曾经只有右键菜单能钉,而"常用"这个组只有钉过东西之后
+						// 才存在——没钉过的人根本看不到这个功能,也就不会去右键
+						// 试。星标只在需要时出现,扫视时目录仍是干净的一列。
+						if pinned || item.Hovered() {
+							a.pinStar(c, t, d.id, sel == d.id, selFg)
+						}
 					})
-					// 右键菜单:钉/取消钉。放在右键而不是条目上的小图标:
-					// 条目已经有一列类别色图标 + 一行文字,再塞一颗星会让
-					// 每行都多一个可点区域,而这是低频动作。
+					// 右键菜单保留:星标要悬停才出现,右键是它的备份入口,
+					// 也是唯一能解释"钉住是什么意思"的地方(菜单项文字)。
 					item.ContextMenu(func(m *ui.Menu) {
 						label := "钉到常用"
 						if a.isPinned(d.id) {
@@ -976,6 +983,49 @@ func (a *app) togglePin(id string) {
 		}
 	}
 	a.pinned = append(a.pinned, id)
+}
+
+// pinStar 画条目右端那颗钉选星标。
+//
+// 平时不出现,只有悬停这一行或它已经钉住时才画——目录要在一屏里放下
+// 几十条,每行多一颗常驻的星等于给每一行都加一个可点区域,而钉住是
+// 低频动作。已经钉住的必须一直看得见,否则用户找不到"取消钉住"。
+//
+// 星标是条目内部的一个按钮:mygo 的点击不会冒泡到外层,所以点星星不会
+// 顺手把这条规则加进步骤(实测 outer=0 inner=1)。
+func (a *app) pinStar(c *ui.Context, t *ui.Theme, id string, selected bool, selFg ui.Color) {
+	glyph := "☆"
+	tip := "钉到「常用」组，以后不用每次翻目录"
+	if a.isPinned(id) {
+		glyph = "★"
+		tip = "已钉在「常用」组，点一下取消"
+	}
+	st := ui.ButtonBase(c).Shrink(0).Radius(6).Padding(0, 2).Tooltip(tip)
+	col := t.TextMuted
+	if selected {
+		col = selFg
+	} else if a.isPinned(id) {
+		col = t.Accent
+	}
+	if st.Hovered() && !selected {
+		st.Background(t.SurfacePressed)
+	}
+	st.Children(func() {
+		ui.Text(c, glyph).FontSize(12).TextColor(col)
+	})
+	if st.Clicked() {
+		a.togglePin(id)
+		a.settings.Pinned = a.pinned
+		if err := SaveSettings(a.settings); err != nil {
+			a.status = "钉住没能存下来：" + err.Error()
+			return
+		}
+		if a.isPinned(id) {
+			a.status = "已钉到「常用」组，左栏顶部就能找到"
+		} else {
+			a.status = "已取消钉住"
+		}
+	}
 }
 
 // isPinned reports whether the catalog entry id is in the 常用 group.

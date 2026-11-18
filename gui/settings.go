@@ -108,7 +108,10 @@ func defaultSettings() Settings {
 
 func LoadSettings() Settings {
 	s := defaultSettings()
-	b, err := os.ReadFile(settingsPath())
+	// 与 SaveSettings 走同一个变量。原来这里直接调 settingsPath(),
+	// 于是测试重定向了写盘、读回来却是开发者本机那份——"存进去的东西
+	// 读不回来"这种测试失败会指向错误的方向。
+	b, err := os.ReadFile(settingsFilePath())
 	if err == nil {
 		json.Unmarshal(b, &s) // keep defaults for absent fields
 	}
