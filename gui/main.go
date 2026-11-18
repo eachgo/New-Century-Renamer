@@ -75,6 +75,11 @@ type app struct {
 	// 去执行的是改之前的计划。把 spec 记下来,和当前 spec 一比就知道这份
 	// 计划是不是已经过期;过期时主按钮置灰并说清"先点预览"。
 	planSpec string
+	// borderCol 是上次写给 DWM 的窗口边框色。DWM 那圈 1px 边框是唯一一块
+	// 不是我们画的像素,只能让它和内容底色同色;而底色随明暗/主题变,所以
+	// 每帧对一次,只有真的变了才再调一次系统调用。
+	borderCol ui.Color
+	borderSet bool
 	// aiCancel 是"这一轮联网命名"的取消句柄。有它才能给「停止」:
 	// 一次 300 个文件的批量配上慢模型是十几分钟,而窗口只能干等——
 	// 用户唯一的出路是杀进程,那会把已经算出来的结果一起丢掉。
@@ -245,11 +250,13 @@ var dragOverProbe func() bool
 
 func (a *app) view(c *ui.Context) {
 	dt := a.currentTheme()
-	if a.isDark() {
+	dark := a.isDark()
+	if dark {
 		c.SetTheme(dt.dark)
 	} else {
 		c.SetTheme(dt.light)
 	}
+	a.syncWindowBorder(dt, dark)
 	// 逃生键:模式类状态必须能被一键解除,用户不会被困在里面。
 	// 导入确认排在最前:它盖在设置面板上面,按 Esc 该先关最上面那层,
 	// 而不是连下面那个一起关掉。
@@ -4169,11 +4176,13 @@ func main() {
 			TitleBarHeight: 38,
 			Content:        ui.View(a.view),
 		})
-		// 关掉系统画的那圈窗口边框:我们自绘了包括标题栏在内的整个界面,
-		// 只剩这一圈不是我们画的。系统主题是亮色而软件选了暗色时,它会被
-		// 画成一道亮灰线,看上去像渲染 bug。DWM 这个属性是 Win11 才有的,
-		// 老系统上失败也无所谓(那时本来就没这圈线)。
-		hideSystemBorder(a.win.NativeHandle())
+		// 把系统画的那圈窗口边框调成我们的底色:我们自绘了包括标题栏在内
+		// 的整个界面,只剩这一圈不是我们画的。具体做法和理由见
+		// syncWindowBorder。这里先设一次(第一帧还没跑),之后每帧对一次。
+		a.syncWindowBorder(a.currentTheme(), a.isDark())
+		// 窗口重新显示/获得焦点时 DWM 会重画那圈边框,补一次。
+		a.win.OnShow(func() { a.syncWindowBorder(a.currentTheme(), a.isDark()) })
+		a.win.OnFocus(func() { a.syncWindowBorder(a.currentTheme(), a.isDark()) })
 		// the whole window accepts file drops, not just one element
 		a.win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			a.addPaths(e.Paths)
@@ -4185,6 +4194,45 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+// setWindowBorder 是给测试留的缝:生产恒为 setWindowBorderPlatform。
+// 测试要断言"颜色变了才重新调",而真正的实现要跨进程进 DWM,无头环境里
+// 既调不通也看不见。
+var setWindowBorder = setWindowBorderPlatform
+
+// windowHandle 取窗口的原生句柄,同样是给测试留的缝:无头环境里没有
+// 真窗口,而 *mygo.Window 的 NativeHandle 会等主循环。
+var windowHandle = func(w *mygo.Window) uintptr { return w.NativeHandle() }
+
+// syncWindowBorder 把 DWM 的窗口边框色对齐到内容底色。
+//
+// DWM 在 Win11 上给每个窗口画一圈 1px 的边框(聚焦时强调色、失焦时灰白)。
+// 我们自绘了整个界面,那圈线是唯一一块不是我们画的像素——用户把桌面设成
+// 纯黑之后它变成一道白边,看上去像渲染 bug(实测窗口最外 1px 恒为
+// (255,255,255),左/右/下三边都有,顶部没有)。
+//
+// 做法不是"让 DWM 别画"(那个属性在部分 build 上不生效,而且 mygo 每次
+// 主题变化重设 USE_IMMERSIVE_DARK_MODE 时会把它打回默认),而是"让它画成
+// 我们的底色":画出来和旁边一模一样,等于没有。
+//
+// 每帧比一次,只有颜色真的变了才调系统调用——它要跨进程进 DWM,不值得
+// 每帧都做。
+func (a *app) syncWindowBorder(dt *derivedTheme, dark bool) {
+	if a.win == nil {
+		return
+	}
+	want := borderColorFor(dt, dark)
+	if a.borderSet && want == a.borderCol {
+		return
+	}
+	a.borderCol, a.borderSet = want, true
+	setWindowBorder(windowHandle(a.win), want)
+}
+
+// borderColorFor 是窗口边框该被画成的颜色:顶栏/底栏/四周留白用的那个
+// 基底色。抽成函数是为了让测试能直接断言"边框色跟着明暗变",而不必去
+// 碰系统调用。
+func borderColorFor(dt *derivedTheme, dark bool) ui.Color { return dt.panes(dark).base }
 
 // drainPendingDrop 把排队的外部路径(拖放、外部入口、第二个实例)加进列表。
 // 必须排在帧首:这些路径都是在构建这一帧的途中发现的,当场 append 会让
