@@ -226,10 +226,17 @@ func TestE2EBulkPerformance(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 900)
 	tt.Frame()
 	start = time.Now()
-	a.steps = append(a.steps, func() guiRule { r := step("pinyin"); a.stepUID++; r.opUID = a.stepUID; return r }())
+	// 用"序号前缀"而不是拼音:拼音对纯 ASCII 文件名不产生任何改动,实测
+	// 600 个文件里只有 20 个真的改了名——那样这条"批量性能"用例压的是
+	// 一份几乎不用算的计划,量出来的耗时没有意义。
+	a.steps = append(a.steps, func() guiRule { r := step("seq.prefix"); a.stepUID++; r.opUID = a.stepUID; return r }())
 	tt.Frame()
 	previewDur := time.Since(start)
-	t.Logf("%d files: add=%v preview=%v changes=%d", len(a.files), addDur, previewDur, countChanges(a.ops))
+	changes := countChanges(a.ops)
+	t.Logf("%d files: add=%v preview=%v changes=%d", len(a.files), addDur, previewDur, changes)
+	if changes != len(a.files) {
+		t.Fatalf("这条用例要压满全部文件:应改 %d 个,实际只改 %d 个", len(a.files), changes)
+	}
 	if previewDur > 3*time.Second {
 		t.Errorf("preview too slow: %v", previewDur)
 	}
