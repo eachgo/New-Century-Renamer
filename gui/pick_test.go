@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -147,9 +148,9 @@ func TestBatchBarHiddenWithoutPickMode(t *testing.T) {
 // 正常浏览时随机出现又消失:一列步骤里突然多出一个方框,读流程的人会
 // 以为那一步有什么特殊状态。现在只剩"开关开着"一种。
 //
-// 注意这里守的是"模式开关"这一半:悬停那一半守不住,因为无头 Tester 的
-// Move 不产生悬停链(实测加回 row.Hovered() 后本测试仍 PASS)。悬停归
-// 手动检查,别把这条当成它的守卫。
+// 这条守的是"模式开关"这一半。悬停那一半无头量不到(实测 Move 之后悬停
+// 两帧,Hovered() 仍是 false),所以另有一条 TestCheckboxIgnoresHover 走
+// 源码:勾选框的条件里只要再出现 Hovered(),它就会红。
 func TestCheckboxOnlyWhenPicking(t *testing.T) {
 	a := pickApp(t)
 	tt := ui.NewTester(a.view, 1280, 800)
@@ -234,5 +235,30 @@ func TestPickModeOffKeepsSingleSelection(t *testing.T) {
 	}
 	if a.stepSel != 1 {
 		t.Errorf("关掉多选后单选应保持不变,实际 %d", a.stepSel)
+	}
+}
+
+// 勾选框的条件里不许再出现「本行被悬停」。
+//
+// 曾经的条件是"多选开着、或本行被悬停、或已选中"。后两条让勾选框在正常
+// 浏览时随机出现又消失:一列步骤里突然多出一个方框,读流程的人会以为那
+// 一步有什么特殊状态。
+//
+// 这条守卫走源码而不是像素:无头 Tester 的 Move 在这一栏里不产生悬停链
+// (实测悬停两帧后 `Hovered()` 仍是 false),所以像素断言抓不到"又把
+// Hovered() 加回去"这个回退——而源码里加回去是一定看得见的。
+func TestCheckboxIgnoresHover(t *testing.T) {
+	src := mustRead(t, "main.go")
+	start := strings.Index(src, "picked := a.chosen.Has(s.opUID)")
+	if start < 0 {
+		t.Fatal("找不到勾选框那段代码")
+	}
+	end := strings.Index(src[start:], "pick.Label(")
+	if end < 0 {
+		t.Fatal("找不到勾选框的 Label")
+	}
+	block := src[start : start+end]
+	if strings.Contains(block, "Hovered()") {
+		t.Errorf("勾选框的条件里又出现了 Hovered()——它会在正常浏览时随机冒出来:\n%s", block)
 	}
 }
