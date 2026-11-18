@@ -7,8 +7,8 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// 帮助入口必须在标题栏、任何窗口高度都点得到:34 项功能、9 种模板变量、
-// NFO 编号、CSV 回填,靠试是学不会的,而学不会的入口等于没有。
+// 帮助入口必须在标题栏、任何窗口高度都点得到:一整个目录的功能、模板
+// 变量表、NFO 编号、清单回填,靠试是学不会的,而学不会的入口等于没有。
 func TestHelpReachableAtAnyHeight(t *testing.T) {
 	for _, h := range []int{480, 720, 1080} {
 		a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}

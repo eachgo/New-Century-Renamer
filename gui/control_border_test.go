@@ -78,7 +78,7 @@ func TestDividerIsVisibleButQuieterThanControls(t *testing.T) {
 }
 
 // 目录图标是"这一组是哪类处理"的唯一非文字线索,必须对左栏底色 ≥3:1。
-// 11 组色相不同,取最差那组——平均值没有意义,用户看到的是最淡的那个。
+// 每组色相不同,取最差那组——平均值没有意义,用户看到的是最淡的那个。
 func TestCatalogGroupIconsAreReadable(t *testing.T) {
 	seeds := []ui.Color{
 		ui.RGB(0x2F, 0x7A, 0x52), ui.RGB(0xF2, 0x70, 0x3C), ui.RGB(0xF5, 0xC5, 0x18),

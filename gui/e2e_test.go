@@ -90,7 +90,7 @@ func TestE2EApplyUndo(t *testing.T) {
 	if len(a.files) != len(paths) {
 		t.Fatalf("added %d of %d files", len(a.files), len(paths))
 	}
-	// 目录条目是两行(名称 + 说明),32 条加 11 个组标题要 2000 多高才
+	// 目录条目是两行(名称 + 说明),整份目录加组标题要 2000 多高才
 	// 一屏放得下;矮窗口下条目会滚出视口,按文字点击会报"outside the
 	// window"。这里只想测改名的完整链路,所以把窗口开到放得下。
 	tt := ui.NewTester(a.view, 1280, 2600)

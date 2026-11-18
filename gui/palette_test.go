@@ -86,7 +86,7 @@ func TestCatalogGroupIconsDifferInLightness(t *testing.T) {
 				}
 				prev, prevSet = c, true
 			}
-			// 整组图标至少要跨过两档明度,不能全挤在一条线上。原来 11 组
+			// 整组图标至少要跨过两档明度,不能全挤在一条线上。原来各组
 			// 只跨 0.025;现在两档交替,实测跨 0.12 左右,相邻差 1.6:1。
 			if hi-lo < 0.10 {
 				t.Errorf("seed %v dark=%v: 图标亮度只跨 %.3f,灰度下仍是同一档", seed, dark, hi-lo)

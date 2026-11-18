@@ -145,7 +145,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 											if a.keyShown {
 												label = "隐藏"
 											}
-											if frameButton(c, label, true).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
+											if softButton(c, label, true).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
 												a.keyShown = !a.keyShown
 											}
 										})
@@ -198,7 +198,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 											if a.pickOpen {
 												label = "收起"
 											}
-											if frameButton(c, label, !a.seedFollow).Clicked() {
+											if softButton(c, label, !a.seedFollow).Clicked() {
 												a.pickOpen = !a.pickOpen
 											}
 										})
@@ -230,10 +230,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 								card("设置文件", func() {
 									prose(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。")
 									ui.Row(c).Gap(8).Children(func() {
-										if frameButton(c, "导出设置…", true).Radius(6).Clicked() {
+										if softButton(c, "导出设置…", true).Radius(6).Clicked() {
 											go a.exportSettings()
 										}
-										if frameButton(c, "导入设置…", true).Radius(6).Clicked() {
+										if softButton(c, "导入设置…", true).Radius(6).Clicked() {
 											go a.importSettings()
 										}
 									})
@@ -261,7 +261,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									if a.keyShown {
 										label = "隐藏"
 									}
-									if frameButton(c, label, true).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
+									if softButton(c, label, true).Radius(6).Tooltip("切换 API Key 的显示").Clicked() {
 										a.keyShown = !a.keyShown
 									}
 								})
@@ -312,7 +312,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 									if a.pickOpen {
 										label = "收起"
 									}
-									if frameButton(c, label, !a.seedFollow).Clicked() {
+									if softButton(c, label, !a.seedFollow).Clicked() {
 										a.pickOpen = !a.pickOpen
 									}
 								})
@@ -344,10 +344,10 @@ func (a *app) settingsDialog(c *ui.Context) {
 						card("设置文件", func() {
 							prose(c, "设置保存在程序目录 "+settingsFile+"，可导出后在其他机器导入。")
 							ui.Row(c).Gap(8).Children(func() {
-								if frameButton(c, "导出设置…", true).Radius(6).Clicked() {
+								if softButton(c, "导出设置…", true).Radius(6).Clicked() {
 									go a.exportSettings()
 								}
-								if frameButton(c, "导入设置…", true).Radius(6).Clicked() {
+								if softButton(c, "导入设置…", true).Radius(6).Clicked() {
 									go a.importSettings()
 								}
 							})
@@ -371,7 +371,7 @@ func (a *app) settingsDialog(c *ui.Context) {
 			}
 			ui.Row(c).Gap(8).Children(func() {
 				ui.Spacer(c)
-				if frameButton(c, "取消", true).Radius(6).Clicked() {
+				if softButton(c, "取消", true).Radius(6).Clicked() {
 					a.closeSettings(false)
 				}
 				if ui.PrimaryButton(c, "保存").Radius(6).Clicked() {
@@ -580,7 +580,7 @@ func (a *app) importDialog(c *ui.Context) {
 				})
 			})
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if frameButton(c, "取消", true).Radius(6).Clicked() {
+				if softButton(c, "取消", true).Radius(6).Clicked() {
 					a.importPending, a.importPath = nil, ""
 					a.importOpen = false
 					a.status = "已取消导入，设置没有变化"

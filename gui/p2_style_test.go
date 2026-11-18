@@ -45,11 +45,12 @@ func TestDialogsShareOnePanelStyle(t *testing.T) {
 	}
 }
 
-// 按钮只剩三种:实心主色(primaryButton)、主色淡底(tonalButton)、描边
-// (outlinedButton,含危险动作的悬停变体)。
+// 按钮只剩两种面孔:主色淡底(softButton,默认)与实心主色(primaryButton)。
 //
-// 第四种是 dangerButton 自己一档——平时就红着。工具栏里"清空列表"和
+// 曾经有第四种:dangerButton 自己一档,平时就红着。工具栏里"清空列表"和
 // "删除"一进场就是两个红框,一个还没发生的动作喊得比当前要做的事还响。
+// 现在它只是带框那一支(frameButton)的悬停变体——危险在"手要落下去"的
+// 那一刻才显现,不是常驻。
 func TestDangerButtonIsAnOutlinedVariant(t *testing.T) {
 	src, err := os.ReadFile("main.go")
 	if err != nil {
@@ -64,8 +65,11 @@ func TestDangerButtonIsAnOutlinedVariant(t *testing.T) {
 	if end := strings.Index(fn[1:], "\nfunc "); end > 0 {
 		fn = fn[:end+1]
 	}
-	if !strings.Contains(fn, "outlinedButton(c, label, enabled)") {
-		t.Error("dangerButton 应当复用 outlinedButton,而不是自己拼一种按钮")
+	// 删除/清除是保留边框的三个动作之一,所以它复用 frameButton(带框那支),
+	// 而不是自己拼一种按钮。曾经复用的是 outlinedButton——那条路现在通向
+	// 无框的 softButton,再复用就把"危险动作有框"这个约定丢了。
+	if !strings.Contains(fn, "frameButton(c, label, enabled)") {
+		t.Error("dangerButton 应当复用 frameButton,而不是自己拼一种按钮")
 	}
 	// 平时不能红:错误色只能在悬停那一支里出现。
 	hoverAt := strings.Index(fn, "Hovered()")

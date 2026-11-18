@@ -343,8 +343,9 @@ func (a *app) view(c *ui.Context) {
 				brand.PaddingStart(float32(bar.Left) + 8)
 			}
 			ui.Spacer(c)
-			// 帮助入口:34 项功能、9 种模板变量、NFO 编号、CSV 回填,
+			// 帮助入口:一整个目录的功能、模板变量表、NFO 编号、清单回填,
 			// 全靠试是学不会的。放标题栏而不是目录里——它不属于管道。
+			// (不写具体条数:目录会增删,注释里的数字迟早对不上。)
 			help := ui.ButtonBase(c).Size(26, 26).Radius(26 / 2).Padding(0).Tooltip("帮助 F1")
 			if help.Hovered() {
 				help = help.Background(t.SurfaceHover)
@@ -494,7 +495,7 @@ func (a *app) statusBar(c *ui.Context) {
 		// 的办法是杀进程,那会把已经算出来的结果一起丢掉。停止放在底栏
 		// 右侧、紧挨主操作,是因为它此刻就是用户最想按的那一个。
 		if a.busyAI && a.aiCancel != nil {
-			if frameButton(c, "停止", true).Radius(6).
+			if softButton(c, "停止", true).Radius(6).
 				Tooltip("不再等剩下的请求。已经算出来的名字会保留，可以直接执行。").Clicked() {
 				a.stopAI()
 			}
@@ -675,7 +676,7 @@ func (a *app) catalogSel() string {
 
 // groupHead 是左栏组标题的文本:箭头 + 组名 + 条数。
 //
-// 11 组折起来时一屏只看得到十一个词:「编号」「日期」「高级」——用户没法
+// 十来个组折起来时一屏只看得到十来个词:「编号」「日期」「高级」——用户没法
 // 判断哪一组里有他要的东西,只能挨个展开。带上条数之后,「元数据(3)」和
 // 「日期(1)」的重量一眼分得出来,想找"那条只有一个的"也有据可依。
 //
@@ -705,7 +706,7 @@ func (a *app) groupCount(shown []opDef, group string) int {
 
 func (a *app) catalogView(c *ui.Context) {
 	t := c.Theme()
-	// 过滤:34 项 11 组正落在"需要搜索"的量级(Colborne 第 5 章专讲
+	// 过滤:几十项、十来个组正落在"需要搜索"的量级(Colborne 第 5 章专讲
 	// 搜索)。输入框收 label / desc / 组名三处,任一命中即留下。
 	shown := append([]opDef(nil), catalog...)
 	if q := strings.ToLower(strings.TrimSpace(a.palQuery)); q != "" {
@@ -778,7 +779,7 @@ func (a *app) catalogView(c *ui.Context) {
 		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.TextInput(c, &a.palQuery).Placeholder("筛选功能…").Grow(1)
 			if strings.TrimSpace(a.palQuery) != "" {
-				if frameButton(c, "×", true).Radius(6).Tooltip("清空搜索").Clicked() {
+				if softButton(c, "×", true).Radius(6).Tooltip("清空搜索").Clicked() {
 					a.palQuery = ""
 					a.folded = nil
 				}
@@ -800,14 +801,14 @@ func (a *app) catalogView(c *ui.Context) {
 				ui.Column(c).FillWidth().Gap(6).Padding(8, 10).Children(func() {
 					ui.Text(c, "没有匹配「"+strings.TrimSpace(a.palQuery)+"」的功能").FontSize(12).TextColor(t.TextMuted)
 					ui.Text(c, "试试更短的关键词，或换个说法（如「改名」「后缀」）。").FontSize(12).TextColor(t.TextMuted)
-					if frameButton(c, "清空搜索", true).Radius(6).Clicked() {
+					if softButton(c, "清空搜索", true).Radius(6).Clicked() {
 						a.palQuery = ""
 						a.folded = nil
 					}
 				})
 			}
 			for _, g := range groups {
-				// 组标题本身就是折叠开关:11 组收起后一屏放得下,而且
+				// 组标题本身就是折叠开关:全收起后一屏放得下,而且
 				// 分组名("编号""元数据")比一长串规则名更好认。
 				open := a.groupOpen(g, groups)
 				arrow := "▾"
@@ -859,12 +860,12 @@ func (a *app) catalogView(c *ui.Context) {
 						continue
 					}
 					selBg, selFg := a.selColors()
-					// 上下各 2 的留白:条目之间要有缝,否则 32 条挤成一片,
+					// 上下各 2 的留白:条目之间要有缝,否则几十条挤成一片,
 					// 眼睛没法判断一行到哪结束。悬停底色跟着长高,这也是
 					// "可点区域比文字大"的一层。
 					// Tooltip 挂在外层按钮上,不是里面那行文字。挂子元素时
 					// 气泡只跟着鼠标走,键盘 Tab 到这一条、焦点环亮了,说明
-					// 却永远不出现——33 条说明对键盘和读屏用户等于不存在
+					// 却永远不出现——整份目录的说明对键盘和读屏用户等于不存在
 					// (实测条目 Description 为空)。
 					item := ui.ButtonBase(c).Fill().Radius(6).Padding(2, 0).Tooltip(d.desc)
 					switch {
@@ -892,7 +893,7 @@ func (a *app) catalogView(c *ui.Context) {
 						if sel == d.id {
 							labelCol = selFg
 						}
-						// 说明走 Tooltip:目录要在一屏里放下 32 条,每条占两行
+						// 说明走 Tooltip:目录要在一屏里放下几十条,每条占两行
 						// 就只剩一半可见;悬停即得,和系统里其它按钮一致。
 						txt := ui.Text(c, d.palName()).SingleLine().FillWidth().TextAlign(align)
 						if labelCol.A != 0 {
@@ -1093,11 +1094,11 @@ func (a *app) undoStrips(c *ui.Context, t *ui.Theme) {
 			ui.Text(c, label).
 				FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
 			if n := len(a.stepUndo); n > 1 {
-				if frameButton(c, fmt.Sprintf("全部撤回（%d）", n), true).Radius(6).Clicked() {
+				if softButton(c, fmt.Sprintf("全部撤回（%d）", n), true).Radius(6).Clicked() {
 					a.undoAllDeleted()
 				}
 			}
-			if frameButton(c, "撤回", true).Radius(6).Clicked() {
+			if softButton(c, "撤回", true).Radius(6).Clicked() {
 				a.undoDelete()
 			}
 		})
@@ -1117,7 +1118,7 @@ func (a *app) undoStrips(c *ui.Context, t *ui.Theme) {
 				Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, fmt.Sprintf("已替换原来的 %d 步", len(a.recoveredSteps))).
 					FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
-				if frameButton(c, "撤回", true).Radius(6).Clicked() {
+				if softButton(c, "撤回", true).Radius(6).Clicked() {
 					a.undoFlowReplace()
 				}
 			})
@@ -1162,7 +1163,7 @@ func (a *app) stepsView(c *ui.Context) {
 			if narrowFlow {
 				flowLabel = "▤"
 			}
-			fb := frameButton(c, flowLabel, true).Radius(6)
+			fb := softButton(c, flowLabel, true).Radius(6)
 			if narrowFlow {
 				fb = fb.Tooltip("流程：套用预设，或把当前步骤存成自己的流程")
 			}
@@ -1180,7 +1181,7 @@ func (a *app) stepsView(c *ui.Context) {
 			}
 			// 0 步时没有东西可勾,这颗按钮和「上移」一样按不动。开着多选
 			// 再删光步骤的路径由 stepsView 开头的守卫生效。
-			btn := frameButton(c, label, len(a.steps) > 0)
+			btn := softButton(c, label, len(a.steps) > 0)
 			if narrowHead {
 				btn = btn.Tooltip("多选：点开后在每步前面显示勾选框")
 			}
@@ -1419,7 +1420,7 @@ func (a *app) stepsView(c *ui.Context) {
 							Background(t.Danger.Alpha(0.10)).AlignItems(ui.Center).Children(func() {
 							ui.Text(c, "这一步要调用 AI 接口，但还没填 API Key。").
 								FontSize(12).TextColor(t.Danger).Grow(1).SingleLine().Ellipsis("…")
-							if frameButton(c, "去配置", true).Radius(6).Clicked() {
+							if softButton(c, "去配置", true).Radius(6).Clicked() {
 								a.openSettings()
 							}
 						})
@@ -1448,7 +1449,7 @@ func (a *app) stepsView(c *ui.Context) {
 						if dangerButton(c, "删除", true).Tooltip(shortcutTip("Delete")).Clicked() {
 							a.deleteStep(a.stepSel)
 						}
-						if frameButton(c, "复制", true).Tooltip(shortcutTip("Ctrl+D")).Clicked() {
+						if softButton(c, "复制", true).Tooltip(shortcutTip("Ctrl+D")).Clicked() {
 							a.duplicateStep(a.stepSel)
 						}
 					})
@@ -1993,7 +1994,7 @@ func (a *app) dropZone(c *ui.Context, availW float32) {
 			}
 			if !narrow {
 				// 拖文件夹能成,挑文件夹却只能挑文件,那条路等于没走通。
-				folder := outlinedButton(c, "添加文件夹…", true)
+				folder := frameButton(c, "添加文件夹…", true)
 				if folder.Clicked() {
 					go a.addFolderDialog()
 				}
@@ -2162,7 +2163,7 @@ func (a *app) filesView(c *ui.Context) {
 				Background(t.SurfaceHover).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, fmt.Sprintf("已清空 %d 个文件", len(a.clearedFiles))).
 					FontSize(12).TextColor(t.Text).Grow(1).SingleLine().Ellipsis("…")
-				if frameButton(c, "撤回", true).Radius(6).Clicked() {
+				if softButton(c, "撤回", true).Radius(6).Clicked() {
 					a.undoClear()
 				}
 			})
@@ -2255,7 +2256,7 @@ func (a *app) filesView(c *ui.Context) {
 					// 知道是哪一步写坏了,就直接把人送到那一步的编辑器:
 					// 光说"第 3 步有问题",用户还得回列表里数到第三行。
 					if a.previewErrStep >= 0 && a.previewErrStep < len(a.steps) {
-						if frameButton(c, "去修这一步", true).Radius(6).
+						if softButton(c, "去修这一步", true).Radius(6).
 							Tooltip("选中出问题的那一步，右边就是它的参数").Clicked() {
 							a.focusStep(a.previewErrStep)
 						}
@@ -2781,93 +2782,43 @@ func accentInk(t *ui.Theme) ui.Color {
 	return oklchColor(0.44, ac, ah)
 }
 
-// tonalButton 是"次要动作"的浅填充(Tonal)按钮:用主色的一层低透明底,
-// 文字用同色相的深墨色,视觉上比主按钮弱、比纯文字强。用于文件列表上的
-// 操作(添加文件/导出CSV),和真正的主操作(执行更名)拉开主次。
+// tonalButton 是"次要动作"按钮(添加文件/导出清单/导入清单)。
+//
+// 它就是全软件默认的那副面孔:主题色淡底、无边框、悬停加深。名字留着是
+// 因为调用点说的是"这件事有多重",而"淡底"只是这个重量对应的画法。
 func tonalButton(c *ui.Context, label string, enabled bool) ui.Element {
-	t := c.Theme()
-	if !enabled {
-		// 淡底按钮的禁用态:和描边按钮共用同一个"按不动"的样子。
-		//
-		// 三种按钮(实心/淡底/描边)在启用时靠填充区分主次;一旦按不动,
-		// 那个区分就没有意义了——没有主次可言,只有"这里暂时不行"。所以
-		// 禁用态统一成一副面孔,由 frameButton 提供,免得三处各调一遍颜色
-		// 又慢慢分叉。
-		return frameButton(c, label, false)
-	}
-	ink := accentInk(t)
-	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).TextColor(ink).
-		Background(t.Accent.Alpha(0.12))
-	if b.Hovered() {
-		b = b.Background(t.Accent.Alpha(0.20))
-	}
-	b.Children(func() { ui.Text(c, label).SingleLine() })
-	return b
+	return softButton(c, label, enabled)
 }
 
 // primaryButton 是"主操作"按钮(执行更名)。启用时是实心主色块,字色由
 // 主题的 AccentText 决定——它按"白字与深墨取对比度高者"算,浅色相上
 // 不会糊成一片(见 material.go 的 inkOn)。
 //
-// 禁用时换成中性底 + 次要文字,并且关掉 mygo 的自动半透明:那个 50%
-// 是把整块连同文字一起乘上去,实心主色本来就饱和,乘完实测只有
-// 1.37–1.55:1——「执行更名」在没文件可改的时候等于看不见。中性底
-// (t.Surface)配次要文字是 5.84:1,既明确"现在点不了",又读得出是哪个按钮。
+// 禁用时和别的按不动的按钮长得一样:一块灰底(inertFill)、次要文字、
+// 真 Disabled。这里曾经给过一块"褪色主色"的底,想让"主操作"的身份在
+// 禁用态也留着;但那块底还是彩的,和"能点"的淡底分不开。灰底才是死的
+// 记号,主次关系在能按的时候靠实心与淡底区分就够了。
 func primaryButton(c *ui.Context, label string, enabled bool) ui.Element {
-	t := c.Theme()
 	if enabled {
 		return ui.PrimaryButton(c, label).Radius(6)
 	}
-	fg, bg := disabledPrimaryColors(t)
-	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
-		TextColor(fg).Background(bg).Border(1, inertBorder(t)).
-		DimDisabled(false).Disabled(true)
-	b.Children(func() { ui.Text(c, label).SingleLine() })
-	return b
+	return softButton(c, label, false)
 }
 
-// disabledPrimaryColors 是禁用主按钮的字色与底色。抽成函数是为了让
-// 测试能拿到"生产真的用的那两个颜色"——测试里自己重算一遍
-// (TextMuted 配 Surface)的话,把按钮改回裸 Disabled 它也照样通过,
-// 等于没守。
+// plainButton 是"最普通"的按钮:无框、淡底。
 //
-// 底色不是中性面(t.Surface):那样「执行更名」和白底描边的「撤销上次」
-// 长得一模一样,主次关系在禁用态整个消失——而"这颗是按不动的主操作"
-// 恰恰是要读出来的信息。做法是把主色**褪掉大半饱和、往地面靠**:
-// 明度 0.90(亮)/0.30(暗)、彩度乘 0.35。它仍然是一块"主色的形状",
-// 但淡到不像能按;实测字/底 5.06–5.45:1(全 10 个种子 × 明暗),
-// 启用态与禁用态差 2.07–7.80:1,一眼分得开。
-func disabledPrimaryColors(t *ui.Theme) (fg, bg ui.Color) {
-	_, c, h := colorToOklch(t.Accent)
-	l := 0.90
-	if isDarkTheme(t) {
-		l = 0.30
-	}
-	return t.TextMuted, oklchColor(l, c*0.35, h)
-}
-
-// plainButton 是"最普通"的按钮:有框、次要。
-//
-// 它和 outlinedButton 现在是同一颗——都交给 frameButton。留两个名字是因为
-// 调用点写的是"这件事有多重",不是"画成什么样":哪天要给"最普通"再降一档,
-// 改这里就够了。
-//
-// 禁用时不能直接写 .Disabled(true) 了事:mygo 会把整块连文字一起乘 0.5,
-// 实测亮色 3.49:1、暗色 2.38:1,低于正文 4.5:1——用户读不清那颗灰按钮上
-// 写的是什么,也就不知道"为什么点不了"。frameButton 的禁用分支换成
-// TextMuted 配透明底并关掉自动调暗,灰感由底色与边框提供,不靠把字调到
-// 看不见。
+// 它和 outlinedButton 现在是同一颗——都交给 softButton。留两个名字是因为
+// 调用点写的是"这件事有多重",不是"画成什么样"。
 func plainButton(c *ui.Context, label string, enabled bool) ui.Element {
-	return frameButton(c, label, enabled)
+	return softButton(c, label, enabled)
 }
 
-// outlinedButton 是"中性次要动作"的镂空按钮:只描边、不填底,永远不抢眼。
-// 用于回滚这类"撤销",它不是主路径,但又要能看见。
+// outlinedButton 是"中性次要动作"按钮(撤销上次)。
 //
-// 它整颗就是 frameButton,别再自己调一遍颜色——两处各写一遍,过一阵就会
-// 有一处忘了改,而"框带主题色 = 能点"这条规则只认一个出处。
+// 它原来是一颗镂空描边按钮,现在也归到默认面孔:描边不再表示"能点",
+// 留着只会让底栏出现一颗和"按不动"同款的框。
 func outlinedButton(c *ui.Context, label string, enabled bool) ui.Element {
-	return frameButton(c, label, enabled)
+	return softButton(c, label, enabled)
 }
 
 // dangerButton 是 outlinedButton 的悬停变体,不是第四种按钮样式。
@@ -2878,10 +2829,13 @@ func outlinedButton(c *ui.Context, label string, enabled bool) ui.Element {
 //
 // 所以平时和 outlined 一模一样(同样的字色、同样的边框),只在悬停时换成
 // 错误色的底与字;真正的确认仍然走实心红(armConfirm 之后那颗),那里才是
-// "这一下真的会删"。这样按钮只剩三种样式:实心主色、主色淡底、描边。
+// "这一下真的会删"。
+//
+// 它平时和别的按钮一样是主色淡底,只是多了那圈框——删除/清除/添加
+// 文件夹是仅有的三个带框动作。
 func dangerButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
-	b := outlinedButton(c, label, enabled)
+	b := frameButton(c, label, enabled)
 	if enabled && b.Hovered() {
 		b = b.TextColor(t.Danger).Background(t.Danger.Alpha(0.10)).Border(1, t.Danger.Alpha(0.45))
 	}
@@ -4152,6 +4106,11 @@ func main() {
 			TitleBarHeight: 38,
 			Content:        ui.View(a.view),
 		})
+		// 关掉系统画的那圈窗口边框:我们自绘了包括标题栏在内的整个界面,
+		// 只剩这一圈不是我们画的。系统主题是亮色而软件选了暗色时,它会被
+		// 画成一道亮灰线,看上去像渲染 bug。DWM 这个属性是 Win11 才有的,
+		// 老系统上失败也无所谓(那时本来就没这圈线)。
+		hideSystemBorder(a.win.NativeHandle())
 		// the whole window accepts file drops, not just one element
 		a.win.OnFileDrop(func(e *mygo.FileDropEvent) {
 			a.addPaths(e.Paths)

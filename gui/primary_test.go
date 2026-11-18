@@ -171,13 +171,15 @@ func contrastInRect(t *testing.T, tt *ui.Tester, r ui.Rect) (float64, int) {
 	return worst, len(counts)
 }
 
-// 禁用的主按钮要保留"主色的形状"，不能退成一块中性白底。
+// 禁用主按钮不再有自己的一块彩底。
 //
-// 原来 disabledPrimaryColors 直接返回 (TextMuted, Surface)，于是
-// 「执行更名」禁用时和「撤销上次」（灰框描边）长得一模一样——主次
-// 关系在禁用态整个消失，而"这颗是按不动的主操作"恰恰是要读出来的。
-// 现在底色是主色褪掉大半饱和、往地面靠的一块淡色，仍然"像主按钮"。
-func TestDisabledPrimaryKeepsTheAccentShape(t *testing.T) {
+// 曾经给过它一块"褪色主色"的底,想让"主操作"的身份在禁用态也留着。但全软件
+// 的规矩是"有彩底 = 能点":那块底还是彩的,用户看到的就是一颗能按的按钮。
+// 现在它和别的按不动的按钮长得一样——一块灰底(inertFill)、次要文字。
+//
+// 这条守三件事:禁用态的字读得清;灰底必须真的是一块瓦片(和栏底分得开),
+// 否则又回到"看不出这里是个按钮";启用态与禁用态必须一眼分得开。
+func TestDisabledPrimaryLooksLikeEveryOtherDisabledButton(t *testing.T) {
 	for _, hex := range []string{"#2F7A52", "#F2703C", "#3140A8", "#F5C518", "#00BCD4", "#FFFFFF", "#000000"} {
 		dt := themeFor(ui.Hex(hex))
 		for _, dark := range []bool{false, true} {
@@ -185,18 +187,23 @@ func TestDisabledPrimaryKeepsTheAccentShape(t *testing.T) {
 			if dark {
 				th = dt.dark
 			}
-			fg, bg := disabledPrimaryColors(th)
-			// 1) 它必须不是中性面——否则和白底描边按钮撞脸。
-			if _, c, _ := colorToOklch(bg); c < 0.004 {
-				t.Errorf("%s(dark=%v): 禁用主按钮的底色彩度只有 %.4f,退成了中性面", hex, dark, c)
+			ground := dt.panes(dark).left
+			// 1) 禁用主按钮的字色和别的禁用按钮同源。
+			fg, _ := disabledColors(th)
+			if r := contrastRatio(fg, ground); r < 4.5 {
+				t.Errorf("%s(dark=%v): 禁用主按钮的字在栏底上只有 %.2f:1,应 ≥4.5", hex, dark, r)
 			}
-			// 2) 字要读得出来。
-			if r := contrastRatio(fg, bg); r < 4.5 {
-				t.Errorf("%s(dark=%v): 禁用主按钮上字/底只有 %.2f:1,应 ≥4.5", hex, dark, r)
+			// 2) 启用态的实心主色必须和栏底拉开距离,否则"能按"也读不出来。
+			if r := contrastRatio(th.Accent, ground); r < 1.8 {
+				t.Errorf("%s(dark=%v): 启用主按钮与栏底只差 %.2f:1,分不出能不能按", hex, dark, r)
 			}
-			// 3) 与启用态要分得开（不然"按不动"读不出来）。
-			if r := contrastRatio(th.Accent, bg); r < 1.8 {
-				t.Errorf("%s(dark=%v): 启用态与禁用态只差 %.2f:1,分不出能不能按", hex, dark, r)
+			// 3) 禁用态的灰底必须看得出是块瓦片,但又不能带彩。
+			dead := inertFill(th)
+			if r := contrastRatio(dead, ground); r < 1.10 {
+				t.Errorf("%s(dark=%v): 禁用按钮的灰底对栏底只有 %.2f:1,看不出这里有个按钮", hex, dark, r)
+			}
+			if _, c, _ := colorToOklch(dead); c > 0.012 {
+				t.Errorf("%s(dark=%v): 禁用按钮的灰底还有 %.4f 的彩度,读起来像活的", hex, dark, c)
 			}
 		}
 	}

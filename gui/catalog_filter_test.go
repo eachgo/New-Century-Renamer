@@ -6,14 +6,14 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// 目录有 34 项 11 组,任何窗口高度都要滚;输入一个词就能立刻缩到几项。
+// 整个目录在任何窗口高度都要滚;输入一个词就能立刻缩到几项。
 func TestCatalogFilterNarrowsList(t *testing.T) {
 	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1280, 720)
 	tt.Frame()
 
 	// 没过滤时只有默认展开那两组里的条目在(其余组折着),所以基准是
-	// "默认状态"的条数,不是整份目录 32 项。
+	// "默认状态"的条数,不是整份目录。
 	before := catalogLabelsShown(tt)
 	if before < 4 {
 		t.Fatalf("默认展开的组里应当有条目,实际只渲染了 %d 项", before)

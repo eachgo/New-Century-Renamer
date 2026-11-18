@@ -96,6 +96,32 @@ func cardBorder(t *ui.Theme) ui.Color { return ui.Color{} }
 // 悬停时出现,静止时没有轮廓,所以四张预设卡不会读成四颗按钮。
 func cardBorderHover(t *ui.Theme) ui.Color { return liveBorder(t) }
 
+// inertFill 是"这里按不动"的底:一个中性色,掺一点点主题色。
+//
+// 用户给的做法就是这句:"注入一个中性色,与主题色进行混色。不能点的按钮
+// 的背景是这个混色出来的中性色。"混色的两个分量各有各的活:
+//
+//   - 中性色定明度。亮色取 L 0.87、暗色取 L 0.12——都比该外观下最深的
+//     那层地面(L 0.930 / 0.230)再深一档,所以它压在栏上、卡片上、弹窗上
+//     都看得出"这里有一块瓦片"。实测对六种底 1.25–1.55:1(亮)、1.15–1.46:1
+//     (暗),正好是"看得见但不抢眼"的一档。亮色再浅(L 0.88)就只有
+//     1.16–1.42,底栏上几乎看不出瓦片;再深(L 0.86)灰字就掉到 4.45。
+//   - 主题色只留一丝色相。掺 6%,彩度从能点那颗的 0.02 掉到 0.007–0.008
+//     (亮色 0.0072、暗色 0.0083),肉眼读成灰,但同一套配色的绿/橙/紫
+//     还认得出来。掺到 10% 就回彩了(0.012),掺到 14% 和能点的分不开
+//     (彩度比 1.12)——都试过。
+//
+// 和 softFill 的关系:同样是"一块 12% 厚的瓦片",但 softFill 是把主色铺在
+// 地面上(彩色,活的),inertFill 是拿一块不透明的灰当瓦片(灰色,死的)。
+// 两者的明度差 1.2–1.5,彩度差 3 倍,所以并排放着不用比较,一眼就分得开。
+func inertFill(t *ui.Theme) ui.Color {
+	l := 0.87
+	if isDarkTheme(t) {
+		l = 0.12
+	}
+	return oklchColor(l, 0, 0).MixOklab(t.Accent, 0.06)
+}
+
 // neutralStroke 是"这不是控件"的描边:纯灰、比控件边框淡。
 //
 // 它和 inertBorder 是同一个颜色,用途却更广——装饰性的描边(颜色小方块、
@@ -118,24 +144,83 @@ func inertShell(c *ui.Context, build func()) ui.Element {
 	return shell
 }
 
-// frameButton 是全软件唯一的"有框按钮":Surface 底 + 主题色边框。
+// 按钮只有两副面孔:有底的,和有框的。
 //
-// 取代 ui.Button:它的边框走 Theme.Border(中性灰),和禁用态分不开。
-// 几何与 ui.Button 一致(Padding 6/14、Radius 6),所以换掉之后布局不变。
+// 之前是反的:大多数按钮带一圈描边,而"能点"的信号偏偏被描边的颜色承担
+// ——主题色框 = 能点、灰框 = 按不动。用户看到的却是"有框的都点不动",
+// 因为工具栏里带框的那几颗恰好都是禁用的。一个信号只在少数位置成立,
+// 它就不是信号。
+//
+// 现在的规则:
+//
+//   - 默认按钮没有边框,只有一层主题色淡底(softFill),文字是同色相的
+//     深墨。能点 = 有彩的底;按不动 = 一块灰底(inertFill)。两者都有底,
+//     所以都看得出是按钮,区别只在有没有彩。
+//   - 悬停时那层底加深一档。用户原话:"能不能点击只用鼠标 Hover 在上面
+//     会不会变色来表现"——会变色的才是活的。
+//   - 只有三个动作保留边框:删除、清除、添加文件夹。它们要么会毁掉东西,
+//     要么会动到磁盘上别处的东西,值得多一道视觉重量。
+//   - 实心主色(执行更名/预览)仍然是实心,没有边框。
+//
+// 这样"框"从"能点的证据"退回到"这件事需要小心"的标记,不再兼任状态灯。
+
+// softFill 是默认按钮的底:主色的 12% 叠在栏底上。
+//
+// 12% 是量出来的:再淡(0.08)就和栏底差不到 1.05,按钮读成一块色斑;
+// 再浓(0.20)则接近实心主色,次要动作和主操作抢眼。
+func softFill(t *ui.Theme) ui.Color { return t.Accent.Alpha(0.12) }
+
+// softFillHover 是悬停时加深一档的底。差别要看得见:0.12 → 0.22 在
+// 亮暗两套主题下都是肉眼可辨的一跳(实测对栏底的比值 1.14 → 1.27)。
+func softFillHover(t *ui.Theme) ui.Color { return t.Accent.Alpha(0.22) }
+
+// softButton 是全软件默认的按钮:主题色淡底、无边框、悬停加深。
+//
+// 禁用时换成 inertFill:一块同样厚、但已经褪成灰的瓦片。不能"连底都不画"
+// ——用户反馈得很准:"现在看不出不能点的按钮是按钮"。没有底就没有"这里
+// 有个控件"的形状,只剩一行悬空的灰字;而按钮是死的,不代表它不该看起来
+// 像按钮。留底 + 抽掉彩,才是"这里有个按钮,现在按不动"。
+func softButton(c *ui.Context, label string, enabled bool) ui.Element {
+	t := c.Theme()
+	if !enabled {
+		return inertShell(c, func() {
+			b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
+				TextColor(t.TextMuted).Background(inertFill(t)).
+				DimDisabled(false).Disabled(true)
+			b.Children(func() { ui.Text(c, label).SingleLine() })
+		})
+	}
+	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
+		TextColor(accentInk(t)).Background(softFill(t))
+	if b.Hovered() {
+		b = b.Background(softFillHover(t))
+	}
+	b.Children(func() { ui.Text(c, label).SingleLine() })
+	return b
+}
+
+// frameButton 是"需要小心"的按钮:淡底 + 一圈主题色边框。
+//
+// 全软件只剩三处用它——删除、清除、添加文件夹。它们的共同点是"手落下
+// 去会改变别处的东西",多一道轮廓是提醒,不是状态灯:框的颜色不再承担
+// "能不能点",那件事由有没有底、悬停变不变色来说。
+//
+// 禁用时框换成零彩度的中性灰(inertBorder)、底换成 inertFill:一颗灰框
+// 灰瓦片的按钮,读起来就是"这里有个会删东西的动作,现在不行"。
 func frameButton(c *ui.Context, label string, enabled bool) ui.Element {
 	t := c.Theme()
 	if !enabled {
 		return inertShell(c, func() {
 			b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
-				TextColor(t.TextMuted).Background(ui.Color{}).
+				TextColor(t.TextMuted).Background(inertFill(t)).
 				Border(1, inertBorder(t)).DimDisabled(false).Disabled(true)
 			b.Children(func() { ui.Text(c, label).SingleLine() })
 		})
 	}
 	b := ui.ButtonBase(c).Radius(6).Padding(8, 12).
-		TextColor(t.Text).Background(t.Surface).Border(1, liveBorder(t))
+		TextColor(accentInk(t)).Background(softFill(t)).Border(1, liveBorder(t))
 	if b.Hovered() {
-		b = b.Background(t.SurfaceHover).Border(1, t.Accent)
+		b = b.Background(softFillHover(t)).Border(1, t.Accent)
 	}
 	b.Children(func() { ui.Text(c, label).SingleLine() })
 	return b

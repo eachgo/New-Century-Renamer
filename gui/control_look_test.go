@@ -118,48 +118,51 @@ func TestDisabledButtonIgnoresClicks(t *testing.T) {
 	}
 }
 
-// 有框按钮的禁用分支必须真的禁用,不能只换颜色。
+// 按不动的按钮必须真的禁用,不能只换颜色。
 //
-// 只换颜色的写法看起来一样、行为却完全不同(点击照常触发)。现在三种按钮
-// (淡底/描边/普通)的禁用分支都收在 frameButton 一处,所以这里量两件事:
-// frameButton 的禁用分支确实调了 Disabled(true) 且关掉自动调暗;三个辅助
-// 函数在 enabled=false 时确实把活儿交给了它,而不是自己另调一套颜色。
+// 只换颜色的写法看起来一样、行为却完全不同(点击照常触发)。现在两种按钮
+// (无框的 softButton、带框的 frameButton)的禁用分支各有一处,所以这里量
+// 三件事:两个分支都调了 Disabled(true) 且关掉自动调暗;四个辅助函数确实
+// 把活儿交给它们,而不是自己另调一套颜色。
 func TestButtonHelpersReallyDisable(t *testing.T) {
 	src, err := os.ReadFile("control_look.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	body := string(src)
-	start := strings.Index(body, "func frameButton(")
-	if start < 0 {
-		t.Fatal("找不到 frameButton")
-	}
-	seg := body[start:]
-	if end := strings.Index(seg[1:], "\nfunc "); end > 0 {
-		seg = seg[:end+1]
-	}
-	if !strings.Contains(seg, "Disabled(true)") {
-		t.Error("frameButton 的禁用分支没有调用 Disabled(true)——只换颜色的话点击照样会触发")
-	}
-	if !strings.Contains(seg, "DimDisabled(false)") {
-		t.Error("frameButton 的禁用分支没有关掉自动调暗——文字会被乘到读不清")
+	for _, fn := range []string{"softButton", "frameButton"} {
+		start := strings.Index(body, "func "+fn+"(")
+		if start < 0 {
+			t.Fatalf("找不到 %s", fn)
+		}
+		seg := body[start:]
+		if end := strings.Index(seg[1:], "\nfunc "); end > 0 {
+			seg = seg[:end+1]
+		}
+		if !strings.Contains(seg, "Disabled(true)") {
+			t.Errorf("%s 的禁用分支没有调用 Disabled(true)——只换颜色的话点击照样会触发", fn)
+		}
+		if !strings.Contains(seg, "DimDisabled(false)") {
+			t.Errorf("%s 的禁用分支没有关掉自动调暗——文字会被乘到读不清", fn)
+		}
 	}
 
-	// 按不动的样子只能有一副面孔,所以每个按钮辅助函数都必须落到 frameButton:
-	// tonalButton 启用时是淡底(没有框),禁用分支得自己拐过去;outlinedButton
-	// 整颗就是 frameButton,连分支都不该有——它要是又自己调一遍颜色,过一阵
-	// 就会有一处忘了改。
+	// 按不动的样子只能有一副面孔:无框按钮落到 softButton,带框的落到
+	// frameButton,都不许自己再拼一套颜色。
 	src, err = os.ReadFile("main.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	body = string(src)
 	want := map[string]string{
-		"tonalButton":    "frameButton(c, label, false)",
-		"outlinedButton": "return frameButton(c, label, enabled)",
+		"tonalButton":    "softButton(c, label, enabled)",
+		"plainButton":    "softButton(c, label, enabled)",
+		"outlinedButton": "softButton(c, label, enabled)",
+		"dangerButton":   "frameButton(c, label, enabled)",
+		"primaryButton":  "softButton(c, label, false)",
 	}
 	for fn, needle := range want {
-		start := strings.Index(body, "func "+fn+"(")
+		start := strings.Index(body, "func "+fn)
 		if start < 0 {
 			t.Fatalf("找不到 %s", fn)
 		}
@@ -263,19 +266,24 @@ func TestCardsFloatAboveTheirGround(t *testing.T) {
 // 所以规则必须在这里守一遍:一颗带框的按钮,能点时画面上必须出现主题色
 // 的边框,不能点时画面上必须出现中性灰的边框,而且两者不能同时出现。
 //
-// 比的是"整像素是否精确等于 liveBorder/inertBorder 本身",不是"彩度多少"。
-// 不缩放时 1 DIP 的边框正好落在一整列像素上,颜色是精确的;一旦改成量彩度,
-// 栏底自己那点彩(亮色 0.0100、暗色 0.0203)就会把灰框顶成"彩框",抗锯齿的
-// 半像素也会掺进来——试过三遍,守不住。
+// 现在的规则是"能点 = 有一块带主题色的底,按不动 = 有一块灰底"。两者都
+// 有底(禁用态也要看得出是个按钮),分界在彩度:能点那颗的底是主色铺在地面
+// 上(彩度 0.02 上下),按不动那颗的底是中性和主色混出来的灰(彩度 0.007)。
 //
-// 淡底按钮(添加文件…/导出清单…/导入清单…)不在"框"的管辖内:它启用时根本
-// 没有框,靠一块掺了主色的底表示能点。对它只守一条——不能点时必须有灰框,
-// 也就是"灰框 = 按不动"在任何按钮上都成立。
+// 三种能点的画法都落在这条上:淡底(softFill)、实心主色(执行更名)、带框
+// (删除/清空列表/添加文件夹)。带框的额外守一条——框必须是主题色那支
+// (liveBorder),不许是中性灰(inertBorder):灰框在任何按钮上都只表示"按不动"。
+//
+// 底色取样有两个坑:
+//   - 不能用 tt.Find 的矩形边界算——那是**文字**矩形,不是按钮矩形,边框
+//     在它外面 12 DIP 处;
+//   - 不能用固定偏移猜栏底,得取那一整行的众数:底栏和工具栏的底色不同,
+//     「撤销上次」和「添加文件…」不在同一行。
 func TestBordersSayClickableOrNot(t *testing.T) {
 	type probe struct {
 		label   string
 		enabled bool
-		framed  bool // 带框按钮:启用时靠边框表示能点
+		framed  bool // 带框按钮:只有这三个动作(删除/清除/添加文件夹)保留框
 	}
 	cases := []struct {
 		name  string
@@ -284,7 +292,7 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 		want  []probe
 	}{
 		{
-			// 空清单:带框按钮里一个都不能点。
+			// 空清单:除了"添加"类,一个都不能点。
 			name: "空清单", files: false,
 			want: []probe{
 				{"添加文件…", true, false},
@@ -292,24 +300,23 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 				{"导入清单…", true, false},
 				{"添加文件夹…", true, true},
 				{"清空列表", false, true},
-				{"撤销上次", false, true},
-				{"执行更名", false, true},
-				{"多选", false, true},
+				{"撤销上次", false, false},
+				{"执行更名", false, false},
+				{"多选", false, false},
 			},
 		},
 		{
 			// 有文件、也排了步骤:「执行更名」终于能点。它是实心主色块,
-			// 没有边框——那是第三种"能点"的画法,不归"框"管,只守一条:
-			// 不许出现中性灰边框。
+			// 没有边框——靠整块底说话。
 			name: "有文件有步骤", files: true, steps: true,
 			want: []probe{
 				{"添加文件…", true, false},
 				{"导出清单…", true, false},
 				{"导入清单…", true, false},
 				{"清空列表", true, true},
-				{"撤销上次", false, true},
+				{"撤销上次", false, false},
 				{"执行更名", true, false},
-				{"多选", true, true},
+				{"多选", true, false},
 			},
 		},
 		{
@@ -322,9 +329,9 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 				{"导出清单…", true, false},
 				{"导入清单…", true, false},
 				{"清空列表", true, true},
-				{"撤销上次", false, true},
-				{"执行更名", false, true},
-				{"多选", false, true},
+				{"撤销上次", false, false},
+				{"执行更名", false, false},
+				{"多选", false, false},
 			},
 		},
 	}
@@ -357,36 +364,120 @@ func TestBordersSayClickableOrNot(t *testing.T) {
 				th = a.currentTheme().dark
 			}
 			live, inert := liveBorder(th), inertBorder(th)
+			deadFill := inertFill(th)
 			for _, w := range tc.want {
 				b, ok := tt.Find(w.label)
 				if !ok {
 					t.Errorf("%s dark=%v: 找不到「%s」", tc.name, dark, w.label)
 					continue
 				}
+				cy := int(b.Y + b.H/2)
+				ground, _ := rowModeColor(img, cy)
+				fill := pix(img, int(b.X)-7, cy)
+				_, fillChroma, _ := colorToOklch(fill)
 				hasLive := rectHasColor(img, b, live)
 				hasInert := rectHasColor(img, b, inert)
+
 				if w.enabled {
 					if hasInert {
 						t.Errorf("%s dark=%v: 「%s」现在能点,但画面上有中性灰边框(%s)——看着像按不动",
 							tc.name, dark, w.label, colorHex(inert))
 					}
+					if fill == ground && !hasLive {
+						t.Errorf("%s dark=%v: 「%s」现在能点,但和栏底(%s)一个样,也没有主题色边框——看不出能点",
+							tc.name, dark, w.label, colorHex(ground))
+					}
+					if fill == deadFill {
+						t.Errorf("%s dark=%v: 「%s」现在能点,但底用的是禁用那颗的灰(%s)——和按不动的一样",
+							tc.name, dark, w.label, colorHex(deadFill))
+					}
 					if w.framed && !hasLive {
-						t.Errorf("%s dark=%v: 「%s」现在能点,但没有主题色边框(%s)——看着像按不动",
+						t.Errorf("%s dark=%v: 「%s」是该带框的动作,但没有主题色边框(%s)",
 							tc.name, dark, w.label, colorHex(live))
 					}
 					continue
-				}
-				if !hasInert {
-					t.Errorf("%s dark=%v: 「%s」现在点不了,但画面上没有中性灰边框(%s)——看着像能点",
-						tc.name, dark, w.label, colorHex(inert))
 				}
 				if hasLive {
 					t.Errorf("%s dark=%v: 「%s」现在点不了,却带着主题色边框(%s)——看着像能点",
 						tc.name, dark, w.label, colorHex(live))
 				}
+				// 按不动的必须有底(否则看不出是个按钮),但那块底必须是灰的:
+				// 要么正好是 inertFill,要么彩度低到读成中性。
+				if fill == ground {
+					t.Errorf("%s dark=%v: 「%s」现在点不了,但和栏底(%s)一个样——看不出这里本来是个按钮",
+						tc.name, dark, w.label, colorHex(ground))
+				}
+				if fill != deadFill && fillChroma > 0.012 {
+					t.Errorf("%s dark=%v: 「%s」现在点不了,但底还有 %.4f 的彩度(%s)——看着像活的",
+						tc.name, dark, w.label, fillChroma, colorHex(fill))
+				}
 			}
 		}
 	}
+}
+
+// inertFill 是"按不动"那块底,单独守三条:它必须是灰的、必须是块瓦片、
+// 而且必须和"能点"那颗分得开。前两条在像素测试里也有,但那条要跑真渲染;
+// 这条是纯函数,十套种子 × 明暗全覆盖,调色的时候先红在这里。
+func TestInertFillIsAGreyTile(t *testing.T) {
+	seeds := []ui.Color{
+		ui.Hex("#2F7A52"), ui.Hex("#F2703C"), ui.Hex("#F5C518"), ui.Hex("#2563EB"),
+		ui.Hex("#8B5CF6"), ui.Hex("#E11D48"), ui.Hex("#14B8A6"), ui.Hex("#EC4899"),
+		ui.Hex("#000000"), ui.Hex("#FFFFFF"),
+	}
+	for _, seed := range seeds {
+		dt := themeFor(seed)
+		for _, dark := range []bool{false, true} {
+			th := dt.light
+			if dark {
+				th = dt.dark
+			}
+			p := dt.panes(dark)
+			dead := inertFill(th)
+			if _, c, _ := colorToOklch(dead); c > 0.012 {
+				t.Errorf("%s(dark=%v): 禁用底还有 %.4f 的彩度,读起来像活的", colorHex(seed), dark, c)
+			}
+			for _, g := range []ui.Color{p.base, p.left, p.mid, p.right, p.card} {
+				if r := contrastRatio(dead, g); r < 1.10 {
+					t.Errorf("%s(dark=%v): 禁用底对地面 %s 只有 %.2f:1,看不出是块瓦片",
+						colorHex(seed), dark, colorHex(g), r)
+				}
+				if r := contrastRatio(th.TextMuted, dead); r < 4.5 {
+					t.Errorf("%s(dark=%v): 禁用底上的次要字只有 %.2f:1,应 ≥4.5", colorHex(seed), dark, r)
+				}
+				// 死活的分界是彩,不是明度:两块瓦片一样厚(明度只差
+				// 1.1–1.4),一颗带彩一颗不带彩。所以这里量彩度比,不量
+				// 对比度——后者在亮色下永远过不了 1.15,因为灰瓦片本来就
+				// 和淡底一样重。
+				live := over(softFill(th), g)
+				_, lc, _ := colorToOklch(live)
+				_, dc, _ := colorToOklch(dead)
+				if lc > 0.004 && dc/lc > 0.55 {
+					t.Errorf("%s(dark=%v): 禁用的底彩度 %.4f 接近能点的 %.4f,分不出死活",
+						colorHex(seed), dark, dc, lc)
+				}
+			}
+		}
+	}
+}
+
+// rowModeColor 取整行出现次数最多的颜色,当作这一行的栏底。
+//
+// 为什么不直接算:栏底在不同行不一样(工具栏一种、底栏另一种、空态拖放区
+// 又一种),写死任何一个值都会在别的行上错。众数天然跟着行走。
+func rowModeColor(img *image.RGBA, y int) (ui.Color, int) {
+	counts := map[ui.Color]int{}
+	for x := 0; x < img.Bounds().Dx(); x++ {
+		counts[pix(img, x, y)]++
+	}
+	var best ui.Color
+	bestN := 0
+	for c, n := range counts {
+		if n > bestN {
+			best, bestN = c, n
+		}
+	}
+	return best, bestN
 }
 
 // rectHasColor 判断这颗按钮自己的范围里,有没有一个像素正好是这个颜色。
@@ -409,4 +500,66 @@ func rectHasColor(img *image.RGBA, b ui.Rect, want ui.Color) bool {
 		}
 	}
 	return false
+}
+
+// pix 取一个像素的颜色。测试里到处要"这一个点是什么色",包一层免得
+// 每次都写 RGBA() 的移位。
+func pix(img *image.RGBA, x, y int) ui.Color {
+	if x < 0 || y < 0 || x >= img.Bounds().Dx() || y >= img.Bounds().Dy() {
+		return ui.Color{}
+	}
+	r, g, b, _ := img.At(x, y).RGBA()
+	return ui.Color{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255}
+}
+
+// 能点的按钮,鼠标移上去必须变色;按不动的必须一动不动。
+//
+// 这是用户定的规则里"能点"的**唯一**动态证据:既然默认按钮没有边框,
+// 静止时靠"有没有一块底"区分,那悬停就得靠"底变深"来确认"这颗是活的"。
+// 如果悬停没反应,用户只能靠点一下试试——那就退回原点。
+func TestHoverIsWhatSaysClickable(t *testing.T) {
+	for _, dark := range []bool{false, true} {
+		a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
+		a.settings.Journal = filepath.Join(t.TempDir(), "j.json")
+		a.settings.Theme.Mode = "浅色"
+		if dark {
+			a.settings.Theme.Mode = "深色"
+		}
+		tt := ui.NewTester(a.view, 1280, 800)
+		for i := 0; i < 3; i++ {
+			tt.Frame()
+		}
+		// 空清单时「添加文件…」能点、「导出清单…」不能,正好一对。
+		for _, c := range []struct {
+			label   string
+			enabled bool
+		}{
+			{"添加文件…", true},
+			{"导出清单…", false},
+		} {
+			b, ok := tt.Find(c.label)
+			if !ok {
+				t.Fatalf("dark=%v: 找不到「%s」", dark, c.label)
+			}
+			cx, cy := b.X+b.W/2, b.Y+b.H/2
+			before := pix(tt.Image(), int(b.X)-7, int(cy))
+			tt.Move(cx, cy)
+			tt.Frame()
+			after := pix(tt.Image(), int(b.X)-7, int(cy))
+			if c.enabled {
+				if before == after {
+					t.Errorf("dark=%v: 「%s」能点,但鼠标移上去底没有变化(%s)——用户没法确认它是活的",
+						dark, c.label, colorHex(before))
+				}
+				continue
+			}
+			if before != after {
+				t.Errorf("dark=%v: 「%s」按不动,鼠标移上去却变了色(%s → %s)——看着像能点",
+					dark, c.label, colorHex(before), colorHex(after))
+			}
+			// 鼠标移开,免得影响下一颗。
+			tt.Move(5, 5)
+			tt.Frame()
+		}
+	}
 }

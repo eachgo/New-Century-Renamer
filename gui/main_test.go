@@ -703,7 +703,7 @@ func TestMultiSelectEntry(t *testing.T) {
 // 三栏不编号:用户的工作流是"先有文件",编号会误导;只需说清
 // "功能会加入步骤"这一条关系
 
-// 说明走 Tooltip:目录要在一屏里放下 32 条,每条占两行就只剩一半可见。
+// 说明走 Tooltip:目录要在一屏里放下几十条,每条占两行就只剩一半可见。
 // 这里量的是"说明挂在条目上、而且是那个功能自己的说明"——Tooltip 的
 // 内容不进 Texts(),所以只能查 app 侧的数据与悬停后的行为。
 func TestCatalogDescriptionsAreTooltips(t *testing.T) {

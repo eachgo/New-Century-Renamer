@@ -303,7 +303,7 @@ func (a *app) flowDialog(c *ui.Context) {
 			ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "流程").Bold().FontSize(18)
 				ui.Spacer(c)
-				if frameButton(c, "关闭", true).Radius(6).Clicked() {
+				if softButton(c, "关闭", true).Radius(6).Clicked() {
 					a.flowOpen = false
 				}
 			})
@@ -327,7 +327,7 @@ func (a *app) flowDialog(c *ui.Context) {
 								a.dropConfirm()
 								a.applyFlow(f, true)
 							}
-							if frameButton(c, "取消", true).Radius(6).Clicked() {
+							if softButton(c, "取消", true).Radius(6).Clicked() {
 								a.dropConfirm()
 							}
 						})
@@ -344,7 +344,7 @@ func (a *app) flowDialog(c *ui.Context) {
 							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 								ui.TextInput(c, &a.flowName).Placeholder("给这条流程起个名字").
 									Grow(1).Radius(6)
-								if frameButton(c, "保存", strings.TrimSpace(a.flowName) != "").Clicked() {
+								if softButton(c, "保存", strings.TrimSpace(a.flowName) != "").Clicked() {
 									a.saveFlow(a.flowName)
 									a.flowName = ""
 									if err := SaveSettings(a.settings); err != nil {
@@ -382,7 +382,7 @@ func (a *app) flowDialog(c *ui.Context) {
 									SingleLine().Ellipsis("…")
 								if f.Builtin {
 									ui.Text(c, "预设").FontSize(12).TextColor(t.TextMuted).Shrink(0)
-								} else if frameButton(c, "删除", true).Radius(6).Shrink(0).Clicked() {
+								} else if dangerButton(c, "删除", true).Radius(6).Shrink(0).Clicked() {
 									// 内置的删了下次还会回来,所以它们没有这个按钮。
 									del = true
 								}

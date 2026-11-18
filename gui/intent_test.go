@@ -11,7 +11,7 @@ import (
 )
 
 // 空管道时中栏给的是"想做什么",不是"从左侧功能里点一个"——后者把
-// 32 项规则摆在用户面前,却没说清点哪个才能得到想要的结果。
+// 几十项规则摆在用户面前,却没说清点哪个才能得到想要的结果。
 func TestEmptyStepsShowIntentCards(t *testing.T) {
 	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1100, 620)

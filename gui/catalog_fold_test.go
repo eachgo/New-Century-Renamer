@@ -2,15 +2,18 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
 )
 
-// 默认只展开前两组:11 组 32 条全摊开时一屏只放得下前三四组,用户既
+// 默认只展开前两组:全摊开时一屏只放得下前三四组,用户既
 // 不知道下面还有多少,也不知道该从哪儿找起。但也不能全折——全折之后
-// 左栏只剩 11 行组名,第一次打开的人看不出这里装的是能点的规则。
+// 左栏只剩一行行组名,第一次打开的人看不出这里装的是能点的规则。
 func TestCatalogGroupsStartPartiallyOpen(t *testing.T) {
 	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
 	tt := ui.NewTester(a.view, 1100, 1700)
@@ -124,7 +127,7 @@ func groupLabel(tt *ui.Tester, arrow, group string) string {
 
 // 组标题要带条数。
 //
-// 11 组折起来时一屏只看得到十一个词：「编号」「日期」「高级」——用户没法
+// 十来个组折起来时一屏只看得到十来个词：「编号」「日期」「高级」——用户没法
 // 判断哪一组里有他要的东西，只能挨个展开。带上条数之后，「元数据(3)」
 // 和「日期(1)」的重量一眼分得出来。
 func TestCatalogGroupHeadShowsCount(t *testing.T) {
@@ -194,5 +197,37 @@ func TestGroupCountFollowsSearch(t *testing.T) {
 	}
 	if got := fmt.Sprintf("· %s(%d)", group, want); got != label {
 		t.Fatalf("搜索时组标题是 %q,想要 %q(数字必须跟着结果变,不能是总数)", label, got)
+	}
+}
+
+// 注释里不许再写死目录条数。
+//
+// 报告里同时出现过三种互相矛盾的规模说法，而实测又是另一个数。这类
+// 数字写进注释就一定会过期（加一条规则就错了），而它守的东西（"目录
+// 很大，所以要搜索/折叠"）根本不需要精确数字。
+func TestNoHardcodedCatalogCounts(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 只查「条 / 项 / 组」这三种"目录规模"的量词,而且只查两位数以上:
+	// 一位数是测试里的局部数据（"本来有 3 条"）,而「19 种 Padding 取值」
+	// 说的是设计阶梯,不是目录。
+	bad := regexp.MustCompile(`(^|[^0-9])\d{2,}\s*(条|项|组)`)
+	for _, fn := range files {
+		src, err := os.ReadFile(fn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			// 只查注释行：数字出现在代码里（比如阈值）是另一回事。
+			trimmed := strings.TrimSpace(line)
+			if !strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			if m := bad.FindString(line); m != "" {
+				t.Errorf("%s:%d 注释里写死了目录规模 %q——目录会增删,这个数字迟早对不上", fn, i+1, m)
+			}
+		}
 	}
 }

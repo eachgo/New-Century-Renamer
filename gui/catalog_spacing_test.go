@@ -6,7 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// 目录条目之间必须有缝。以前每条 Padding(0,0) 紧贴,32 条挤成一片:
+// 目录条目之间必须有缝。以前每条 Padding(0,0) 紧贴,整份目录挤成一片:
 // 悬停底色和相邻条目连成一块,眼睛没法判断一行到哪结束。
 func TestCatalogItemsHaveGaps(t *testing.T) {
 	a := &app{stepSel: -1, fileSel: -1, settings: defaultSettings()}
@@ -29,7 +29,7 @@ func TestCatalogItemsHaveGaps(t *testing.T) {
 }
 
 // 目录里每一条都得有图标。icon 字段写错名字时 opIcon 返回 nil,
-// 界面上就是一片没有图标的文字——32 条里少一个没人会发现。
+// 界面上就是一片没有图标的文字——几十条里少一个没人会发现。
 func TestEveryCatalogEntryHasAnIcon(t *testing.T) {
 	for _, d := range catalog {
 		if opIcon(d.icon) == nil {
