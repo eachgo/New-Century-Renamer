@@ -4225,8 +4225,15 @@ func (a *app) syncWindowBorder(dt *derivedTheme, dark bool) {
 	if a.borderSet && want == a.borderCol {
 		return
 	}
+	hwnd := windowHandle(a.win)
+	if hwnd == 0 {
+		// 窗口还没建好(WhenReady 之前、或 Show 之前)。这里**不能**记下
+		// "已经设过":颜色没变的话以后就再也不会重试了,而那圈线会一直
+		// 留在系统默认色上。
+		return
+	}
 	a.borderCol, a.borderSet = want, true
-	setWindowBorder(windowHandle(a.win), want)
+	setWindowBorder(hwnd, want)
 }
 
 // borderColorFor 是窗口边框该被画成的颜色:顶栏/底栏/四周留白用的那个

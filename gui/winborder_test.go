@@ -91,3 +91,31 @@ func TestSyncWindowBorderOnlyCallsWhenChanged(t *testing.T) {
 		t.Fatalf("切暗色后写进去的是 %v,应当是 %v", last, want)
 	}
 }
+
+// TestSyncWindowBorderRetriesAfterHandleAppears 断言窗口句柄还没就绪时
+// 不会把"已经设过"记下来——否则颜色不变就再也不会重试,那圈线会一直
+// 停在系统默认色上。
+func TestSyncWindowBorderRetriesAfterHandleAppears(t *testing.T) {
+	calls := 0
+	handle := uintptr(0)
+	oldBorder, oldHandle := setWindowBorder, windowHandle
+	setWindowBorder = func(hwnd uintptr, col ui.Color) { calls++ }
+	windowHandle = func(w *mygo.Window) uintptr { return handle }
+	t.Cleanup(func() { setWindowBorder, windowHandle = oldBorder, oldHandle })
+
+	dt := themeFor(ui.Hex("#2F7A52"))
+	a := &app{win: &mygo.Window{}}
+	a.syncWindowBorder(dt, false)
+	if calls != 0 {
+		t.Fatalf("句柄还是 0 就调了系统调用 %d 次", calls)
+	}
+	if a.borderSet {
+		t.Fatal("句柄还没就绪就把\"已经设过\"记下来了——之后颜色不变就再也不会重试")
+	}
+	// 窗口建好:必须补上那一次。
+	handle = 42
+	a.syncWindowBorder(dt, false)
+	if calls != 1 {
+		t.Fatalf("句柄就绪后应当补调 1 次,实际 %d 次", calls)
+	}
+}
