@@ -1955,7 +1955,7 @@ func paneHeader(c *ui.Context, title string, extra func()) {
 
 // paneTitle 是不带右侧控件的标题,和 paneHeader 共用同一个 34 DIP 槽。
 func paneTitle(c *ui.Context, title string) {
-	ui.Row(c).Height(34).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Shrink(0).Height(34).AlignItems(ui.Center).Children(func() {
 		ui.Text(c, title).Bold().FontSize(14).SingleLine().Shrink(0)
 	})
 }
