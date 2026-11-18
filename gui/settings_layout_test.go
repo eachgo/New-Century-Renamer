@@ -2,7 +2,6 @@ package main
 
 import (
 	"image"
-	"math"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -54,15 +53,12 @@ func TestSettingsNarrowFallsBackAndFades(t *testing.T) {
 	if _, ok := tt.Find("AI 接口（OpenAI 兼容）"); !ok {
 		t.Fatal("窄窗口下第一张卡应当可见")
 	}
-	// 滚到底之后四张卡都要能到。直接滚到末端,不数次数:次数是拿本机
-	// 字体高度量的,Linux 上单栏更高,固定次数滚不到底。
-	a.setScroll.Y = math.MaxFloat32
-	tt.Frame()
-	tt.Frame()
+	// 后面两张卡要能滚到——判据是"某个滚动位置可见",不是"滚到底那一刻
+	// 可见"。Linux 的字体更高、内容更长,滚到底时第三张卡可能已经被推过
+	// 视口上沿,那时它确实够得到,只是不在终点。
 	for _, name := range []string{"主题", "设置文件"} {
-		r, ok := tt.Find(name)
-		if !ok || r.H <= 0 {
-			t.Errorf("滚到底也看不到卡片 %q", name)
+		if !visibleAtSomeScroll(tt, a, name, 480) {
+			t.Errorf("无论滚到哪里都看不到卡片 %q", name)
 		}
 	}
 }

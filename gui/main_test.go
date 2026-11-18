@@ -1039,6 +1039,42 @@ func TestSniffResultsHaveLabels(t *testing.T) {
 	}
 }
 
+// visibleAtSomeScroll 报告 want 是否在某个滚动位置可见:从顶端开始,按
+// 视口高度的三分之一往下走,每一步都量一次。
+//
+// 为什么要走一遍而不是钉在一个位置上:内容总高随字体度量变(Linux 的中文
+// 比 Windows 高一截),固定"滚到底"只能证明最后一张卡够得到,前面几张在
+// 终点可能已经被推出视口上沿。用户要的是"滚一滚总能看见",不是"滚到最底
+// 刚好看见"。
+func visibleAtSomeScroll(tt *ui.Tester, a *app, want string, h int) bool {
+	seen := func() bool {
+		r, ok := tt.Find(want)
+		return ok && r.H > 0 && r.Y >= 0 && r.Y+16 <= float32(h)
+	}
+	a.setScroll.Y = 0
+	tt.Frame()
+	tt.Frame()
+	if seen() {
+		return true
+	}
+	step := float32(h) / 3
+	if step < 40 {
+		step = 40
+	}
+	for i := 1; i <= 12; i++ {
+		a.setScroll.Y = float32(i) * step
+		tt.Frame()
+		tt.Frame()
+		if seen() {
+			return true
+		}
+		if a.setScroll.MaxY > 0 && a.setScroll.Y >= a.setScroll.MaxY {
+			break
+		}
+	}
+	return false
+}
+
 // 窄窗口(单栏)下设置对话框的每一张卡都必须能被滚到。
 // 宽窗口走两栏,四张卡一屏放得下,由 TestSettingsCardsVisibleAtDefaultSize
 // 守着——那里断言"不需要滚动"。这里只管窄窗口:单栏排下来总高 890,
@@ -1070,12 +1106,16 @@ func TestSettingsCardsReachableAtAnyHeight(t *testing.T) {
 				t.Errorf("h=%d 开头看不到卡片 %q", h, want)
 			}
 		}
-		scrollToBottom()
+		// 后面两张卡只要"存在某个滚动位置能看到"就算过。
+		// 不能钉在"滚到底"那一个位置上:Linux 的字体更高,内容更长,
+		// 滚到底时第三张卡可能已经被推过视口上沿——那时它确实够得到,
+		// 只是不在终点。
 		for _, want := range []string{"主题", "设置文件"} {
-			if !visible(want) {
-				t.Errorf("h=%d 滚到底也看不到卡片 %q", h, want)
+			if !visibleAtSomeScroll(tt, a, want, h) {
+				t.Errorf("h=%d 无论滚到哪里都看不到卡片 %q", h, want)
 			}
 		}
+		scrollToBottom()
 		// 按钮不该跟着滚走
 		if !visible("保存") {
 			t.Errorf("h=%d 滚到底后保存按钮不可见", h)
